@@ -44,7 +44,16 @@ include_directories (            ./../../system/security/securesocket
 
 ADD_DEFINITIONS( -DROXIEHELPER_EXPORTS -D_USRDLL -DMODULE_PRIORITY=5 )
 
-set ( SRCS roxiehelper.cpp roxiedebug.cpp roxiehelper.hpp roxiedebug.hpp roxielmj.hpp)
+set (    SRCS
+         roxiehelper.cpp
+         roxiedebug.cpp
+         roxiereadahead.cpp
+
+         roxiehelper.hpp
+         roxiedebug.hpp
+         roxielmj.hpp
+         roxiereadahead.ipp
+    )
 
 HPCC_ADD_LIBRARY( roxiehelper SHARED ${SRCS} )
 install ( TARGETS roxiehelper DESTINATION ${OSSDIR}/lib )
