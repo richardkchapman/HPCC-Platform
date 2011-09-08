@@ -52,12 +52,12 @@ public:
 
         try
         {
-            unsigned cnt;
-            for (cnt=0; cnt < readahead; )
+            unsigned count;
+            for (count=0; count < readahead; count++)
             {
                 const void * next = input->nextInGroup();
-                //Always include null entiries in the buffer, so make it simpler to process end of file.
-                cached[cnt++] = next;
+                //Always include null entries in the buffer, so make it simpler to process end of file.
+                cached[count] = next;
                 if (!next)
                 {
                     if (state == RAeog)
@@ -73,19 +73,22 @@ public:
             }
             ownerState = state;
             nextToRead = 0;
-            available = cnt;
-            return (cnt != 0);
+            available = count;
+            return (count != 0);
         }
         catch (IException *)
         {
             //MORE: Should this be saved away in the buffer, and then thrown when that row is requested?
+            // I don't think so - the exception is not associated with a particular row
+            // but you may (if you support multiple clients pulling) need to safe it and throw it to anyone that pulls any row
+            // Perhaps that's the responsibility of the user of this class
             throw;
         }
     }
 
     void init(unsigned _readahead)
     {
-        cached = new const void * [readahead];
+        cached = new const void * [readahead];  // should you initialize?
         available = 0;
         nextToRead = 0;
     }
@@ -104,6 +107,8 @@ public:
 
     void kill()
     {
+        available = 0;
+        nextToRead = 0;
         readahead = 0;
         delete [] cached;
         cached = NULL;
@@ -122,11 +127,15 @@ protected:
 
 
 // Sequential blocked read ahead class
-// - supports max readeahead.
+// - supports max readahead.
 // - supports grouping.
 // Could combine eof and eog into a single state, but it is then hard to implement abort safely
 class SequentialReadahead : public CInterface, implements IInputBase
 {
+    // might be easier for Roxie to use if _input was passed to init() rather than constructor.
+    // I assume the reasn for having init separate from constructor is because you might not know the
+    // values at construction time. Saves me allocating as a separate object...
+
     SequentialReadahead(IInputBase * _input)
         : input(_input)
     {
@@ -135,6 +144,9 @@ class SequentialReadahead : public CInterface, implements IInputBase
     }
 
     virtual IOutputMetaData * queryOutputMeta() const { return input->queryOutputMeta(); }
+
+    // What's the convention here - init/kill called once, ready/done called repeatedly (per child query) ?
+    // Should we use same convention as Roxie?
 
     void init(unsigned _readahead)
     {
@@ -176,7 +188,7 @@ class SequentialReadahead : public CInterface, implements IInputBase
     }
 
 protected:
-//    Linked<IInputBase> input;
+//    Linked<IInputBase> input; - I assume you are assuming your owner owns this
     IInputBase * input;
     ReadAheadBuffer buffer;
     ReadAheadState inputState;
@@ -189,14 +201,16 @@ protected:
 // - supports block size for signaling, and restarting the reading thead.
 // - supports grouping.
 // Read and write to separate blocks of records to avoid needing to lock on each access.
+// I assume there is one reader and one writer?
 
 class ParallelReadahead : public CInterface, implements IInputBase, implements IThreaded
 {
-    ParallelReadahead(IInputBase * _input)
+    ParallelReadahead(IInputBase * _input) // see comments on Sequential case
         : input(_input)
     {
         inputState = RAstart;
         forceAbort = true;
+        // bunch of uninitialized members here...
     }
 
     virtual IOutputMetaData * queryOutputMeta() const { return input->queryOutputMeta(); }
@@ -244,7 +258,8 @@ class ParallelReadahead : public CInterface, implements IInputBase, implements I
         forceAbort = true;
     }
 
-    void main()
+    // interface IThreaded...
+    virtual void main()  // called from readThread
     {
         while (!forceAbort || inputState != RAeof)
         {
@@ -259,6 +274,7 @@ class ParallelReadahead : public CInterface, implements IInputBase, implements I
             readAvailable.signal();
     }
 
+    // interface IInputBase
     virtual const void * nextInGroup()
     {
         if (!forceAbort && (readState == RAstart))
@@ -311,10 +327,11 @@ private:
 protected:
     IInputBase * input;
 //    Linked<IInputBase> input;
-    Owned<Thread> readThread;
+    Owned<Thread> readThread; // some confusing terminology... I think the readThread is the one that actually does the writing to this
+                              // object...
     ReadAheadBuffer * buffers;
-    Semaphore writeAvailable;
-    Semaphore readAvailable;
+    Semaphore writeAvailable;  // probably want to use InterruptableSemaphore here
+    Semaphore readAvailable;   // probably want tu use InterruptableSemaphore here
     unsigned nextReadBlock;         // only accessed from read code
     unsigned nextWriteBlock;        // only accessed from write code
     unsigned numBlocks;
@@ -433,7 +450,7 @@ class ParallelExecutor : public CInterface, implements IInputBase
         bool notifiedTrackAvailable;
     };
 
-    //MORE: Is it a problem restarting thread objects?
+    //MORE: Is it a problem restarting thread objects? Roxie has a RestartableThread class to solve this - should move here perhaps
     class ReaderThread : public IInputBase, public Thread
     {
     public:
@@ -689,4 +706,5 @@ protected:
     bool forceAbort;
 };
 
-//MORE: What about exceptionns + failures to join
+//MORE: What about exceptions + failures to join
+// InterruptableSemaphores help... see Roxie's class RecordPullerThread (which should be merged with / replaced by this one...)
