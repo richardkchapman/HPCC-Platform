@@ -16,13 +16,14 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
-
 //Code to try and analyse accounts, but in as many strange ways as possible.....
 //input is an open office spreadsheet with 3 columns: Date, Description and amount.
 
 import Std.Str;
 IMPORT * FROM lib_unicodelib;
+IMPORT common;
+
+myfiles := common.files('');
 
 rec :=      RECORD,maxlength(99999)
 string          month{xpath('/office:document-content/office:body/table:table/@table:name')};
@@ -39,7 +40,7 @@ unicode contains := U'' :stored('contains');
 decimal8 numListResults := 5 : stored('numListResults');
 decimal8 numSummaryResults := 30 : stored('numSummaryResults');
 
-accounts := dataset(DG_FileOut+'accountxml', rec, XML('/office:document-content/office:body/table:table/table:table-row'));
+accounts := dataset(myfiles.DG_FileOut+'accountxml', rec, XML('/office:document-content/office:body/table:table/table:table-row'));
 
 validAccounts := accounts(month != 'Cashflow' and month != 'Spending');
 
