@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-IMPORT common; C := common.files('');
+IMPORT setup; C := setup.files('');
 // straight disk count
 #option('workflow', 0);
 /*

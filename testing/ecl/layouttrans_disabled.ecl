@@ -17,7 +17,7 @@
 ############################################################################## */
 
 //class=error
-IMPORT common; C := common.files('');
+IMPORT setup; C := setup.files('');
 //UseIndexes
 //varskip payload
 //varskip varload

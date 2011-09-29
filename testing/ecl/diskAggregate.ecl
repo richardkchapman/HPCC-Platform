@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-IMPORT common; C := common.files('');
+IMPORT setup; C := setup.files('');
 
 // Test a case that needs serialize due to child dataset...
 table(C.sqSimplePersonBookds, { dataset C.sqSimplePersonBookDs.books, C.sqSimplePersonBookDs.surname, count(group) });

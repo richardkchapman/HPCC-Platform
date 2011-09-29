@@ -17,7 +17,7 @@
 ############################################################################## */
 
 //nothor
-IMPORT common; C := common.files('');
+IMPORT setup; C := setup.files('');
 //UseIndexes
 DG_FetchIndex1 := C.DG_FetchIndex1;
 

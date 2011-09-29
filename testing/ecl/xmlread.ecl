@@ -21,7 +21,7 @@
 
 import Std.Str;
 IMPORT * FROM lib_unicodelib;
-IMPORT common; C := common.files('');
+IMPORT setup; C := setup.files('');
 
 rec :=      RECORD,maxlength(99999)
 string          month{xpath('/office:document-content/office:body/table:table/@table:name')};
