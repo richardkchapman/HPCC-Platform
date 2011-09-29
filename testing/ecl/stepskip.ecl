@@ -21,8 +21,8 @@ IMPORT common; C := common.files('');
 
 unsigned lim := 1 : stored('lim');
 
-i1 := DG_FetchIndex1(KEYED(Lname IN ['Anderson']));
-i2 := DG_FetchIndex1(KEYED(Lname IN ['Smith']));
+i1 := C.DG_FetchIndex1(KEYED(Lname IN ['Anderson']));
+i2 := C.DG_FetchIndex1(KEYED(Lname IN ['Smith']));
 
 ds1 := stepped(limit(i1, lim, keyed, count, SKIP), fname);
 ds2 := stepped(limit(i2, lim, keyed, count, SKIP), fname);

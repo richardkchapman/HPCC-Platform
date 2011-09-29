@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 // Grouped operations on child datasets.
 
@@ -30,15 +30,15 @@ udecimal8 todaysDate := 20040602D;
 unsigned4 age(udecimal8 dob) := ((todaysDate - dob) / 10000D);
 unsigned4 yob(udecimal8 dob) := dob / 10000D;
 
-house := sqHousePersonBookDs;
-persons := sqHousePersonBookDs.persons;
+house := C.sqHousePersonBookDs;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
-booksDs := sqBookDs(personid = persons.id);
-personsDs := sqPersonDs(houseid = sqHousePersonBookDs.id);
-booksDsDs := sqBookDs(personid = personsDs.id);
-personsDsDs := sqPersonDs(houseid = sqHouseDs.id);
-booksDsDsDs := sqBookDs(personid = personsDsDs.id);
+booksDs := C.sqBookDs(personid = persons.id);
+personsDs := C.sqPersonDs(houseid = C.sqHousePersonBookDs.id);
+booksDsDs := C.sqBookDs(personid = personsDs.id);
+personsDsDs := C.sqPersonDs(houseid = C.sqHouseDs.id);
+booksDsDsDs := C.sqBookDs(personid = personsDsDs.id);
 
 
 // Count how many books each surname has - daft way#1: use rollup!

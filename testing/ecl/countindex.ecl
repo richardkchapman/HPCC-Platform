@@ -19,6 +19,7 @@
 IMPORT common; C := common.files('');
 //UseIndexes
 //nothor
+DG_IndexFile := C.DG_IndexFile;
 
 d1 := dataset([{'DAVID', 'BAYLISS'}, {'CLAIRE','BAYLISS'}, {'EBENEZER','BAYLISS'},{'DAVID','SMITH'}], { string20 fname, string20 lname });
 

@@ -21,10 +21,10 @@ IMPORT common; C := common.files('');
 
 string20 storedvar := 'DAVID' : stored('storedvar');
 
-output(dg_flatfile(storedvar != 'DAVID', storedvar = DG_firstname));
-count(dg_flatfile(storedvar != 'DAVID', storedvar = DG_firstname));
+output(C.dg_flatfile(storedvar != 'DAVID', storedvar = DG_firstname));
+count(C.dg_flatfile(storedvar != 'DAVID', storedvar = DG_firstname));
 
-output(dg_indexfile(storedvar != 'DAVID', storedvar = DG_firstname));
-count(dg_indexfile(storedvar != 'DAVID', storedvar = DG_firstname));
+output(C.dg_indexfile(storedvar != 'DAVID', storedvar = DG_firstname));
+count(C.dg_indexfile(storedvar != 'DAVID', storedvar = DG_firstname));
 
 

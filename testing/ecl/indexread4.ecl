@@ -18,7 +18,7 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
-
+DG_FetchIndex1 := C.DG_FetchIndex1;
 
 recordof(DG_FetchIndex1) createError(boolean isKeyed) := TRANSFORM
     SELF.fname := IF(isKeyed, 'Keyed Limit exceeded', 'Limit exceeded');

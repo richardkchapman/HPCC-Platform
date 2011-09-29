@@ -19,11 +19,11 @@
 //nothor
 IMPORT common; C := common.files('');
 
-o1 := normalize(sqNamesTable1, left.books, transform(right));
-o2 := normalize(sqNamesTable1, sort(left.books, -rating100, +author), transform(right));
-o3 := normalize(sqNamesTable1, sort(left.books, +author, +name), transform({string name, string author}, self := right));
+o1 := normalize(C.sqNamesTable1, left.books, transform(right));
+o2 := normalize(C.sqNamesTable1, sort(left.books, -rating100, +author), transform(right));
+o3 := normalize(C.sqNamesTable1, sort(left.books, +author, +name), transform({string name, string author}, self := right));
 
-g1 := group(sqNamesTable1, surname, forename);
+g1 := group(C.sqNamesTable1, surname, forename);
 o4 := table(g1, { cnt := count(group), numBooks := sum(group, count(books)) });     // show there is a zero size group
 o5 := normalize(g1, left.books, transform(right));                                  // grouped normalize - including an "empty" group
 o6 := table(o5, { cnt := count(group) });                                           // ensure the grouping worked correctly

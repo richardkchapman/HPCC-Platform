@@ -18,6 +18,7 @@
 
 IMPORT common; C := common.files('');
 fposlist := dataset([{0}], { unsigned8 _fpos });
+DG_CSVFile := C.DG_CSVFile;
 
 DG_CSVFile get(DG_CSVFile le, fposlist ri) := transform
   self := le;
@@ -26,3 +27,5 @@ DG_CSVFile get(DG_CSVFile le, fposlist ri) := transform
 fd := fetch(DG_CSVFile,fposlist,right._fpos,get(left, right));
 
 output(fd);
+
+

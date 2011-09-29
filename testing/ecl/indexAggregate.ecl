@@ -19,7 +19,7 @@
 IMPORT common; C := common.files('');
 
 // Test a case that needs serialize due to child dataset...
-table(sqSimplePersonBookIndex, { dataset sqSimplePersonBookIndex.books, sqSimplePersonBookIndex.surname, count(group) });
+table(C.sqSimplePersonBookIndex, { dataset C.sqSimplePersonBookIndex.books, C.sqSimplePersonBookIndex.surname, count(group) });
 
 // ... and a case that doesn't
-table(sqSimplePersonBookIndex, { sqSimplePersonBookIndex.surname, count(group) });
+table(C.sqSimplePersonBookIndex, { C.sqSimplePersonBookIndex.surname, count(group) });

@@ -18,12 +18,12 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 //A mistyped query, but interesting never the less - needs to access a stored variable from the child.
-secondBookNameX := (string20)sort(sqNamesTable5.books, name)[2].name;
-output(sqHousePersonBookDs, { dataset table(persons, { secondBookNameX, sumage := sum(group, aage) }, secondBookNameX, few)});
+secondBookNameX := (string20)sort(C.sqNamesTable5.books, name)[2].name;
+output(C.sqHousePersonBookDs, { dataset table(persons, { secondBookNameX, sumage := sum(group, aage) }, secondBookNameX, few)});

@@ -18,32 +18,32 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 //Check correctly checks canMatchAny()
 inlineDs := dataset([1,2],{integer value});
 
 //Simple disk aggregate
-output(table(sqNamesIndex1, { sum(group, aage),exists(group),exists(group,aage>0),exists(group,aage>100),count(group,aage>20) }));
+output(table(C.sqNamesIndex1, { sum(group, aage),exists(group),exists(group,aage>0),exists(group,aage>100),count(group,aage>20) }));
 
 //Filtered disk aggregate, which also requires a beenProcessed flag
-output(table(sqNamesIndex2(surname != 'Halliday'), { max(group, aage) }));
+output(table(C.sqNamesIndex2(surname != 'Halliday'), { max(group, aage) }));
 
 //Special case count.
-output(table(sqNamesIndex3(forename = 'Gavin'), { count(group) }));
+output(table(C.sqNamesIndex3(forename = 'Gavin'), { count(group) }));
 
-output(count(sqNamesIndex4));
+output(count(C.sqNamesIndex4));
 
 //Special case count.
-output(table(sqNamesIndex5, { count(group, (forename = 'Gavin')) }));
+output(table(C.sqNamesIndex5, { count(group, (forename = 'Gavin')) }));
 
-output(table(inlineDs, { count(sqNamesIndex4(inlineDs.value = 1)); }));
+output(table(inlineDs, { count(C.sqNamesIndex4(inlineDs.value = 1)); }));
 
 //existance checks
-output(exists(sqNamesIndex4));
-output(exists(sqNamesIndex4(forename = 'Gavin')));
-output(exists(sqNamesIndex4(forename = 'Joshua')));
+output(exists(C.sqNamesIndex4));
+output(exists(C.sqNamesIndex4(forename = 'Gavin')));
+output(exists(C.sqNamesIndex4(forename = 'Joshua')));

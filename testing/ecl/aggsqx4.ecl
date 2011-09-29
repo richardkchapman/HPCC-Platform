@@ -18,19 +18,19 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
-pr:= table(sqHousePersonBookDs.persons, { fullname := trim(surname) + ', ' + trim(forename), aage });
+pr:= table(C.sqHousePersonBookDs.persons, { fullname := trim(surname) + ', ' + trim(forename), aage });
 
 //Filtered Aggregate on a projected table.
-output(sqHousePersonBookDs, { dataset sort(table(pr(aage > 20), { aage, max(group, fullname) }, aage, few), aage) } );
+output(C.sqHousePersonBookDs, { dataset sort(table(pr(aage > 20), { aage, max(group, fullname) }, aage, few), aage) } );
 
 //Aggregate on a projected table that can't be merged
-pr2:= table(sqHousePersonBookDs.persons, { surname, forename, aage, unsigned8 seq := (random() % 100) / 2000 + aage; });
+pr2:= table(C.sqHousePersonBookDs.persons, { surname, forename, aage, unsigned8 seq := (random() % 100) / 2000 + aage; });
 
 //Filtered Aggregate on a projected table.
-output(sqHousePersonBookDs, { dataset sort(table(pr2(seq > 10), { surname, ave(group, aage) }, surname, few),surname) });
+output(C.sqHousePersonBookDs, { dataset sort(table(pr2(seq > 10), { surname, ave(group, aage) }, surname, few),surname) });

@@ -18,6 +18,7 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
+DG_FetchIndex1 := C.DG_FetchIndex1;
 
 string s1 := 'a' : stored('s1');
 string s2 := 'a' : stored('s2');

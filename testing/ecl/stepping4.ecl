@@ -23,9 +23,9 @@ IMPORT common; C := common.files('');
 //varskip trans
 //nothor
 
-boy := STEPPED(TS_WordIndex(keyed(kind = TS_kindType.TextEntry and word = 'boy')), doc);
+boy := STEPPED(C.TS_WordIndex(keyed(kind = C.TS_kindType.TextEntry and word = 'boy')), doc);
 
-sheep := STEPPED(TS_WordIndex(keyed(kind = TS_kindType.TextEntry and word = 'sheep')), doc);
+sheep := STEPPED(C.TS_WordIndex(keyed(kind = C.TS_kindType.TextEntry and word = 'sheep')), doc);
 
 both := MERGEJOIN([boy, sheep], STEPPED(left.doc = RIGHT.doc), assert sorted, Sorted(doc));
 

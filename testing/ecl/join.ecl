@@ -17,6 +17,9 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
+DG_FlatFile := C.DG_FlatFile;
+DG_FlatFileEvens := C.DG_FlatFileEvens;
+DG_Fnames := C.DG_Fnames;
 
 recpair := record
     string45 name;      //join type description

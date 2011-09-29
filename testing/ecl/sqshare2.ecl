@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 // Test that shared subqueries are handled correctly, and that shared cses are also handled
 
@@ -31,15 +31,15 @@ udecimal8 todaysDate := 20040602D;
 unsigned4 age(udecimal8 dob) := ((todaysDate - dob) / 10000D);
 unsigned4 yob(udecimal8 dob) := dob / 10000D;
 
-house := sqHousePersonBookDs;
-persons := sqHousePersonBookDs.persons;
+house := C.sqHousePersonBookDs;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
-booksDs := sqBookDs(personid = persons.id);
-personsDs := sqPersonDs(houseid = sqHousePersonBookDs.id);
-booksDsDs := sqBookDs(personid = personsDs.id);
-personsDsDs := sqPersonDs(houseid = sqHouseDs.id);
-booksDsDsDs := sqBookDs(personid = personsDsDs.id);
+booksDs := C.sqBookDs(personid = persons.id);
+personsDs := C.sqPersonDs(houseid = C.sqHousePersonBookDs.id);
+booksDsDs := C.sqBookDs(personid = personsDs.id);
+personsDsDs := C.sqPersonDs(houseid = C.sqHouseDs.id);
+booksDsDsDs := C.sqBookDs(personid = personsDsDs.id);
 
 //Someone in the house is older than the house and total price of books is less than book limit
 oldest5People := sort(persons, dob)[1..5];
@@ -60,6 +60,6 @@ oldest5PeopleDsDs := sort(personsDsDs, dob)[1..5];
 aveAgeTop5DsDs := ave(oldest5PeopleDsDs, age(dob));
 maxAgeTop5DsDs := max(oldest5PeopleDsDs, age(dob));
 minAgeTop5DsDs := min(oldest5PeopleDsDs, age(dob));
-output(sqHouseDs, { addr, aveAgeTop5DsDs, (unsigned)(aveAgeTop5DsDs*1.0000000001) });
-output(sqHouseDs, { addr, aveAgeTop5DsDs, maxAgeTop5DsDs, minAgeTop5DsDs });
+output(C.sqHouseDs, { addr, aveAgeTop5DsDs, (unsigned)(aveAgeTop5DsDs*1.0000000001) });
+output(C.sqHouseDs, { addr, aveAgeTop5DsDs, maxAgeTop5DsDs, minAgeTop5DsDs });
 

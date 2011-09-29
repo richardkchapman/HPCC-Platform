@@ -21,9 +21,7 @@
 
 import Std.Str;
 IMPORT * FROM lib_unicodelib;
-IMPORT common;
-
-myfiles := common.files('');
+IMPORT common; C := common.files('');
 
 rec :=      RECORD,maxlength(99999)
 string          month{xpath('/office:document-content/office:body/table:table/@table:name')};
@@ -40,7 +38,7 @@ unicode contains := U'' :stored('contains');
 decimal8 numListResults := 5 : stored('numListResults');
 decimal8 numSummaryResults := 30 : stored('numSummaryResults');
 
-accounts := dataset(myfiles.DG_FileOut+'accountxml', rec, XML('/office:document-content/office:body/table:table/table:table-row'));
+accounts := dataset(C.DG_FileOut+'accountxml', rec, XML('/office:document-content/office:body/table:table/table:table-row'));
 
 validAccounts := accounts(month != 'Cashflow' and month != 'Spending');
 

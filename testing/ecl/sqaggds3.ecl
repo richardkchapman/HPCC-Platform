@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 unsigned xxid := 0 : stored('xxid');
 
@@ -34,16 +34,16 @@ unsigned4 age(udecimal8 dob) := ((todaysDate - dob) / 10000D);
 // Different child operators, all inline.
 //persons := relatedPersons(sqHouseDs);
 //books := relatedBooks(persons);
-persons := sqPersonDs(houseid = sqHouseDs.id);
-books := sqBookDs(personid = persons.id);
+persons := C.sqPersonDs(houseid = C.sqHouseDs.id);
+books := C.sqBookDs(personid = persons.id);
 
-personByAgeDesc1 := sort(persons, sqHouseDs.addr, dob);
-output(sqHouseDs, { addr, oldest := personByAgeDesc1[1].forename + ' ' + personByAgeDesc1[1].surname });
+personByAgeDesc1 := sort(persons, C.sqHouseDs.addr, dob);
+output(C.sqHouseDs, { addr, oldest := personByAgeDesc1[1].forename + ' ' + personByAgeDesc1[1].surname });
 
-personByAgeDesc2 := sort(persons, xxid, sqHouseDs.addr, dob);
-output(sqHouseDs, { addr, oldest := personByAgeDesc2[1].forename + ' ' + personByAgeDesc2[1].surname });
+personByAgeDesc2 := sort(persons, xxid, C.sqHouseDs.addr, dob);
+output(C.sqHouseDs, { addr, oldest := personByAgeDesc2[1].forename + ' ' + personByAgeDesc2[1].surname });
 
-personByAgeDesc3 := sort(persons, xxid, sqHouseDs.filepos, dob);
-output(sqHouseDs, { addr, oldest := personByAgeDesc3[1].forename + ' ' + personByAgeDesc3[1].surname });
+personByAgeDesc3 := sort(persons, xxid, C.sqHouseDs.filepos, dob);
+output(C.sqHouseDs, { addr, oldest := personByAgeDesc3[1].forename + ' ' + personByAgeDesc3[1].surname });
 
-output(sqHouseDs, { count(persons(count(books(id!= sqHouseDs.id)) != 0)) });
+output(C.sqHouseDs, { count(persons(count(books(id!= C.sqHouseDs.id)) != 0)) });

@@ -25,7 +25,7 @@ IMPORT common; C := common.files('');
 
 // this would use RLT, but we have not enabled it, so it should fail
 
-DG_FetchIndex1Alt1 := INDEX(DG_FetchFile,{Fname,Lname,__filepos},DG_FetchIndex1Name);
+DG_FetchIndex1Alt1 := INDEX(C.DG_FetchFile,{Fname,Lname,__filepos}, C.DG_FetchIndex1Name);
 
 ds := DATASET([{'Anderson'}, {'Doe'}], {STRING25 Lname});
 

@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 unsigned xxid := 0 : stored('xxid');
 
@@ -32,16 +32,16 @@ unsigned4 age(udecimal8 dob) := ((todaysDate - dob) / 10000D);
 // Test the different child operators on related datasets.
 
 // Different child operators, all inline.
-persons := sqPersonExDs(houseid = sqHouseExDs.id);
-books := sqBookExDs(personid = persons.id);
+persons := C.sqPersonExDs(houseid = C.sqHouseExDs.id);
+books := C.sqBookExDs(personid = persons.id);
 
-personByAgeDesc1 := sort(persons, sqHouseExDs.addr, dob);
-output(sqHouseExDs, { addr, oldest := personByAgeDesc1[1].forename + ' ' + personByAgeDesc1[1].surname });
+personByAgeDesc1 := sort(persons, C.sqHouseExDs.addr, dob);
+output(C.sqHouseExDs, { addr, oldest := personByAgeDesc1[1].forename + ' ' + personByAgeDesc1[1].surname });
 
-personByAgeDesc2 := sort(persons, xxid, sqHouseExDs.addr, dob);
-output(sqHouseExDs, { addr, oldest := personByAgeDesc2[1].forename + ' ' + personByAgeDesc2[1].surname });
+personByAgeDesc2 := sort(persons, xxid, C.sqHouseExDs.addr, dob);
+output(C.sqHouseExDs, { addr, oldest := personByAgeDesc2[1].forename + ' ' + personByAgeDesc2[1].surname });
 
-personByAgeDesc3 := sort(persons, xxid, sqHouseExDs.filepos, dob);
-output(sqHouseExDs, { addr, oldest := personByAgeDesc3[1].forename + ' ' + personByAgeDesc3[1].surname });
+personByAgeDesc3 := sort(persons, xxid, C.sqHouseExDs.filepos, dob);
+output(C.sqHouseExDs, { addr, oldest := personByAgeDesc3[1].forename + ' ' + personByAgeDesc3[1].surname });
 
-output(sqHouseExDs, { count(persons(count(books(id!= sqHouseExDs.id)) != 0)) });
+output(C.sqHouseExDs, { count(persons(count(books(id!= C.sqHouseExDs.id)) != 0)) });

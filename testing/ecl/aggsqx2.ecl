@@ -17,25 +17,25 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 forceSubQuery(a) := macro
     { dedup(a,true)[1] } 
 endmacro;
 
-persons := sqHousePersonBookDs.persons;
+persons := C.sqHousePersonBookDs.persons;
 
 pr:= table(persons, { fullname := trim(surname) + ', ' + trim(forename), aage });
 
 //Filtered Aggregate on a projected table.
 a1 := table(pr(aage > 20), { max(group, fullname) });
-output(sqHousePersonBookDs, forceSubQuery(a1));
+output(C.sqHousePersonBookDs, forceSubQuery(a1));
 
 //Aggregate on a projected table that can't be merged.  seq is actually set to aage
 pr2:= table(persons, { surname, forename, aage, unsigned8 seq := (random() % 100) / 2000 + aage; });
 a2 := table(pr2(seq > 30), { ave(group, aage) });
-output(sqHousePersonBookDs, forceSubQuery(a2));
+output(C.sqHousePersonBookDs, forceSubQuery(a2));

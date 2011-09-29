@@ -19,6 +19,10 @@
 IMPORT common; C := common.files('');
 //UseIndexes
 //nolocal
+DG_FlatFile := C.DG_FlatFile;
+DG_VarFile := C.DG_VarFile;
+DG_VarIndex := C.DG_VarIndex;
+DG_indexFileEvens := C.DG_indexFileEvens;
 
 import lib_stringlib;
 

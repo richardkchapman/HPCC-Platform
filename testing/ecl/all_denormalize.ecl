@@ -20,7 +20,7 @@ IMPORT common; C := common.files('');
 //nothor
 //#option('noAllToLookupConversion', '1');
 
-indexrec := RECORDOF(DG_indexFileEvens);
+indexrec := RECORDOF(C.DG_indexFileEvens);
 outputrec := { String10 DG_firstname; String10 DG_lastname, unsigned1 DG_prange, unsigned8 filepos};
 
 outrow := record
@@ -31,34 +31,35 @@ outrow := record
     DATASET(outputrec) rightrecs;
   END;
 
-outrow tooutrow(DG_flatfile L, string name) := TRANSFORM
+outrow tooutrow(C.DG_flatfile L, string name) := TRANSFORM
   SELF.name := name;
     SELF.rightrecs := [];
     SELF := L;
 END;
 
+DG_Fnames := C.DG_Fnames;
 SkipFilter := [DG_Fnames[4], DG_Fnames[5],DG_Fnames[6],DG_Fnames[7],DG_Fnames[8],DG_Fnames[9],DG_Fnames[10],
                DG_Fnames[11],DG_Fnames[12],DG_Fnames[13],DG_Fnames[14],DG_Fnames[15],DG_Fnames[16]];
 
-outrow addRow(outrow L, DG_indexFileEvens R, integer c) := TRANSFORM
+outrow addRow(outrow L, C.DG_indexFileEvens R, integer c) := TRANSFORM
     self.rightrecs := L.rightrecs + PROJECT(R, transform(outputrec, SELF := LEFT));
     self := L;
   END;
 
-outrow addRowSkip(outrow L, DG_indexFileEvens R, integer c) := TRANSFORM
+outrow addRowSkip(outrow L, C.DG_indexFileEvens R, integer c) := TRANSFORM
     self.DG_firstname := IF (L.DG_firstname in SkipFilter,SKIP,L.DG_firstname);
     self.rightrecs := L.rightrecs + PROJECT(R, transform(outputrec, SELF := LEFT));
     self := L;
   END;
 
 
-outrow makeRow(DG_FlatFile L, dataset(indexrec) R, string name) := TRANSFORM
+outrow makeRow(C.DG_FlatFile L, dataset(indexrec) R, string name) := TRANSFORM
     self.name := name;
     self.rightrecs := PROJECT(R, transform(outputrec, SELF := LEFT));
     self := L;
   END;
 
-outrow makeRowSkip(DG_FlatFile L, dataset(indexrec) R, string name) := TRANSFORM
+outrow makeRowSkip(C.DG_FlatFile L, dataset(indexrec) R, string name) := TRANSFORM
     self.name := name;
     self.DG_firstname := IF (L.DG_firstname in SkipFilter,SKIP,L.DG_firstname);
     self.rightrecs := PROJECT(R, transform(outputrec, SELF := LEFT));
@@ -73,7 +74,9 @@ boolean fuzzyimatch(unsigned l, unsigned r) := ((l = r) AND truval) OR falseval;
 
 // All Denormalize
 
-deindexed := nofold(DG_IndexFileEvens(true));
+deindexed := nofold(C.DG_IndexFileEvens(true));
+
+DG_FlatFile := C.DG_FlatFile;
 
 Out201 :=DENORMALIZE(PROJECT(DG_FlatFile, tooutrow(LEFT, 'Unkeyed')), Deindexed, fuzzymatch(left.DG_firstname, right.DG_firstname) 
          AND fuzzymatch(left.DG_lastname, right.DG_lastname) 

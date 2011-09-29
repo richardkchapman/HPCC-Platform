@@ -17,45 +17,45 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 // Nested definitions with additional ids...
 
 newPersonIdRec :=
             record
-sqPersonIdRec;
+C.sqPersonIdRec;
 boolean         idMatchesBook;
             end;
 
-newPersonIdRec tPerson(sqPersonBookIdRec l, unsigned8 cnt, unsigned8 houseId) :=
+newPersonIdRec tPerson(C.sqPersonBookIdRec l, unsigned8 cnt, unsigned8 houseId) :=
         transform
             self.id := cnt;
             self.idMatchesBook := cnt = houseId;
             self := l;
         end;
 
-newPeople(sqHousePersonBookDs ds, unsigned8 houseId) := project(ds.persons, tPerson(LEFT, COUNTER, houseId));
+newPeople(C.sqHousePersonBookDs ds, unsigned8 houseId) := project(ds.persons, tPerson(LEFT, COUNTER, houseId));
 
 
 newHousePersonRec :=
             record
-sqHouseIdRec;
+C.sqHouseIdRec;
 dataset(newPersonIdRec) persons;
             end;
 
-newHousePersonRec tHouse(sqHousePersonBookDs l, unsigned8 cnt) :=
+newHousePersonRec tHouse(C.sqHousePersonBookDs l, unsigned8 cnt) :=
         transform
             self.id := cnt;
             self.persons := newPeople(l, cnt);
             self := l;
         end;
 
-persons := sqHousePersonBookDs.persons;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
-newHouse := project(sqHousePersonBookDs, tHouse(LEFT, COUNTER));
+newHouse := project(C.sqHousePersonBookDs, tHouse(LEFT, COUNTER));
 output(newHouse);

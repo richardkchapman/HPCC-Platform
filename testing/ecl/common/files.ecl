@@ -50,9 +50,9 @@ EXPORT DG_FileOut           := '~REGRESS::' + filePrefix + '::DG_';
 EXPORT DG_ParentFileOut     := '~REGRESS::' + filePrefix + '::DG_Parent.d00';
 EXPORT DG_ChildFileOut      := '~REGRESS::' + filePrefix + '::DG_Child.d00';
 EXPORT DG_GrandChildFileOut := '~REGRESS::' + filePrefix + '::DG_GrandChild.d00';
-EXPORT DG_FetchFileName     := '~REGRESS::' + filePrefix + '::DG_FetchFile';
-EXPORT DG_FetchFilePreloadName := '~REGRESS::' + filePrefix + '::DG_FetchFilePreload';
-EXPORT DG_FetchFilePreloadIndexedName := '~REGRESS::' + filePrefix + '::DG_FetchFilePreloadIndexed';
+EXPORT DG_FetchFileName     := '~REGRESS::' + filePrefix + '::C.DG_FetchFile';
+EXPORT DG_FetchFilePreloadName := '~REGRESS::' + filePrefix + '::C.DG_FetchFilePreload';
+EXPORT DG_FetchFilePreloadIndexedName := '~REGRESS::' + filePrefix + '::C.DG_FetchFilePreloadIndexed';
 EXPORT DG_FetchIndex1Name   := '~REGRESS::' + filePrefix + '::DG_FetchIndex1';
 EXPORT DG_FetchIndex2Name   := '~REGRESS::' + filePrefix + '::DG_FetchIndex2';
 EXPORT DG_FetchIndexDiffName:= '~REGRESS::' + filePrefix + '::DG_FetchIndexDiff';
@@ -435,53 +435,53 @@ EXPORT sqNamesIndex9 := index(sqSimplePersonBookIndex,sqSimplePersonBookIndexNam
 
 
 //----------------------------- Text search definitions ----------------------------------
-TS_MaxTerms             := 50;
-TS_MaxStages            := 50;
-TS_MaxProximity         := 10;
-TS_MaxWildcard          := 1000;
-TS_MaxMatchPerDocument  := 1000;
-TS_MaxFilenameLength        := 255;
-TS_MaxActions           := 255;
-TS_MaxTagNesting        := 40;
-TS_MaxColumnsPerLine := 10000;          // used to create a pseudo document position
+EXPORT TS_MaxTerms             := 50;
+EXPORT TS_MaxStages            := 50;
+EXPORT TS_MaxProximity         := 10;
+EXPORT TS_MaxWildcard          := 1000;
+EXPORT TS_MaxMatchPerDocument  := 1000;
+EXPORT TS_MaxFilenameLength        := 255;
+EXPORT TS_MaxActions           := 255;
+EXPORT TS_MaxTagNesting        := 40;
+EXPORT TS_MaxColumnsPerLine := 10000;          // used to create a pseudo document position
 
-TS_kindType         := enum(unsigned1, UnknownEntry=0, TextEntry, OpenTagEntry, CloseTagEntry, OpenCloseTagEntry, CloseOpenTagEntry);
-TS_sourceType       := unsigned2;
-TS_wordCountType    := unsigned8;
-TS_segmentType      := unsigned1;
-TS_wordPosType      := unsigned8;
-TS_docPosType       := unsigned8;
-TS_documentId       := unsigned8;
-TS_termType         := unsigned1;
-TS_distanceType     := integer8;
-TS_indexWipType     := unsigned1;
-TS_wipType          := unsigned8;
-TS_stageType        := unsigned1;
-TS_dateType         := unsigned8;
+EXPORT TS_kindType         := enum(unsigned1, UnknownEntry=0, TextEntry, OpenTagEntry, CloseTagEntry, OpenCloseTagEntry, CloseOpenTagEntry);
+EXPORT TS_sourceType       := unsigned2;
+EXPORT TS_wordCountType    := unsigned8;
+EXPORT TS_segmentType      := unsigned1;
+EXPORT TS_wordPosType      := unsigned8;
+EXPORT TS_docPosType       := unsigned8;
+EXPORT TS_documentId       := unsigned8;
+EXPORT TS_termType         := unsigned1;
+EXPORT TS_distanceType     := integer8;
+EXPORT TS_indexWipType     := unsigned1;
+EXPORT TS_wipType          := unsigned8;
+EXPORT TS_stageType        := unsigned1;
+EXPORT TS_dateType         := unsigned8;
 
-TS_sourceType TS_docid2source(TS_documentId x) := (x >> 48);
-TS_documentId TS_docid2doc(TS_documentId x) := (x & 0xFFFFFFFFFFFF);
-TS_documentId TS_createDocId(TS_sourceType source, TS_documentId doc) := (TS_documentId)(((unsigned8)source << 48) | doc);
-boolean      TS_docMatchesSource(TS_documentId docid, TS_sourceType source) := (docid between TS_createDocId(source,0) and (TS_documentId)(TS_createDocId(source+1,0)-1));
+EXPORT TS_sourceType TS_docid2source(TS_documentId x) := (x >> 48);
+EXPORT TS_documentId TS_docid2doc(TS_documentId x) := (x & 0xFFFFFFFFFFFF);
+EXPORT TS_documentId TS_createDocId(TS_sourceType source, TS_documentId doc) := (TS_documentId)(((unsigned8)source << 48) | doc);
+EXPORT boolean      TS_docMatchesSource(TS_documentId docid, TS_sourceType source) := (docid between TS_createDocId(source,0) and (TS_documentId)(TS_createDocId(source+1,0)-1));
 
-TS_wordType := string20;
-TS_wordFlags    := enum(unsigned1, HasLower=1, HasUpper=2);
+EXPORT TS_wordType := string20;
+EXPORT TS_wordFlags    := enum(unsigned1, HasLower=1, HasUpper=2);
 
-TS_wordIdType       := unsigned4;
+EXPORT TS_wordIdType       := unsigned4;
 
-TS_NameWordIndex        := '~REGRESS::' + filePrefix + '::TS_wordIndex';
-TS_NameSearchIndex      := '~REGRESS::' + filePrefix + '::TS_searchIndex';
+EXPORT TS_NameWordIndex        := '~REGRESS::' + filePrefix + '::TS_wordIndex';
+EXPORT TS_NameSearchIndex      := '~REGRESS::' + filePrefix + '::TS_searchIndex';
 
-TS_wordIndex        := index({ TS_kindType kind, TS_wordType word, TS_documentId doc, TS_segmentType segment, TS_wordPosType wpos, TS_indexWipType wip } , { TS_wordFlags flags, TS_wordType original, TS_docPosType dpos}, TS_NameWordIndex);
-TS_searchIndex      := index(TS_wordIndex, TS_NameSearchIndex);
+EXPORT TS_wordIndex        := index({ TS_kindType kind, TS_wordType word, TS_documentId doc, TS_segmentType segment, TS_wordPosType wpos, TS_indexWipType wip } , { TS_wordFlags flags, TS_wordType original, TS_docPosType dpos}, TS_NameWordIndex);
+EXPORT TS_searchIndex      := index(TS_wordIndex, TS_NameSearchIndex);
 
-TS_wordIndexRecord := recordof(TS_wordIndex);
+EXPORT TS_wordIndexRecord := recordof(TS_wordIndex);
 
 //----------------------------- End of text search definitions --------------------------
 
 
 
-DG_MemFileRec := RECORD
+EXPORT DG_MemFileRec := RECORD
     unsigned2 u2;
     unsigned3 u3;
     big_endian unsigned2 bu2;
@@ -492,16 +492,16 @@ DG_MemFileRec := RECORD
     big_endian integer3 bi3;
 END;
 
-DG_MemFile := DATASET(DG_MemFileName,DG_MemFileRec,FLAT);
+EXPORT DG_MemFile := DATASET(DG_MemFileName,DG_MemFileRec,FLAT);
 
 
 //record structures
-DG_NestedIntegerRecord := RECORD
+EXPORT DG_NestedIntegerRecord := RECORD
   INTEGER4 i4;
   UNSIGNED3 u3;
 END;
 
-DG_IntegerRecord := RECORD
+EXPORT DG_IntegerRecord := RECORD
     INTEGER6    i6;
     DG_NestedIntegerRecord nested;
     integer5    i5;

@@ -19,10 +19,12 @@
 IMPORT common; C := common.files('');
 fposlist := dataset([{10}], { unsigned8 _fpos });
 
-DG_XMLFile get(DG_XMLFile le, fposlist ri) := transform
+DG_XMLFile := C.DG_XMLFile;
+
+DG_XMLFile get(C.DG_XMLFile le, fposlist ri) := transform
   self := le;
   end;
 
-fd := fetch(DG_XMLFile,fposlist,right._fpos,get(left, right));
+fd := fetch(C.DG_XMLFile,fposlist,right._fpos,get(left, right));
 
 output(fd);

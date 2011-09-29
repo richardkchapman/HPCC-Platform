@@ -19,11 +19,11 @@
 IMPORT common; C := common.files('');
 //nothor
 //nothorlcr
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 boolean missingLevelOk := false;
 
@@ -37,40 +37,40 @@ unsigned4 age(udecimal8 dob) := ((todaysDate - dob) / 10000D);
 // Different child operators, all inline.
 //persons := relatedPersons(sqHouseDs);
 //books := relatedBooks(persons);
-persons := sqPersonDs(houseid = sqHouseDs.id);
-books := sqBookDs(personid = persons.id);
+persons := C.sqPersonDs(houseid = C.sqHouseDs.id);
+books := C.sqBookDs(personid = persons.id);
 
 personByAgeDesc := sort(persons, dob);
 
-o1 := table(sqHouseDs, { addr, count(persons), ave(persons, age(dob)), max(persons, dob)});
-o2 := table(sqHouseDs, { addr, oldest := personByAgeDesc[1].forename + ' ' + personByAgeDesc[1].surname });
-o3 := table(sqHouseDs, { addr, firstPerson := persons[1].forename + ' ' + persons[1].surname });
+o1 := table(C.sqHouseDs, { addr, count(persons), ave(persons, age(dob)), max(persons, dob)});
+o2 := table(C.sqHouseDs, { addr, oldest := personByAgeDesc[1].forename + ' ' + personByAgeDesc[1].surname });
+o3 := table(C.sqHouseDs, { addr, firstPerson := persons[1].forename + ' ' + persons[1].surname });
 
 // Grand children, again all inline.
 
 booksByRatingDesc := sort(books, -rating100);
 
 //More: Need to think about walking 3rd level children e.g., in ave, and [1]:
-o4 := table(sqHouseDs, { addr, numBooks := sum(persons, count(books(storedTrue))), max(persons, max(books, rating100))});
-o5 := table(sqHouseDs, { addr, firstBook := evaluate(persons[1], books[1].name) + ': ' + evaluate(persons[1], books[1].author) });
+o4 := table(C.sqHouseDs, { addr, numBooks := sum(persons, count(books(storedTrue))), max(persons, max(books, rating100))});
+o5 := table(C.sqHouseDs, { addr, firstBook := evaluate(persons[1], books[1].name) + ': ' + evaluate(persons[1], books[1].author) });
 #if (missingLevelOk)
 //This really needs the idea of implicit relationships between files before it is going to work
-o6 := table(sqHouseDs, { addr, numBooks := count(books), ave(books, rating100), max(books, rating100)});
-o7 := table(sqHouseDs, { addr, bestBook := booksByRatingDesc[1].name + ': ' + booksByRatingDesc[1].author});
-o8 := table(sqHouseDs, { addr, firstBook := books[1].name + ': ' + books[1].author });      //NB: Different from above.
+o6 := table(C.sqHouseDs, { addr, numBooks := count(books), ave(books, rating100), max(books, rating100)});
+o7 := table(C.sqHouseDs, { addr, bestBook := booksByRatingDesc[1].name + ': ' + booksByRatingDesc[1].author});
+o8 := table(C.sqHouseDs, { addr, firstBook := books[1].name + ': ' + books[1].author });      //NB: Different from above.
 #end
 
 //--------- Now perform the aggregate operations with person as outer iteration ----------
 
-o9 := table(sqPersonDs, { surname, numBooks := count(books), ave(books, rating100), max(books, rating100)});
-o10 := table(sqPersonDs, { surname, bestBook := booksByRatingDesc[1].name + ': ' + booksByRatingDesc[1].author});
-o11 := table(sqPersonDs, { surname, firstBook := books[1].name + ': ' + books[1].author });     //NB: Different from above.
+o9 := table(C.sqPersonDs, { surname, numBooks := count(books), ave(books, rating100), max(books, rating100)});
+o10 := table(C.sqPersonDs, { surname, bestBook := booksByRatingDesc[1].name + ': ' + booksByRatingDesc[1].author});
+o11 := table(C.sqPersonDs, { surname, firstBook := books[1].name + ': ' + books[1].author });     //NB: Different from above.
 
 //More: Need to think about acceessing fields in house - need some sort of relation construct
 #if (false)
-o12 := table(sqPersonDs, { sqHouseDs.addr, surname, numBooks := count(books), ave(books, rating100), max(persons.books, rating100)});
-o13 := table(sqPersonDs, { sqHouseDs.addr, surname, bestBook := booksByRatingDesc[1].name + ': ' + booksByRatingDesc[1].author});
-o14 := (sqPersonDs, { sqHouseDs.addr, surname, firstBook := books[1].name + ': ' + books[1].author });      //NB: Different from above.
+o12 := table(C.sqPersonDs, { sqHouseDs.addr, surname, numBooks := count(books), ave(books, rating100), max(persons.books, rating100)});
+o13 := table(C.sqPersonDs, { sqHouseDs.addr, surname, bestBook := booksByRatingDesc[1].name + ': ' + booksByRatingDesc[1].author});
+o14 := (C.sqPersonDs, { sqHouseDs.addr, surname, firstBook := books[1].name + ': ' + books[1].author });      //NB: Different from above.
 #end
 
 output(o1);

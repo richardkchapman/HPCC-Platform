@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 // Test filtering at different levels - especially including subqueries at different levels
 
@@ -34,15 +34,15 @@ unsigned4 yob(udecimal8 dob) := dob / 10000D;
 //MORE: books[1] ave(books)
 
 // Different child operators, all inline.
-house := sqHousePersonBookDs;
-persons := sqHousePersonBookDs.persons;
+house := C.sqHousePersonBookDs;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
-booksDs := sqBookDs(personid = persons.id);
-personsDs := sqPersonDs(houseid = sqHousePersonBookDs.id);
-booksDsDs := sqBookDs(personid = personsDs.id);
-personsDsDs := sqPersonDs(houseid = sqHouseDs.id);
-booksDsDsDs := sqBookDs(personid = personsDsDs.id);
+booksDs := C.sqBookDs(personid = persons.id);
+personsDs := C.sqPersonDs(houseid = C.sqHousePersonBookDs.id);
+booksDsDs := C.sqBookDs(personid = personsDs.id);
+personsDsDs := C.sqPersonDs(houseid = C.sqHouseDs.id);
+booksDsDsDs := C.sqBookDs(personid = personsDsDs.id);
 
 //Someone in the house is older than the house and total price of books is less than book limit
 //count(house(exists(persons(yob(dob) > house.yearBuilt))));

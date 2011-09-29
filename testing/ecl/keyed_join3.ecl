@@ -17,24 +17,24 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',false)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',false);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 
-somePeople := sqPersonBookDs(id % 2 = 1);
+somePeople := c.sqPersonBookDs(id % 2 = 1);
 
 //------------
  
-sqPersonBookIdRec gatherOtherBooks(sqPersonBookRelatedIdRec l, sqSimplePersonBookIndex r) := TRANSFORM
+c.sqPersonBookIdRec gatherOtherBooks(c.sqPersonBookRelatedIdRec l, c.sqSimplePersonBookIndex r) := TRANSFORM
 
-    self.books := project(r.books, transform(sqBookIdRec, self := left));
+    self.books := project(r.books, transform(c.sqBookIdRec, self := left));
     self := l;
 end;
 
-peopleWithNewBooks := join(somePeople, sqSimplePersonBookIndex, 
+peopleWithNewBooks := join(somePeople, c.sqSimplePersonBookIndex, 
                            KEYED(left.surname = right.surname) and not exists(left.books(id in set(right.books, id))),
                            gatherOtherBooks(left, right));
 
@@ -42,12 +42,12 @@ peopleWithNewBooks := join(somePeople, sqSimplePersonBookIndex,
 
 slimPeople := table(somePeople, { surname, dataset books := books; });
 
-recordof(slimPeople) gatherOtherBooks2(recordof(slimPeople) l, sqSimplePersonBookIndex r) := TRANSFORM
-    self.books := project(r.books, transform(sqBookIdRec, self := left));
+recordof(slimPeople) gatherOtherBooks2(recordof(slimPeople) l, c.sqSimplePersonBookIndex r) := TRANSFORM
+    self.books := project(r.books, transform(c.sqBookIdRec, self := left));
     self := l;
 end;
 
-peopleWithNewBooks2 := join(slimPeople, sqSimplePersonBookIndex, 
+peopleWithNewBooks2 := join(slimPeople, C.sqSimplePersonBookIndex, 
                            KEYED(left.surname = right.surname) and not exists(left.books(id in set(right.books, id))),
                            gatherOtherBooks2(left, right));
 
@@ -56,24 +56,24 @@ peopleWithNewBooks2 := join(slimPeople, sqSimplePersonBookIndex,
 //------------
 //full keyed join
 
-sqPersonBookIdRec gatherOtherBooksFull(sqPersonBookRelatedIdRec l, sqSimplePersonBookDs r) := TRANSFORM
+C.sqPersonBookIdRec gatherOtherBooksFull(C.sqPersonBookRelatedIdRec l, C.sqSimplePersonBookDs r) := TRANSFORM
 
-    self.books := project(r.books, transform(sqBookIdRec, self := left));
+    self.books := project(r.books, transform(C.sqBookIdRec, self := left));
     self := l;
 end;
 
-peopleWithNewBooksFull := join(somePeople, sqSimplePersonBookDs, 
+peopleWithNewBooksFull := join(somePeople, C.sqSimplePersonBookDs, 
                            KEYED(left.surname = right.surname) and not exists(left.books(id in set(right.books, id))),
-                           gatherOtherBooksFull(left, right), keyed(sqSimplePersonBookIndex));
+                           gatherOtherBooksFull(left, right), keyed(C.sqSimplePersonBookIndex));
 
-recordof(slimPeople) gatherOtherBooksFull2(recordof(slimPeople) l, sqSimplePersonBookDs r) := TRANSFORM
-    self.books := project(r.books, transform(sqBookIdRec, self := left));
+recordof(slimPeople) gatherOtherBooksFull2(recordof(slimPeople) l, C.sqSimplePersonBookDs r) := TRANSFORM
+    self.books := project(r.books, transform(C.sqBookIdRec, self := left));
     self := l;
 end;
 
-peopleWithNewBooksFull2 := join(slimPeople, sqSimplePersonBookDs, 
+peopleWithNewBooksFull2 := join(slimPeople, C.sqSimplePersonBookDs, 
                            KEYED(left.surname = right.surname) and not exists(left.books(id in set(right.books, id))),
-                           gatherOtherBooksFull2(left, right), keyed(sqSimplePersonBookIndex));
+                           gatherOtherBooksFull2(left, right), keyed(C.sqSimplePersonBookIndex));
 
 
 sequential(

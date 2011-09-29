@@ -54,11 +54,11 @@ output(DG_VarFile(DG_firstname='CLAIRE'));
 // now repeat with preload....
 
 
-DG_FlatFile_pl0 := PRELOAD(DG_FlatFile);
-DG_FlatFileEvens_pl0 := PRELOAD(DG_FlatFileEvens);
-//DG_CSVFile_pl0 := PRELOAD(DG_CSVFile);
-//DG_XMLFile_pl0 := PRELOAD(DG_XMLFile);
-DG_VarFile_pl0 := PRELOAD(DG_VarFile);
+DG_FlatFile_pl0 := PRELOAD(C.DG_FlatFile);
+DG_FlatFileEvens_pl0 := PRELOAD(C.DG_FlatFileEvens);
+//DG_CSVFile_pl0 := PRELOAD(C.DG_CSVFile);
+//DG_XMLFile_pl0 := PRELOAD(C.DG_XMLFile);
+DG_VarFile_pl0 := PRELOAD(C.DG_VarFile);
 
 // straight disk count
 

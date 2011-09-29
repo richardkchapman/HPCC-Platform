@@ -20,10 +20,10 @@ IMPORT common; C := common.files('');
 
 string20 storedvar := 'DAVID' : stored('storedvar');
 
-output(dg_csvfile(storedvar != 'DAVID', storedvar = DG_firstname));
-count(dg_csvfile(storedvar != 'DAVID', storedvar = DG_firstname));
+output(C.dg_csvfile(storedvar != 'DAVID', storedvar = DG_firstname));
+count(C.dg_csvfile(storedvar != 'DAVID', storedvar = DG_firstname));
 
-output(dg_xmlfile(storedvar != 'DAVID', storedvar = DG_firstname));
-count(dg_xmlfile(storedvar != 'DAVID', storedvar = DG_firstname));
+output(C.dg_xmlfile(storedvar != 'DAVID', storedvar = DG_firstname));
+count(C.dg_xmlfile(storedvar != 'DAVID', storedvar = DG_firstname));
 
 

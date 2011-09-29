@@ -18,6 +18,7 @@
 
 IMPORT common; C := common.files('');
 //noroxie           - shame but it outputs to files etc.
+filePrefix := 'hthor'; // MORE
 TOXMLPREFIX := '~REGRESS::' + filePrefix + '::RESULT::';
 
 phoneRecord := 

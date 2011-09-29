@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 forceSubQuery(a) := macro
     { dedup(a,true)[1] } 
@@ -31,11 +31,11 @@ endmacro;
 trueValue := true : stored('trueValue');
 falseValue := false : stored('trueValue');
 
-persons := sqHousePersonBookDs.persons;
+persons := C.sqHousePersonBookDs.persons;
 
 //Simple disk aggregate
 a1 := table(persons, { firstForename := (string20)forename, sum(group, aage),exists(group),exists(group,aage>0),exists(group,aage>100),count(group,aage>20) });
-output(sqHousePersonBookDs, forceSubQuery(a1((firstForename='zzzzzzz') = falseValue)));
+output(C.sqHousePersonBookDs, forceSubQuery(a1((firstForename='zzzzzzz') = falseValue)));
 
 /*
 //Filtered disk aggregate, which also requires a beenProcessed flag

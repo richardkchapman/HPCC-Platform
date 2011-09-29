@@ -18,12 +18,13 @@
 
 IMPORT common; C := common.files('');
 //nolocal
+DG_fnames := C.DG_fnames;
 
 rawfile2 := DATASET([{0x80000000, 'FRED'},{0x80000001, DG_fnames[1]}],{unsigned4 val, STRING DG_FirstName});
 rawfile3 := DATASET([{0x80000000, 'FRED'},{0x80000001, DG_fnames[1]}],{unsigned4 val, STRING10 DG_FirstName});
 
-rawfile1 := DG_FlatFile;
-index1   := DG_IndexFile;
+rawfile1 := C.DG_FlatFile;
+index1   := C.DG_IndexFile;
 
 rawfile2 doJoin1(rawfile2 l, rawfile1 r) := TRANSFORM
             SELF := l;

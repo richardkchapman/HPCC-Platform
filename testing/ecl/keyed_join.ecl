@@ -18,6 +18,11 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
+DG_FlatFile := C.DG_FlatFile;
+DG_FlatFileEvens := C.DG_FlatFileEvens;
+DG_IndexFileEvens := C.DG_IndexFileEvens;
+DG_FetchIndex1 := C.DG_FetchIndex1;
+DG_Fnames := C.DG_Fnames;
 
 recpair := record
     string45 name;      //join type description

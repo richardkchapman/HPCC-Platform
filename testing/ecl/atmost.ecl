@@ -19,7 +19,10 @@
 IMPORT common; C := common.files('');
 //UseIndexes
 //nolocal
+DG_FlatFile := C.DG_FlatFile;
+DG_indexFileEvens := C.DG_indexFileEvens;
 unsigned inrecs := count(DG_FlatFile) : stored('incount');
+
 
 sequential(
     if(count(DEDUP(JOIN(DG_FlatFile, DG_FlatFile, LEFT.dg_firstname=RIGHT.dg_firstname, LEFT OUTER),record)) != inrecs, FAIL('left outer self failed 1')),

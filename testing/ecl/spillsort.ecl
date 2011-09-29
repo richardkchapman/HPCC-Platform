@@ -20,7 +20,9 @@ IMPORT common; C := common.files('');
 //UseIndexes
 //noRoxie
 //nothor
-#option ('hthorSpillThreshold',3000)
+#option ('hthorSpillThreshold',3000);
+DG_FlatFile := C.DG_FlatFile;
+DG_indexFileEvens := C.DG_indexFileEvens;
 
 indexrec := RECORDOF(DG_indexFileEvens);
 outputrec := { String10 DG_firstname; String10 DG_lastname, unsigned1 DG_prange, unsigned8 filepos};
@@ -33,12 +35,13 @@ outrow := record
     DATASET(outputrec) rightrecs;
   END;
 
-outrow tooutrow(DG_flatfile L, string name) := TRANSFORM
+outrow tooutrow(C.DG_flatfile L, string name) := TRANSFORM
   SELF.name := name;
     SELF.rightrecs := [];
     SELF := L;
 END;
 
+DG_fnames := C.DG_fnames;
 SkipFilter := [DG_Fnames[4], DG_Fnames[5],DG_Fnames[6],DG_Fnames[7],DG_Fnames[8],DG_Fnames[9],DG_Fnames[10],
                DG_Fnames[11],DG_Fnames[12],DG_Fnames[13],DG_Fnames[14],DG_Fnames[15],DG_Fnames[16]];
 

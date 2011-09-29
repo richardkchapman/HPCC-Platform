@@ -23,6 +23,6 @@ IMPORT common; C := common.files('');
 //varskip setuptype==hthor TBD
 //varskip varload TBD
 
-KEYDIFF(DG_FetchIndex1, DG_FetchIndex2, DG_FetchIndexDiffName, OVERWRITE);
+KEYDIFF(C.DG_FetchIndex1, C.DG_FetchIndex2, C.DG_FetchIndexDiffName, OVERWRITE);
 
 

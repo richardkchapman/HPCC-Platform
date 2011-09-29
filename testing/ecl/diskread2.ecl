@@ -24,15 +24,15 @@ string c2 := 'CLAIRE' : stored('c2');
 string c3 := 'CLAIRE' : stored('c3');
 string c4 := 'CLAIRE' : stored('c4');
 
-recordof(DG_FlatFile) createError := TRANSFORM
+recordof(C.DG_FlatFile) createError := TRANSFORM
     SELF.DG_firstname := 'LIMIT EXCEEDED';
     SELF := [];
 END;
 
-o1 := output(LIMIT(DG_FlatFile(DG_firstname=c1), 2, skip)) : independent;
-o2 := output(LIMIT(DG_FlatFile(DG_firstname=c2), 2, ONFAIL(createError))) : independent;
-o3 := count(LIMIT(DG_FlatFile(DG_firstname=c3), 2, skip)) : independent;
-o4 := count(LIMIT(DG_FlatFile(DG_firstname=c4), 2, ONFAIL(createError))) : independent;
+o1 := output(LIMIT(C.DG_FlatFile(DG_firstname=c1), 2, skip)) : independent;
+o2 := output(LIMIT(C.DG_FlatFile(DG_firstname=c2), 2, ONFAIL(createError))) : independent;
+o3 := count(LIMIT(C.DG_FlatFile(DG_firstname=c3), 2, skip)) : independent;
+o4 := count(LIMIT(C.DG_FlatFile(DG_firstname=c4), 2, ONFAIL(createError))) : independent;
 
 o1; o2; o3; o4;
 

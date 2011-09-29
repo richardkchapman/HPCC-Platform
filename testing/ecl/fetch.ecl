@@ -18,6 +18,12 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
+DG_FlatFileEvens := C.DG_FlatFileEvens;
+DG_IndexFileEvens := C.DG_IndexFileEvens;
+DG_VarFile := C.DG_VarFile;
+DG_VarIndex := C.DG_VarIndex;
+DG_Fnames := C.DG_Fnames;
+
 recplus := {string45 name, unsigned8 rfpos, DG_FlatFileEvens};
 
 recplus makeRec(DG_FlatFileEvens L, DG_indexFileEvens R, string name) := TRANSFORM

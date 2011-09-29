@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 //--------------- Test group aggregation on child datasets --------------------
 // Should clone this for datasets as well.
@@ -34,17 +34,17 @@ unsigned4 ageInDecades(udecimal8 dob) := ((todaysDate - dob) / 100000D);
 // How many people of each decade, and total number of books they have.
 summaryRec := 
         RECORD
-            decade := ageInDecades(sqHousePersonBookDs.persons.dob), 
+            decade := ageInDecades(C.sqHousePersonBookDs.persons.dob), 
             cntpersons := count(group), 
-            cntbooks := sum(group, count(sqHousePersonBookDs.persons.books)) 
+            cntbooks := sum(group, count(C.sqHousePersonBookDs.persons.books)) 
         END;
 
-ageSummary := table(sqHousePersonBookDs.persons, summaryRec, ageInDecades(sqHousePersonBookDs.persons.dob));
+ageSummary := table(C.sqHousePersonBookDs.persons, summaryRec, ageInDecades(C.sqHousePersonBookDs.persons.dob));
 mostBooks := sort(ageSummary, -cntbooks)[1];
 
 //Each address and a summary for each address
 //output(sqHousePersonBookDs, { addr, dataset(summaryRec) summary := ageSummary; });
 
 //Each address, and the summary for the decade which has the most books.
-output(sqHousePersonBookDs, { addr, summaryRec rec := mostBooks });
+output(C.sqHousePersonBookDs, { addr, summaryRec rec := mostBooks });
 

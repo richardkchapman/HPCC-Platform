@@ -17,20 +17,20 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 //Normalized, count
-output(table(sqNamesIndex1.books(rating100>50), { count(group) }, keyed));
+output(table(C.sqNamesIndex1.books(rating100>50), { count(group) }, keyed));
 
 //Normalized, aggregate
-output(table(sqNamesIndex2(surname != '').books, { max(group, rating100) }, keyed));
+output(table(C.sqNamesIndex2(surname != '').books, { max(group, rating100) }, keyed));
 
 //Normalized, grouped aggregate
-output(sort(table(sqNamesIndex3.books, { count(group), rating100}, rating100, keyed),RECORD));
+output(sort(table(C.sqNamesIndex3.books, { count(group), rating100}, rating100, keyed),RECORD));
 
 //Normalized, grouped aggregate - criteria is in parent dataset
-output(sort(table(sqNamesIndex4(surname != '').books, { count(group), sqNamesIndex4.surname }, sqNamesIndex4.surname, keyed),RECORD));  //more: Make the ,few implicit...
+output(sort(table(C.sqNamesIndex4(surname != '').books, { count(group), C.sqNamesIndex4.surname }, C.sqNamesIndex4.surname, keyed),RECORD));  //more: Make the ,few implicit...

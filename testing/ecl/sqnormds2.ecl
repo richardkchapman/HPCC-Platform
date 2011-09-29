@@ -17,21 +17,21 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 
 //Normalized, count
-output(table(sqNamesTable1.books(rating100>50), { count(group) },keyed));
+output(table(C.sqNamesTable1.books(rating100>50), { count(group) },keyed));
 
 //Normalized, aggregate
-output(table(sqNamesTable2.books, { max(group, rating100) }, keyed));
+output(table(C.sqNamesTable2.books, { max(group, rating100) }, keyed));
 
 //Normalized, grouped aggregate
-output(sort(table(sqNamesTable3.books, { count(group), rating100}, rating100, keyed),RECORD));
+output(sort(table(C.sqNamesTable3.books, { count(group), rating100}, rating100, keyed),RECORD));
 
 //Normalized, grouped aggregate - criteria is in parent dataset
-output(sort(table(sqNamesTable4.books, { count(group), sqNamesTable4.surname }, sqNamesTable4.surname, keyed),RECORD));
+output(sort(table(C.sqNamesTable4.books, { count(group), C.sqNamesTable4.surname }, C.sqNamesTable4.surname, keyed),RECORD));

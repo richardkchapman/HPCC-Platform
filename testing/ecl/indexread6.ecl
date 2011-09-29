@@ -18,7 +18,7 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
-
+DG_FetchIndex1 := C.DG_FetchIndex1;
 //Substring tests....
 
 integer minus1 := -1 : stored('minus1');

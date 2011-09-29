@@ -21,32 +21,32 @@ IMPORT common; C := common.files('');
 
 import lib_stringLib;
 
-MaxTerms            := TS_MaxTerms;
-MaxProximity        := TS_MaxProximity;
-MaxWildcard     := TS_MaxWildcard;
-MaxMatchPerDocument := TS_MaxMatchPerDocument;
-MaxFilenameLength := TS_MaxFilenameLength;
-MaxActions       := TS_MaxActions;
+MaxTerms            := C.TS_MaxTerms;
+MaxProximity        := C.TS_MaxProximity;
+MaxWildcard     := C.TS_MaxWildcard;
+MaxMatchPerDocument := C.TS_MaxMatchPerDocument;
+MaxFilenameLength := C.TS_MaxFilenameLength;
+MaxActions       := C.TS_MaxActions;
 
-sourceType      := TS_sourceType;
-wordCountType   := TS_wordCountType;
-segmentType     := TS_segmentType;
-wordPosType     := TS_wordPosType;
-docPosType      := TS_docPosType;
-documentId      := TS_documentId;
-termType            := TS_termType;
-distanceType        := TS_distanceType;
-stageType       := TS_stageType;
-dateType            := TS_dateType;
-wordType            := TS_wordType;
-wordFlags       := TS_wordFlags;
-wordIdType      := TS_wordIdType;
-kindType        := TS_kindType;
+sourceType      := C.TS_sourceType;
+wordCountType   := C.TS_wordCountType;
+segmentType     := C.TS_segmentType;
+wordPosType     := C.TS_wordPosType;
+docPosType      := C.TS_docPosType;
+documentId      := C.TS_documentId;
+termType            := C.TS_termType;
+distanceType        := C.TS_distanceType;
+stageType       := C.TS_stageType;
+dateType            := C.TS_dateType;
+wordType            := C.TS_wordType;
+wordFlags       := C.TS_wordFlags;
+wordIdType      := C.TS_wordIdType;
+kindType        := C.TS_kindType;
 
-wordIndex := TS_wordIndex;
+wordIndex := C.TS_wordIndex;
 
 //May want the following, probably not actually implemented as an index - would save having dpos in the index, but more importantly storing it in the candidate match results because the mapping could be looked up later.
-wordIndexRecord := TS_wordIndexRecord;
+wordIndexRecord := C.TS_wordIndexRecord;
 
 MaxWipIndexEntry := 4;
 MaxWordsInDocument := 1000000;
@@ -209,7 +209,7 @@ matchSingleWord(wordIndex wIndex, searchRecord search) :=
     matchSingleWordFlags(wIndex, search);
 
 matchFirstWord(wordIndex wIndex, searchRecord search) :=
-    keyed(search.source = 0 OR TS_docMatchesSource(wIndex.doc, search.source), opt);
+    keyed(search.source = 0 OR C.TS_docMatchesSource(wIndex.doc, search.source), opt);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ReadWord
@@ -381,8 +381,8 @@ convertToUserOutput(dataset(matchRecord) results) := function
             end;
 
     simpleUserOutputRecord createUserOutput(matchRecord l) := transform
-            self.source := TS_docid2source(l.doc);
-            self.subDoc := TS_docid2doc(l.doc);
+            self.source := C.TS_docid2source(l.doc);
+            self.subDoc := C.TS_docid2doc(l.doc);
             SELF := l;
         END;
 

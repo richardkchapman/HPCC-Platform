@@ -18,7 +18,14 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
-TYPEOF(DG_FetchFile) copy(DG_FetchFile l) := TRANSFORM
+DG_FlatFile := C.DG_FlatFile;
+DG_FlatFileEvens := C.DG_FlatFileEvens;
+DG_IndexFileEvens := C.DG_IndexFileEvens;
+DG_FetchIndex1 := C.DG_FetchIndex1;
+DG_Fnames := C.DG_Fnames;
+uselocal := false;
+
+TYPEOF(C.DG_FetchFile) copy(C.DG_FetchFile l) := TRANSFORM
     SELF.__filepos := 0; // filepos is not consistent between different test modes, so suppress it from output
     SELF := l;
 END;
@@ -29,19 +36,19 @@ nononcelib :=
 varstring platform() : library='graph', include='eclhelper.hpp', ctxmethod, entrypoint='getPlatform';
     END;
 
-TYPEOF(DG_FetchFile) maybesort(TYPEOF(DG_FetchFile) in) :=
+TYPEOF(C.DG_FetchFile) maybesort(TYPEOF(C.DG_FetchFile) in) :=
 #if (useLocal)
   SORT(in, fname, lname);
 #else
   IF(nononcelib.platform() = 'thor', SORT(in, fname, lname), in);
 #end
 
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Lname='Anderson'),RIGHT.__filepos, copy(LEFT))));
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Lname='Johnson'),RIGHT.__filepos, copy(LEFT))));
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Lname='Smith'),RIGHT.__filepos, copy(LEFT))));
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Lname='Doe'),RIGHT.__filepos, copy(LEFT))));
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Fname='Frank'),RIGHT.__filepos, copy(LEFT))));
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Fname='Sue'),RIGHT.__filepos, copy(LEFT))));
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Fname='Jane'),RIGHT.__filepos, copy(LEFT))));
-output(maybesort(FETCH(DG_FetchFile, DG_FetchIndex1(Fname='Larry'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Lname='Anderson'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Lname='Johnson'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Lname='Smith'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Lname='Doe'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Fname='Frank'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Fname='Sue'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Fname='Jane'),RIGHT.__filepos, copy(LEFT))));
+output(maybesort(FETCH(C.DG_FetchFile, DG_FetchIndex1(Fname='Larry'),RIGHT.__filepos, copy(LEFT))));
 

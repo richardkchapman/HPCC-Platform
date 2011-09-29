@@ -19,12 +19,12 @@
 IMPORT common; C := common.files('');
 //Sample query for pulling across some sample related payload indexes
 
-i1 := index({ string40 forename, string40 surname }, { unsigned4 id }, sqPersonIndexName);
-i2 := index({ unsigned4 id }, { unsigned8 filepos }, sqPersonIndexName+'ID');
+i1 := index({ string40 forename, string40 surname }, { unsigned4 id }, C.sqPersonIndexName);
+i2 := index({ unsigned4 id }, { unsigned8 filepos }, C.sqPersonIndexName+'ID');
 
 ds1 := i1(KEYED(forename = 'Liz'));
 ds2 := JOIN(ds1, i2, KEYED(LEFT.id = RIGHT.id));
-ds3 := FETCH(sqPersonExDs, ds2, RIGHT.filepos);
+ds3 := FETCH(C.sqPersonExDs, ds2, RIGHT.filepos);
 
 output(ds1);
 output(ds2);

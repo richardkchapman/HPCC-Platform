@@ -18,11 +18,11 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 trueValue := true : stored('true');
 subLength := 20 : stored('subLength');
@@ -31,14 +31,14 @@ integer searchValue := 1234567890123456789;
 string searchName := 'Gavin Halliday' : stored('SearchName');
 
 
-lhs := sqHousePersonBookDs;
+lhs := C.sqHousePersonBookDs;
 
-sqHousePersonBookIdExRec t(sqHousePersonBookIdExRec l) := transform
+C.sqHousePersonBookIdExRec t(C.sqHousePersonBookIdExRec l) := transform
     self.persons := sort(l.persons, TRIM(searchName)[id], INTFORMAT(searchValue, subLength, 20)[id]);
     self := l;
     end;
 
-rhs  := project(sqHousePersonBookDs, t(left));
+rhs  := project(C.sqHousePersonBookDs, t(left));
 
 cond := IF(trueValue, lhs, rhs);
 

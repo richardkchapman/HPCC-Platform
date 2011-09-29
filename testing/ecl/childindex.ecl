@@ -19,7 +19,7 @@
 IMPORT common; C := common.files('');
 //UseIndexes
 //nothor
-
+DG_IndexFile := C.DG_IndexFile;
 krec := RECORD
     STRING20 lname;
 END;

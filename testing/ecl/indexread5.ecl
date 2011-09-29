@@ -18,21 +18,20 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',false)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',false);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
-
-somePeople := sqPersonBookDs(id % 2 = 1);
+somePeople := C.sqPersonBookDs(id % 2 = 1);
  
-sqPersonBookIdRec gatherOtherBooks(sqPersonBookRelatedIdRec in) := TRANSFORM
+C.sqPersonBookIdRec gatherOtherBooks(C.sqPersonBookRelatedIdRec in) := TRANSFORM
 
     myBookIds := set(in.books, in.books.id);
-    otherPeople := sqSimplePersonBookIndex(KEYED(surname = in.surname) and not exists(books(sqSimplePersonBookIndex.books.id in myBookIds)));
+    otherPeople := C.sqSimplePersonBookIndex(KEYED(surname = in.surname) and not exists(books(C.sqSimplePersonBookIndex.books.id in myBookIds)));
     newBooks := normalize(otherPeople, left.books, transform(right));
-    self.books := project(newBooks, transform(sqBookIdRec, self := left));
+    self.books := project(newBooks, transform(C.sqBookIdRec, self := left));
     self := in;
 end;
 
@@ -40,12 +39,12 @@ peopleWithNewBooks := project(somePeople, gatherOtherBooks(left));
 
 
 
-sqPersonBookIdRec gatherOtherBooks2(sqPersonBookRelatedIdRec in) := TRANSFORM
+C.sqPersonBookIdRec gatherOtherBooks2(C.sqPersonBookRelatedIdRec in) := TRANSFORM
 
     myBookIds := set(in.books, in.books.id);
-    otherPeople := sqSimplePersonBookIndex(KEYED(surname = in.surname) and not exists(books(sqSimplePersonBookIndex.books.id in myBookIds)));
+    otherPeople := C.sqSimplePersonBookIndex(KEYED(surname = in.surname) and not exists(books(C.sqSimplePersonBookIndex.books.id in myBookIds)));
     newBooks := otherPeople[1].books;
-    self.books := project(newBooks, transform(sqBookIdRec, self := left));
+    self.books := project(newBooks, transform(C.sqBookIdRec, self := left));
     self := in;
 end;
 

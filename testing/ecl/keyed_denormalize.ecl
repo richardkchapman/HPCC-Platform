@@ -18,6 +18,10 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
+DG_FlatFile := C.DG_FlatFile;
+DG_FlatFileEvens := C.DG_FlatFileEvens;
+DG_IndexFileEvens := C.DG_IndexFileEvens;
+DG_Fnames := C.DG_Fnames;
 
 indexrec := RECORDOF(DG_indexFileEvens);
 outputrec := { String10 DG_firstname; String10 DG_lastname, unsigned1 DG_prange, unsigned8 filepos};

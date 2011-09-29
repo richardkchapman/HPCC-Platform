@@ -19,7 +19,7 @@
 IMPORT common; C := common.files('');
 
 // Test a case that needs serialize due to child dataset...
-sort(table(sqSimplePersonBookIndex, { dataset sqSimplePersonBookIndex.books, sqSimplePersonBookIndex.surname, sqSimplePersonBookIndex.forename, count(group) }, sqSimplePersonBookIndex.surname, few), surname, forename);
+sort(table(C.sqSimplePersonBookIndex, { dataset C.sqSimplePersonBookIndex.books, C.sqSimplePersonBookIndex.surname, C.sqSimplePersonBookIndex.forename, count(group) }, C.sqSimplePersonBookIndex.surname, few), surname, forename);
 
 // ... and a case that doesn't
-sort(table(sqSimplePersonBookIndex, { sqSimplePersonBookIndex.surname, sqSimplePersonBookIndex.forename, count(group) }, sqSimplePersonBookIndex.surname, few), surname, forename);
+sort(table(C.sqSimplePersonBookIndex, { C.sqSimplePersonBookIndex.surname, C.sqSimplePersonBookIndex.forename, count(group) }, C.sqSimplePersonBookIndex.surname, few), surname, forename);

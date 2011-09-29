@@ -17,11 +17,11 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 // Test filtering at different levels, making sure parent fields are available in the child query.
 // Also tests scoping of sub expressions using within.
@@ -32,18 +32,18 @@ unsigned4 age(udecimal8 dob) := ((todaysDate - dob) / 10000D);
 //MORE: books[1] ave(books)
 
 // Different child operators, all inline.
-house := sqHousePersonBookDs;
-persons := sqHousePersonBookDs.persons;
+house := C.sqHousePersonBookDs;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
-booksDs := sqBookDs(personid = persons.id);
-personsDs := sqPersonDs(houseid = sqHousePersonBookDs.id);
-booksDsDs := sqBookDs(personid = personsDs.id);
-personsDsDs := sqPersonDs(houseid = sqHouseDs.id);
-booksDsDsDs := sqBookDs(personid = personsDsDs.id);
+booksDs := C.sqBookDs(personid = persons.id);
+personsDs := C.sqPersonDs(houseid = C.sqHousePersonBookDs.id);
+booksDsDs := C.sqBookDs(personid = personsDs.id);
+personsDsDs := C.sqPersonDs(houseid = C.sqHouseDs.id);
+booksDsDsDs := C.sqBookDs(personid = personsDsDs.id);
 
 //Check that count(books) is evaluated in the correct scope.
-output(sqHousePersonBookDs, { addr, count(books), count(persons(count(books)>0)) });
+output(C.sqHousePersonBookDs, { addr, count(books), count(persons(count(books)>0)) });
 
 //More: really need another level, so that can check count(another) is done in the correct scope.
 //output(sqHousePersonBookDs, { addr, count(books, count(another)>0), count(persons, count(another)>0) });

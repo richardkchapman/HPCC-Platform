@@ -17,24 +17,24 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
 
-output(count(sqHouseDs));
-output(count(sqHouseDs)=5);
-output(count(choosen(sqHouseDs, 10)));
-output(count(choosen(sqHouseDs, 10))=5);
-output(count(choosen(sqHouseDs, 4)));
-output(count(choosen(sqHouseDs, 4))=4);
-output(count(choosen(sqHouseDs, 0)));
-output(count(choosen(sqHouseDs, 0))=0);
+output(count(C.sqHouseDs));
+output(count(C.sqHouseDs)=5);
+output(count(choosen(C.sqHouseDs, 10)));
+output(count(choosen(C.sqHouseDs, 10))=5);
+output(count(choosen(C.sqHouseDs, 4)));
+output(count(choosen(C.sqHouseDs, 4))=4);
+output(count(choosen(C.sqHouseDs, 0)));
+output(count(choosen(C.sqHouseDs, 0))=0);
 
-output(count(sqHouseDs(postCode != 'WC1')));
-output(count(sqHouseDs(postCode != 'WC1'))=4);
-output(count(choosen(sqHouseDs(postCode != 'WC1'), 10)));
-output(count(choosen(sqHouseDs(postCode != 'WC1'), 10))=4);
-output(count(choosen(sqHouseDs(postCode != 'WC1'), 3)));
-output(count(choosen(sqHouseDs(postCode != 'WC1'), 3))=3);
-output(count(choosen(sqHouseDs(postCode != 'WC1'), 0)));
-output(count(choosen(sqHouseDs(postCode != 'WC1'), 0))=0);
+output(count(C.sqHouseDs(postCode != 'WC1')));
+output(count(C.sqHouseDs(postCode != 'WC1'))=4);
+output(count(choosen(C.sqHouseDs(postCode != 'WC1'), 10)));
+output(count(choosen(C.sqHouseDs(postCode != 'WC1'), 10))=4);
+output(count(choosen(C.sqHouseDs(postCode != 'WC1'), 3)));
+output(count(choosen(C.sqHouseDs(postCode != 'WC1'), 3))=3);
+output(count(choosen(C.sqHouseDs(postCode != 'WC1'), 0)));
+output(count(choosen(C.sqHouseDs(postCode != 'WC1'), 0))=0);

@@ -17,26 +17,26 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 //Normalized, no filter
-output(sqNamesIndex1.books, { name, author, rating100 });
+output(C.sqNamesIndex1.books, { name, author, rating100 });
 
 //Normalized, filter on inner level
-output(sqNamesIndex2.books(rating100>50), { name, author, rating100 });
+output(C.sqNamesIndex2.books(rating100>50), { name, author, rating100 });
 
 //Normalized, filter on outer level
-output(sqNamesIndex3.books(sqNamesIndex3.surname='Halliday',sqNamesIndex3.dob*2!=0), { name, author, rating100 });
+output(C.sqNamesIndex3.books(C.sqNamesIndex3.surname='Halliday',C.sqNamesIndex3.dob*2!=0), { name, author, rating100 });
 
 //Normalized, filter on both levels
-output(sqNamesIndex4.books(rating100>50, sqNamesIndex4.surname='Halliday'), { name, author, rating100 });
+output(C.sqNamesIndex4.books(rating100>50, C.sqNamesIndex4.surname='Halliday'), { name, author, rating100 });
 
 //Normalized, filter on both levels - diff syntax, location of filter is optimized.
-output(sqNamesIndex5(surname='Halliday',dob*2!=0).books(rating100>50), { name, author, rating100 });
+output(C.sqNamesIndex5(surname='Halliday',dob*2!=0).books(rating100>50), { name, author, rating100 });
 
 //No filter or project - need to make sure we create correctly
-output(sqNamesIndex6.books);
+output(C.sqNamesIndex6.books);

@@ -19,11 +19,11 @@
 IMPORT common; C := common.files('');
 //nothor
 //nothorlcr
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 // Test filtering at different levels, making sure parent fields are available in the child query.
 // Also tests scoping of sub expressions using within.
@@ -34,20 +34,20 @@ unsigned4 age(udecimal8 dob) := ((todaysDate - dob) / 10000D);
 //MORE: books[1] ave(books)
 
 // Different child operators, all inline.
-house := sqHousePersonBookDs.persons;
-persons := sqHousePersonBookDs.persons;
+house := C.sqHousePersonBookDs.persons;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
-booksDs := sqBookDs(personid = persons.id);
-personsDs := sqPersonDs(houseid = sqHousePersonBookDs.id);
-booksDsDs := sqBookDs(personid = personsDs.id);
-personsDsDs := sqPersonDs(houseid = sqHouseDs.id);
-booksDsDsDs := sqBookDs(personid = personsDsDs.id);
+booksDs := C.sqBookDs(personid = persons.id);
+personsDs := C.sqPersonDs(houseid = C.sqHousePersonBookDs.id);
+booksDsDs := C.sqBookDs(personid = personsDs.id);
+personsDsDs := C.sqPersonDs(houseid = C.sqHouseDs.id);
+booksDsDsDs := C.sqBookDs(personid = personsDsDs.id);
 
 //Who has a book worth more than their book limit? (nest, nest), (nest, ds) (ds, ds)
-t1 := table(sqHousePersonBookDs, { addr, max(persons,booklimit), max(persons.books,price), count(persons(exists(books(price>persons.booklimit)))); });
-t2 := table(sqHousePersonBookDs, { addr, count(persons(exists(booksDs(price>persons.booklimit)))); });
-t3 := table(sqHouseDs, { addr, count(personsDsDs(exists(booksDsDsDs(price>personsDs.booklimit)))); });
+t1 := table(C.sqHousePersonBookDs, { addr, max(persons,booklimit), max(persons.books,price), count(persons(exists(books(price>persons.booklimit)))); });
+t2 := table(C.sqHousePersonBookDs, { addr, count(persons(exists(booksDs(price>persons.booklimit)))); });
+t3 := table(C.sqHouseDs, { addr, count(personsDsDs(exists(booksDsDsDs(price>personsDs.booklimit)))); });
 
 output(t1,,named('NumPeopleExceedBookLimit'));
 output(t2,,named('NumPeopleExceedBookLimitDs'));

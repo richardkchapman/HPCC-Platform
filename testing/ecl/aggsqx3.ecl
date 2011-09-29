@@ -18,26 +18,26 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 //Simple disk aggregate
-output(preload(sqHousePersonBookDs), { dataset sort(table(persons, { surname, sum(group, aage) }, surname, few), surname)});
+output(preload(C.sqHousePersonBookDs), { dataset sort(table(persons, { surname, sum(group, aage) }, surname, few), surname)});
 
 //Filtered disk aggregate, which also requires a beenProcessed flag
-output(sqHousePersonBookDs, { dataset sort(table(persons(surname != 'Halliday'), { max(group, aage), surname }, surname, few), surname)});
+output(C.sqHousePersonBookDs, { dataset sort(table(persons(surname != 'Halliday'), { max(group, aage), surname }, surname, few), surname)});
 
 //check literals are assigned
-output(sqHousePersonBookDs, { dataset sort(table(persons(forename = 'Gavin'), { 'Count: ', count(group), 'Name: ', surname }, surname, few), surname) });
+output(C.sqHousePersonBookDs, { dataset sort(table(persons(forename = 'Gavin'), { 'Count: ', count(group), 'Name: ', surname }, surname, few), surname) });
 
 //Sub query needs serializing or repeating....
 
 // A simple inline subquery
-output(sqHousePersonBookDs, { dataset sort(table(persons, { cnt := count(books), sumage := sum(group, aage) }, count(books), few), cnt)});
+output(C.sqHousePersonBookDs, { dataset sort(table(persons, { cnt := count(books), sumage := sum(group, aage) }, count(books), few), cnt)});
 
 //A not-so-simple out of line subquery
-secondBookName := (string20)sort(sqHousePersonBookDs.persons.books, name)[2].name;
-output(sqHousePersonBookDs, { dataset sort(table(persons, { sbn := secondBookName, sumage := sum(group, aage) }, secondBookName, few), sbn)});
+secondBookName := (string20)sort(C.sqHousePersonBookDs.persons.books, name)[2].name;
+output(C.sqHousePersonBookDs, { dataset sort(table(persons, { sbn := secondBookName, sumage := sum(group, aage) }, secondBookName, few), sbn)});

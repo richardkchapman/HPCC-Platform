@@ -28,12 +28,12 @@ END;
 
 outrec trans1(in L) := TRANSFORM
   SELF.word := L.word;
-  SELF.doc := SORTED(TS_WordIndex(KEYED(kind = TS_kindType.TextEntry),keyed(word = l.word)), doc)[1].doc;
+  SELF.doc := SORTED(C.TS_WordIndex(KEYED(kind = C.TS_kindType.TextEntry),keyed(word = l.word)), doc)[1].doc;
 END;
 
 outrec trans2(in L) := TRANSFORM
   SELF.word := L.word;
-  SELF.doc := SORTED(TS_WordIndex(KEYED(kind = TS_kindType.TextEntry),keyed(word = 'gobbledegook'+l.word)), doc)[1].doc;
+  SELF.doc := SORTED(C.TS_WordIndex(KEYED(kind = C.TS_kindType.TextEntry),keyed(word = 'gobbledegook'+l.word)), doc)[1].doc;
 END;
 
 output(project(in, trans1(LEFT))) : independent;

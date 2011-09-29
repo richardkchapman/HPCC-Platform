@@ -17,16 +17,16 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
-pr:= table(sqNamesTable1, { fullname := trim(surname) + ', ' + trim(forename), aage });
+pr:= table(C.sqNamesTable1, { fullname := trim(surname) + ', ' + trim(forename), aage });
 
 //Aggregate on a projected table that can't be merged
-pr2:= table(sqNamesTable2, { surname, forename, aage, unsigned8 seq := (random() % 100) / 2000 + aage; });
+pr2:= table(C.sqNamesTable2, { surname, forename, aage, unsigned8 seq := (random() % 100) / 2000 + aage; });
 
 //Filtered Aggregate on a projected table.
 output(sort(table(pr(aage > 20), { aage, max(group, fullname) }, aage, few), record));

@@ -18,18 +18,18 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',false)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',false);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 
-myPeople := sqSimplePersonBookDs(surname <> '');
+myPeople := C.sqSimplePersonBookDs(surname <> '');
 
 childBookRec := 
             RECORD
-dataset(sqBookIdRec)        books{blob};
+dataset(C.sqBookIdRec)        books{blob};
             END;
 
 slimPeopleRec := 

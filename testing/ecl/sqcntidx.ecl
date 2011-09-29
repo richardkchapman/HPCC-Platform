@@ -17,10 +17,10 @@
 ############################################################################## */
 
 IMPORT common; C := common.files('');
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+sqSimplePersonBookIndex := C.sqSimplePersonBookIndex;
 
 output(count(sqSimplePersonBookIndex));
 output(count(sqSimplePersonBookIndex)=10);

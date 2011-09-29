@@ -18,26 +18,26 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 unsigned8 skipId := 4 : stored('skipId');
 string searchAuthor := 'Dr. Seuss' : stored('searchAuthor');
 
-persons := sqHousePersonBookDs.persons;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
-output(sqHousePersonBookDs, { numPeopleWithAuthoredBooks := count(persons(exists(books(author <> '')))), numPeople := count(persons) });
-output(sqHousePersonBookDs, {count(persons(id != sqHousePersonBookDs.id, exists(books(id != sqHousePersonBookDs.id)))), count(persons) });
-output(sqHouseDs, { count(sqPersonDs(houseid=sqHouseDs.id,exists(sqBookDs(personid=sqPersonDs.id,id != sqHouseDs.id,name != sqHouseDs.addr)))) });
+output(C.sqHousePersonBookDs, { numPeopleWithAuthoredBooks := count(persons(exists(books(author <> '')))), numPeople := count(persons) });
+output(C.sqHousePersonBookDs, {count(persons(id != C.sqHousePersonBookDs.id, exists(books(id != C.sqHousePersonBookDs.id)))), count(persons) });
+output(C.sqHouseDs, { count(C.sqPersonDs(houseid=C.sqHouseDs.id,exists(C.sqBookDs(personid=C.sqPersonDs.id,id != C.sqHouseDs.id,name != C.sqHouseDs.addr)))) });
 
 // table invariant
-output(sqHousePersonBookDs, {count(persons(id != skipId, exists(books(id != skipId, searchAuthor = author)))), count(persons) });
-output(sqHousePersonBookDs, {count(persons(id != sqHousePersonBookDs.id, exists(books(id != skipId)))), count(persons) });
+output(C.sqHousePersonBookDs, {count(persons(id != skipId, exists(books(id != skipId, searchAuthor = author)))), count(persons) });
+output(C.sqHousePersonBookDs, {count(persons(id != C.sqHousePersonBookDs.id, exists(books(id != skipId)))), count(persons) });
 
 // cse
 string fullname := trim(persons.surname) + ', ' + trim(persons.forename);
-output(sqHousePersonBookDs, {count(persons(fullname != '', exists(books(author != fullname)))), count(persons) });
+output(C.sqHousePersonBookDs, {count(persons(fullname != '', exists(books(author != fullname)))), count(persons) });

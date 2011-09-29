@@ -18,15 +18,16 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
+uselocal := false;
 
 lhs := DATASET([{['Anderson', 'Taylor']}], {SET OF STRING25 Lnames{MAXLENGTH(100)}});
 
-{STRING15 Fname, string15 LName} xfm(DG_FetchIndex1 r) := TRANSFORM
+{STRING15 Fname, string15 LName} xfm(C.DG_FetchIndex1 r) := TRANSFORM
     SELF.Fname := r.Fname;
     SELF.Lname := r.Lname;
 END;
 
-j1 := JOIN(lhs, DG_FetchIndex1, RIGHT.Lname IN LEFT.Lnames, xfm(RIGHT));
+j1 := JOIN(lhs, C.DG_FetchIndex1, RIGHT.Lname IN LEFT.Lnames, xfm(RIGHT));
 
 #if (useLocal)
 OUTPUT(SORT(j1, lname, fname), {fname});

@@ -20,11 +20,11 @@ IMPORT common; C := common.files('');
 //UseIndexes
 
 Layout_DG_Totals := RECORD
-  DG_IndexFile.DG_FirstName;
-  DG_IndexFile.DG_lastName;
+  C.DG_IndexFile.DG_FirstName;
+  C.DG_IndexFile.DG_lastName;
                 BOOLEAN Exists := Exists(GROUP);
                 END;
                 
-DG_Totals := table(DG_IndexFile,Layout_DG_Totals,DG_FirstName,DG_LastName,FEW);
+DG_Totals := table(C.DG_IndexFile,Layout_DG_Totals,DG_FirstName,DG_LastName,FEW);
 
 output(sort(DG_Totals, dg_firstname, dg_lastname));

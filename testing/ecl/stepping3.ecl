@@ -24,4 +24,4 @@ IMPORT common; C := common.files('');
 //nothor
 
 // should be equivalent to OUTPUT(SORT(DG_IndexFile(DG_firstname = 'DAVID'), DG_Prange));
-OUTPUT(STEPPED(DG_IndexFile(KEYED(DG_firstname = 'DAVID')), DG_Prange));
+OUTPUT(STEPPED(C.DG_IndexFile(KEYED(DG_firstname = 'DAVID')), DG_Prange));

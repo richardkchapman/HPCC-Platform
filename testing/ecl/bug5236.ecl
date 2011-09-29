@@ -20,9 +20,10 @@ IMPORT common; C := common.files('');
 //UseIndexes
 //nolocal
 
+DG_fnames := C.DG_fnames;
 rawfile2 := DATASET([{DG_fnames[1]},{'FRED'}],{STRING10 DG_FirstName});
-rawfile1 := DG_FlatFile;
-index1   := DG_IndexFile;
+rawfile1 := C.DG_FlatFile;
+index1   := C.DG_IndexFile;
 
 rawfile2 doJoin(rawfile2 l) := TRANSFORM
             SELF := l;

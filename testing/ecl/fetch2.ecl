@@ -19,29 +19,29 @@
 IMPORT common; C := common.files('');
 
 //Daft test of fetch retrieving a dataset
-myPeople := sqSimplePersonBookDs(surname <> '');
+myPeople := C.sqSimplePersonBookDs(surname <> '');
 
-recfp := {unsigned8 rfpos, sqSimplePersonBookDs};
-recfp makeRec(sqSimplePersonBookDs L, myPeople R) := TRANSFORM
+recfp := {unsigned8 rfpos, C.sqSimplePersonBookDs};
+recfp makeRec(C.sqSimplePersonBookDs L, myPeople R) := TRANSFORM
     self.rfpos := R.filepos;
     self := L;
 END;
 
-recfp makeRec2(sqSimplePersonBookDs L, myPeople R) := TRANSFORM
+recfp makeRec2(C.sqSimplePersonBookDs L, myPeople R) := TRANSFORM
     self.rfpos := R.filepos;
     self.books := L.books;
     self := [];
 END;
 
-recfp makeRec3(sqSimplePersonBookDs L, myPeople R) := TRANSFORM
+recfp makeRec3(C.sqSimplePersonBookDs L, myPeople R) := TRANSFORM
     self.rfpos := R.filepos;
     self.books := L.books+R.books;
     self := L;
 END;
 
-fetched := fetch(sqSimplePersonBookDs, myPeople, right.filepos, makeRec(left, right));
-fetched2 := fetch(sqSimplePersonBookDs, myPeople, right.filepos, makeRec2(left, right));
-fetched3 := fetch(sqSimplePersonBookDs, myPeople, right.filepos, makeRec3(left, right));
+fetched := fetch(C.sqSimplePersonBookDs, myPeople, right.filepos, makeRec(left, right));
+fetched2 := fetch(C.sqSimplePersonBookDs, myPeople, right.filepos, makeRec2(left, right));
+fetched3 := fetch(C.sqSimplePersonBookDs, myPeople, right.filepos, makeRec3(left, right));
 
 // temporary hack to get around codegen optimizing platform(),once call into global (and therefore hthor) context.
 nononcelib := 
@@ -49,7 +49,7 @@ nononcelib :=
 varstring platform() : library='graph', include='eclhelper.hpp', ctxmethod, entrypoint='getPlatform';
     END;
 
-recordof(sqSimplePersonBookDs) removeFp(recfp l) := TRANSFORM
+recordof(C.sqSimplePersonBookDs) removeFp(recfp l) := TRANSFORM
     SELF := l;
 END;
 sortIt(dataset(recfp) ds) := FUNCTION

@@ -18,6 +18,7 @@
 
 IMPORT common; C := common.files('');
 //UseIndexes
+DG_FetchIndex1 := C.DG_FetchIndex1;
 
 // try it with just one limit
 

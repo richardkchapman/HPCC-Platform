@@ -18,17 +18,17 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
 // Test skipped level iterating - including iterating grand children of processed children
 
 // Different child operators, all inline.
-house := sqHousePersonBookDs;
-persons := sqHousePersonBookDs.persons;
+house := C.sqHousePersonBookDs;
+persons := C.sqHousePersonBookDs.persons;
 books := persons.books;
 
 output(house, { count(persons(dob < 19700101).books) });

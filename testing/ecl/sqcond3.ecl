@@ -18,16 +18,16 @@
 
 IMPORT common; C := common.files('');
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('pickBestEngine', false)
-#option ('newChildQueries', true)
-#option ('hoistResourced', true)
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('pickBestEngine', false);
+#option ('newChildQueries', true);
+#option ('hoistResourced', true);
 
-ded := dedup(sqHousePersonBookDs.persons, forename);
+ded := dedup(C.sqHousePersonBookDs.persons, forename);
 cnt := table(ded, { cnt := count(group); })[1].cnt;
 
-cond := if (cnt > 2, sort(ded[2..99], forename), sort(sqHousePersonBookDs.persons, surname, -forename));
+cond := if (cnt > 2, sort(ded[2..99], forename), sort(C.sqHousePersonBookDs.persons, surname, -forename));
 
-p := table(sqHousePersonBookDs, { id, dataset children := cond });
+p := table(C.sqHousePersonBookDs, { id, dataset children := cond });
 output(p);
