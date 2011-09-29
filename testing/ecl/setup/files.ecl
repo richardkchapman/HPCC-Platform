@@ -26,11 +26,11 @@ SHARED DG_GenCSV            := true;   //TRUE gens CSVFile
 SHARED DG_GenXML            := true;   //TRUE gens XMLFile
 SHARED DG_GenVar            := true;   //TRUE gens VarFile only IF MaxField >= 3
 
-SHARED DG_MaxField          := 3;    // maximum number of fields to use building the data records
-SHARED DG_MaxChildren       := 3;    //maximum (1 to n) number of child recs
+EXPORT DG_MaxField          := 3;    // maximum number of fields to use building the data records
+EXPORT DG_MaxChildren       := 3;    //maximum (1 to n) number of child recs
 
                     // generates (#parents * DG_MaxChildren) records
-SHARED DG_MaxGrandChildren  := 3;    //maximum (1 to n) number of grandchild recs
+EXPORT DG_MaxGrandChildren  := 3;    //maximum (1 to n) number of grandchild recs
                     // generates (#children * DG_MaxGrandChildren) records
 
 SHARED useDynamic := false;
@@ -263,7 +263,7 @@ sqPersonRec;
 dataset(sqBookRec)      books;
             end;
 
-sqHousePersonBookRec :=
+EXPORT sqHousePersonBookRec :=
             record
 sqHouseRec;
 dataset(sqPersonBookRec) persons;

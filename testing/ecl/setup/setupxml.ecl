@@ -15,6 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
+import $; C := $.files('');
 
 set of string lines := [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -1685,4 +1686,4 @@ set of string lines := [
     '</office:document-content>'];
 
 xmlSource := dataset(lines, { string line });
-output(xmlSource,,DG_FileOut+'accountxml',csv,overwrite);
+output(xmlSource,,C.DG_FileOut+'accountxml',csv,overwrite);

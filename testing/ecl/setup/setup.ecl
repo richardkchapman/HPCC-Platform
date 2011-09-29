@@ -17,21 +17,22 @@
 ############################################################################## */
 
 import Std.File AS FileServices;
+import $; C := $.files('');
 
-DG_OutRec norm1(DG_OutRec l, integer c) := transform
-  self.DG_firstname := DG_Fnames[c];
+C.DG_OutRec norm1(C.DG_OutRec l, integer cc) := transform
+  self.DG_firstname := C.DG_Fnames[cc];
   self := l;
   end;
-DG_Norm1Recs := normalize( DG_BlankSet, 4, norm1(left, counter));
+DG_Norm1Recs := normalize( C.DG_BlankSet, 4, norm1(left, counter));
 
-DG_OutRec norm2(DG_OutRec l, integer c) := transform
-  self.DG_lastname := DG_Lnames[c];
+C.DG_OutRec norm2(C.DG_OutRec l, integer cc) := transform
+  self.DG_lastname := C.DG_Lnames[cc];
   self := l;
   end;
 DG_Norm2Recs := normalize( DG_Norm1Recs, 4, norm2(left, counter));
 
-DG_OutRec norm3(DG_OutRec l, integer c) := transform
-  self.DG_Prange := DG_Pranges[c];
+C.DG_OutRec norm3(C.DG_OutRec l, integer cc) := transform
+  self.DG_Prange := C.DG_Pranges[cc];
   self := l;
   end;
 DG_Norm3Recs := normalize( DG_Norm2Recs, 4, norm3(left, counter));
@@ -47,80 +48,51 @@ DG_OutputRecs SeqParent(DG_OutputRecs l, integer c) := transform
   end;
 DG_ParentRecs := project( DG_OutputRecs, SeqParent(left, counter));
 
-#if(DG_GenChild = TRUE)
-DG_OutRecChild GenChildren(DG_OutputRecs l) := transform
+C.DG_OutRecChild GenChildren(DG_OutputRecs l) := transform
   self.DG_ChildID := 0;
   self := l;
   end;
-DG_ChildRecs1 := normalize( DG_ParentRecs, DG_MaxChildren, GenChildren(left));
+DG_ChildRecs1 := normalize(DG_ParentRecs, C.DG_MaxChildren, GenChildren(left));
 
-DG_OutRecChild SeqChildren(DG_OutRecChild l, integer c) := transform
-  self.DG_ChildID := c-1;
+C.DG_OutRecChild SeqChildren(C.DG_OutRecChild l, integer cc) := transform
+  self.DG_ChildID := cc-1;
   self := l;
   end;
 DG_ChildRecs := project( DG_ChildRecs1, SeqChildren(left, counter));
-output(DG_ParentRecs,,DG_ParentFileOut,overwrite);
-output(DG_ChildRecs,,DG_ChildFileOut,overwrite);
-fileServices.AddFileRelationship( DG_ParentFileOut, DG_ChildFileOut, 'DG_ParentID', 'DG_ParentID', 'link', '1:M', false);
-  #if(DG_GenGrandChild = TRUE)
-DG_OutRecChild GenGrandChildren(DG_OutRecChild l) := transform
+output(DG_ParentRecs,,C.DG_ParentFileOut,overwrite);
+output(DG_ChildRecs,,C.DG_ChildFileOut,overwrite);
+fileServices.AddFileRelationship( C.DG_ParentFileOut, C.DG_ChildFileOut, 'DG_ParentID', 'DG_ParentID', 'link', '1:M', false);
+C.DG_OutRecChild GenGrandChildren(C.DG_OutRecChild l) := transform
   self := l;
   end;
-DG_GrandChildRecs := normalize( DG_ChildRecs, DG_MaxGrandChildren, GenGrandChildren(left));
-output(DG_GrandChildRecs,,DG_GrandChildFileOut,overwrite);
-fileServices.AddFileRelationship( DG_ChildFileOut, DG_GrandChildFileOut, 'DG_ParentID', 'DG_ParentID', 'link', '1:M', false);
-  #end
-#end
+DG_GrandChildRecs := normalize( DG_ChildRecs, C.DG_MaxGrandChildren, GenGrandChildren(left));
+output(DG_GrandChildRecs,,C.DG_GrandChildFileOut,overwrite);
+fileServices.AddFileRelationship( C.DG_ChildFileOut, C.DG_GrandChildFileOut, 'DG_ParentID', 'DG_ParentID', 'link', '1:M', false);
+
 //output data files
 
 //***************************************************************************
 
-
-#if(DG_GenCSV = TRUE)
-output(DG_ParentRecs,,DG_FileOut+'CSV',CSV,overwrite);
-#if(DG_GenChild = TRUE)
-fileServices.AddFileRelationship( DG_ParentFileOut, DG_FileOut+'CSV', '', '', 'view', '1:1', false);
-#end
-#end
-#if(DG_GenXML = TRUE)
-output(DG_ParentRecs,,DG_FileOut+'XML',XML,overwrite);
-#if(DG_GenChild = TRUE)
-fileServices.AddFileRelationship( DG_ParentFileOut, DG_FileOut+'XML', '', '', 'view', '1:1', false);
-#end
-#end
-#if(DG_GenIndex = TRUE)
-EvensFilter := DG_ParentRecs.DG_firstname in [DG_Fnames[2],DG_Fnames[4],DG_Fnames[6],DG_Fnames[8],
-                                              DG_Fnames[10],DG_Fnames[12],DG_Fnames[14],DG_Fnames[16]];
+output(DG_ParentRecs,,C.DG_FileOut+'CSV',CSV,overwrite);
+fileServices.AddFileRelationship( C.DG_ParentFileOut, C.DG_FileOut+'CSV', '', '', 'view', '1:1', false);
+output(DG_ParentRecs,,C.DG_FileOut+'XML',XML,overwrite);
+fileServices.AddFileRelationship( C.DG_ParentFileOut, C.DG_FileOut+'XML', '', '', 'view', '1:1', false);
+EvensFilter := DG_ParentRecs.DG_firstname in [C.DG_Fnames[2],C.DG_Fnames[4],C.DG_Fnames[6],C.DG_Fnames[8],
+                                              C.DG_Fnames[10],C.DG_Fnames[12],C.DG_Fnames[14],C.DG_Fnames[16]];
 
 SEQUENTIAL( 
-    PARALLEL(output(DG_ParentRecs,,DG_FileOut+'FLAT',overwrite),
-             output(DG_ParentRecs(EvensFilter),,DG_FileOut+'FLAT_EVENS',overwrite)),
-    PARALLEL(buildindex(DG_IndexFile,overwrite
-#if (useLocal=true)
-                        ,NOROOT
-#end
-                       ),
-             buildindex(DG_IndexFileEvens,overwrite
-#if (useLocal=true)
-                        ,NOROOT
-#end
-             ))
+    PARALLEL(output(DG_ParentRecs,,C.DG_FileOut+'FLAT',overwrite),
+             output(DG_ParentRecs(EvensFilter),,C.DG_FileOut+'FLAT_EVENS',overwrite)),
+    PARALLEL(buildindex(C.DG_IndexFile,overwrite),
+             buildindex(C.DG_IndexFileEvens,overwrite))
     );
 
-    fileServices.AddFileRelationship( __nameof__(DG_FlatFile), __nameof__(DG_IndexFile), '', '', 'view', '1:1', false);
-    fileServices.AddFileRelationship( __nameof__(DG_FlatFile), __nameof__(DG_IndexFile), '__fileposition__', 'filepos', 'link', '1:1', true);
-    fileServices.AddFileRelationship( __nameof__(DG_FlatFileEvens), __nameof__(DG_IndexFileEvens), '', '', 'view', '1:1', false);
-    fileServices.AddFileRelationship( __nameof__(DG_FlatFileEvens), __nameof__(DG_IndexFileEvens), '__fileposition__', 'filepos', 'link', '1:1', true);
-#else
-  #if(DG_GenFlat = TRUE)
-    output(DG_ParentRecs,,DG_FileOut+'FLAT',overwrite);
-    output(DG_ParentRecs(EvensFilter),,DG_FileOut+'FLAT_EVENS',overwrite);
-  #end
-#end
+    fileServices.AddFileRelationship( __nameof__(C.DG_FlatFile), __nameof__(C.DG_IndexFile), '', '', 'view', '1:1', false);
+    fileServices.AddFileRelationship( __nameof__(C.DG_FlatFile), __nameof__(C.DG_IndexFile), '__fileposition__', 'filepos', 'link', '1:1', true);
+    fileServices.AddFileRelationship( __nameof__(C.DG_FlatFileEvens), __nameof__(C.DG_IndexFileEvens), '', '', 'view', '1:1', false);
+    fileServices.AddFileRelationship( __nameof__(C.DG_FlatFileEvens), __nameof__(C.DG_IndexFileEvens), '__fileposition__', 'filepos', 'link', '1:1', true);
 
-//Output variable length records
-#if(DG_GenVar = TRUE)
-DG_VarOutRec Proj1(DG_OutRec L) := TRANSFORM
+C.DG_VarOutRec Proj1(C.DG_OutRec L) := TRANSFORM
   SELF := L;
   SELF.ExtraField := IF(self.DG_Prange<=10,
                         trim(self.DG_lastname[1..self.DG_Prange]+self.DG_firstname[1..self.DG_Prange],all),
@@ -129,23 +101,14 @@ END;
 DG_VarOutRecs := PROJECT(DG_ParentRecs,Proj1(LEFT));
 
 sequential(
-  output(DG_VarOutRecs,,DG_FileOut+'VAR',overwrite),
-  buildindex(DG_VarIndex, overwrite
-#if (useLocal=true)
-  ,NOROOT
-#end
-  ),
-  buildindex(DG_VarVarIndex, overwrite
-#if (useLocal=true)
-  ,NOROOT
-#end
-  ),
-  fileServices.AddFileRelationship( __nameof__(DG_VarFile), __nameof__(DG_VarIndex), '', '', 'view', '1:1', false),
-  fileServices.AddFileRelationship( __nameof__(DG_VarFile), __nameof__(DG_VarIndex), '__fileposition__', '__filepos', 'link', '1:1', true),
-  fileServices.AddFileRelationship( __nameof__(DG_VarFile), __nameof__(DG_VarVarIndex), '', '', 'view', '1:1', false),
-  fileServices.AddFileRelationship( __nameof__(DG_VarFile), __nameof__(DG_VarVarIndex), '__fileposition__', '__filepos', 'link', '1:1', true)
+  output(DG_VarOutRecs,,C.DG_FileOut+'VAR',overwrite),
+  buildindex(C.DG_VarIndex, overwrite),
+  buildindex(C.DG_VarVarIndex, overwrite),
+  fileServices.AddFileRelationship( __nameof__(C.DG_VarFile), __nameof__(C.DG_VarIndex), '', '', 'view', '1:1', false),
+  fileServices.AddFileRelationship( __nameof__(C.DG_VarFile), __nameof__(C.DG_VarIndex), '__fileposition__', '__filepos', 'link', '1:1', true),
+  fileServices.AddFileRelationship( __nameof__(C.DG_VarFile), __nameof__(C.DG_VarVarIndex), '', '', 'view', '1:1', false),
+  fileServices.AddFileRelationship( __nameof__(C.DG_VarFile), __nameof__(C.DG_VarVarIndex), '__fileposition__', '__filepos', 'link', '1:1', true)
 );
-#end
 
 //******************************** Child query setup code ***********************
 
@@ -229,18 +192,18 @@ rawHouse := dataset([
             ]
         }]
     }
-    ], sqHousePersonBookRec);
+    ], C.sqHousePersonBookRec);
 
 
 //First reproject the datasets to 
 
-sqBookIdRec addIdToBook(sqBookRec l) := 
+C.sqBookIdRec addIdToBook(C.sqBookRec l) := 
             transform
                 self.id := 0;
                 self := l;
             end;
 
-sqPersonBookIdRec addIdToPerson(sqPersonBookRec l) := 
+C.sqPersonBookIdRec addIdToPerson(C.sqPersonBookRec l) := 
             transform
                 unsigned2 aage := if (l.dob < baseDate, (unsigned2)((baseDate - l.dob) / 10000), 0);
                 self.id := 0;
@@ -249,7 +212,7 @@ sqPersonBookIdRec addIdToPerson(sqPersonBookRec l) :=
                 self := l;
             end;
 
-sqHousePersonBookIdRec addIdToHouse(sqHousePersonBookRec l) := 
+C.sqHousePersonBookIdRec addIdToHouse(C.sqHousePersonBookRec l) := 
             transform
                 self.id := 0;
                 self.persons := project(l.persons, addIdToPerson(LEFT));
@@ -262,14 +225,14 @@ projected := project(rawHouse, addIdToHouse(LEFT));
 //version 1 assign unique ids a really inefficient way...
 //doesn't actually work....
 
-sqBookIdRec setBookId(sqHousePersonBookIdRec lh, sqBookIdRec l, unsigned4 basebookid) := 
+C.sqBookIdRec setBookId(C.sqHousePersonBookIdRec lh, C.sqBookIdRec l, unsigned4 basebookid) := 
             transform
                 unsigned maxbookid := max(lh.persons, max(lh.persons.books, id));
                 self.id := if(maxbookid=0, basebookid, maxbookid)+1;
                 self := l;
             end;
 
-sqPersonBookIdRec setPersonId(sqHousePersonBookIdRec lh, sqPersonBookIdRec l, unsigned4 basepersonid, unsigned4 basebookid) := 
+C.sqPersonBookIdRec setPersonId(C.sqHousePersonBookIdRec lh, C.sqPersonBookIdRec l, unsigned4 basepersonid, unsigned4 basebookid) := 
             transform
                 unsigned4 maxpersonid := max(lh.persons, id);
                 self.id := if(maxpersonid=0, basepersonid, maxpersonid)+1;
@@ -277,7 +240,7 @@ sqPersonBookIdRec setPersonId(sqHousePersonBookIdRec lh, sqPersonBookIdRec l, un
                 self := l;
             end;
 
-sqHousePersonBookIdRec setHouseId(sqHousePersonBookIdRec l, sqHousePersonBookIdRec r, unsigned4 id) := 
+C.sqHousePersonBookIdRec setHouseId(C.sqHousePersonBookIdRec l, C.sqHousePersonBookIdRec r, unsigned4 id) := 
             transform
                 unsigned prevmaxpersonid := max(l.persons, id);
                 unsigned prevmaxbookid := max(l.persons, max(l.persons.books, id));
@@ -292,23 +255,23 @@ final1 := iterate(projected, setHouseId(LEFT, RIGHT, counter));
 
 //------------------ Common extraction functions... ---------------
 
-sqHouseIdRec extractHouse(sqHousePersonBookIdRec l) :=
+C.sqHouseIdRec extractHouse(C.sqHousePersonBookIdRec l) :=
             TRANSFORM
                 SELF := l;
             END;
 
-sqPersonBookRelatedIdRec extractPersonBook(sqHousePersonBookIdRec l, sqPersonBookIdRec r) :=
+C.sqPersonBookRelatedIdRec extractPersonBook(C.sqHousePersonBookIdRec l, C.sqPersonBookIdRec r) :=
             TRANSFORM
                 SELF.houseid := l.id;
                 SELF := r;
             END;
 
-sqPersonRelatedIdRec extractPerson(sqPersonBookRelatedIdRec l) :=
+C.sqPersonRelatedIdRec extractPerson(C.sqPersonBookRelatedIdRec l) :=
             TRANSFORM
                 SELF := l;
             END;
 
-sqBookRelatedIdRec extractBook(sqBookIdRec l, unsigned4 personid) :=
+C.sqBookRelatedIdRec extractBook(C.sqBookIdRec l, unsigned4 personid) :=
             TRANSFORM
                 SELF.personid := personid;
                 SELF := l;
@@ -340,27 +303,27 @@ DoAssignSeq(normBook, normSeqBook);
 
 // finally denormalize by joining back together.
 
-sqPersonBookRelatedIdRec expandPerson(sqPersonRelatedIdRec l) :=
+C.sqPersonBookRelatedIdRec expandPerson(C.sqPersonRelatedIdRec l) :=
         TRANSFORM
             SELF := l;
             SELF.books := [];
         END;
 
-sqHousePersonBookIdRec expandHouse(sqHouseIdRec l) :=
+C.sqHousePersonBookIdRec expandHouse(C.sqHouseIdRec l) :=
         TRANSFORM
             SELF := l;
             SELF.persons := [];
         END;
 
-sqPersonBookRelatedIdRec combinePersonBook(sqPersonBookRelatedIdRec l, sqBookRelatedIdRec r) :=
+C.sqPersonBookRelatedIdRec combinePersonBook(C.sqPersonBookRelatedIdRec l, C.sqBookRelatedIdRec r) :=
         TRANSFORM
-            SELF.books := l.books + row({r.id, r.name, r.author, r.rating100, r.price}, sqBookIdRec);
+            SELF.books := l.books + row({r.id, r.name, r.author, r.rating100, r.price}, C.sqBookIdRec);
             SELF := l;
         END;
 
-sqHousePersonBookIdRec combineHousePerson(sqHousePersonBookIdRec l, sqPersonBookRelatedIdRec r) :=
+C.sqHousePersonBookIdRec combineHousePerson(C.sqHousePersonBookIdRec l, C.sqPersonBookRelatedIdRec r) :=
         TRANSFORM
-            SELF.persons := l.persons + row(r, sqPersonBookIdRec);
+            SELF.persons := l.persons + row(r, C.sqPersonBookIdRec);
             SELF := l;
         END;
 
@@ -381,71 +344,64 @@ personBooks := normalize(final, left.persons, extractPersonBook(LEFT, RIGHT));
 personOut := project(personBooks, extractPerson(LEFT));
 bookOut := normalize(personBooks, count(left.books), extractBook(LEFT.books[COUNTER], LEFT.id));
 
-simplePersonBooks := project(personBooks, transform(sqSimplePersonBookRec, SELF := LEFT, SELF.limit.booklimit := LEFT.booklimit));
+simplePersonBooks := project(personBooks, transform(C.sqSimplePersonBookRec, SELF := LEFT, SELF.limit.booklimit := LEFT.booklimit));
 
-output(final,, sqHousePersonBookName,overwrite);
-output(personBooks,, sqPersonBookName,overwrite);
-output(houseOut,,sqHouseName,overwrite);
-output(personOut,,sqPersonName,overwrite);
-output(bookOut,,sqBookName,overwrite);
+output(final,, C.sqHousePersonBookName,overwrite);
+output(personBooks,, C.sqPersonBookName,overwrite);
+output(houseOut,,C.sqHouseName,overwrite);
+output(personOut,,C.sqPersonName,overwrite);
+output(bookOut,,C.sqBookName,overwrite);
 
-output(simplePersonBooks,, sqSimplePersonBookName,overwrite);
+output(simplePersonBooks,, C.sqSimplePersonBookName,overwrite);
 buildindex(
-#if (useLocal=true)
-  DISTRIBUTE(sqSimplePersonBookDs, IF(surname > 'G', 0, 1)),
-#else
-  sqSimplePersonBookDs, 
-#end
-  { surname, forename, aage  }, { sqSimplePersonBookDs }, sqSimplePersonBookIndexName, overwrite
-#if (useLocal=true)
- , NOROOT
-#end
+  C.sqSimplePersonBookDs, 
+  { surname, forename, aage  }, { C.sqSimplePersonBookDs }, C.sqSimplePersonBookIndexName, overwrite
 );
-fileServices.AddFileRelationship( __nameof__(sqSimplePersonBookDs), sqSimplePersonBookIndexName, '', '', 'view', '1:1', false);
-fileServices.AddFileRelationship( __nameof__(sqSimplePersonBookDs), sqSimplePersonBookIndexName, '__fileposition__', 'filepos', 'link', '1:1', true);
+fileServices.AddFileRelationship( __nameof__(C.sqSimplePersonBookDs), C.sqSimplePersonBookIndexName, '', '', 'view', '1:1', false);
+fileServices.AddFileRelationship( __nameof__(C.sqSimplePersonBookDs), C.sqSimplePersonBookIndexName, '__fileposition__', 'filepos', 'link', '1:1', true);
 
-fileServices.AddFileRelationship( sqHouseName, sqPersonName, 'id', 'houseid', 'link', '1:M', false);
-fileServices.AddFileRelationship( sqPersonName, sqBookName, 'id', 'personid', 'link', '1:M', false);
+fileServices.AddFileRelationship( C.sqHouseName, C.sqPersonName, 'id', 'houseid', 'link', '1:M', false);
+fileServices.AddFileRelationship( C.sqPersonName, C.sqBookName, 'id', 'personid', 'link', '1:M', false);
 
-fileServices.AddFileRelationship( sqHouseName, sqHousePersonBookName, 'id', 'id', 'link', '1:1', false);
-fileServices.AddFileRelationship( sqHouseName, sqPersonBookName, 'id', 'houseid', 'link', '1:M', false);
+fileServices.AddFileRelationship( C.sqHouseName, C.sqHousePersonBookName, 'id', 'id', 'link', '1:1', false);
+fileServices.AddFileRelationship( C.sqHouseName, C.sqPersonBookName, 'id', 'houseid', 'link', '1:M', false);
 
 //Now build some indexes - with numeric fields in the key
-buildindex(sqHouseExDs, { id }, { addr, filepos }, sqHouseIndexName+'ID', overwrite);
-buildindex(sqPersonExDs, { id }, { filepos }, sqPersonIndexName+'ID', overwrite);
-buildindex(sqBookExDs, { id }, { filepos }, sqBookIndexName+'ID', overwrite);
+buildindex(C.sqHouseExDs, { id }, { addr, filepos }, C.sqHouseIndexName+'ID', overwrite);
+buildindex(C.sqPersonExDs, { id }, { filepos }, C.sqPersonIndexName+'ID', overwrite);
+buildindex(C.sqBookExDs, { id }, { filepos }, C.sqBookIndexName+'ID', overwrite);
 
-fileServices.AddFileRelationship( __nameof__(sqHouseExDs), sqHouseIndexName+'ID', '', '', 'view', '1:1', false);
-fileServices.AddFileRelationship( __nameof__(sqHouseExDs), sqHouseIndexName+'ID', '__fileposition__', 'filepos', 'link', '1:1', true);
-fileServices.AddFileRelationship( __nameof__(sqPersonExDs), sqPersonIndexName+'ID', '', '', 'view', '1:1', false);
-fileServices.AddFileRelationship( __nameof__(sqPersonExDs), sqPersonIndexName+'ID', '__fileposition__', 'filepos', 'link', '1:1', true);
-fileServices.AddFileRelationship( __nameof__(sqBookExDs), sqBookIndexName+'ID', '', '', 'view', '1:1', false);
-fileServices.AddFileRelationship( __nameof__(sqBookExDs), sqBookIndexName+'ID', '__fileposition__', 'filepos', 'link', '1:1', true);
+fileServices.AddFileRelationship( __nameof__(C.sqHouseExDs), C.sqHouseIndexName+'ID', '', '', 'view', '1:1', false);
+fileServices.AddFileRelationship( __nameof__(C.sqHouseExDs), C.sqHouseIndexName+'ID', '__fileposition__', 'filepos', 'link', '1:1', true);
+fileServices.AddFileRelationship( __nameof__(C.sqPersonExDs), C.sqPersonIndexName+'ID', '', '', 'view', '1:1', false);
+fileServices.AddFileRelationship( __nameof__(C.sqPersonExDs), C.sqPersonIndexName+'ID', '__fileposition__', 'filepos', 'link', '1:1', true);
+fileServices.AddFileRelationship( __nameof__(C.sqBookExDs), C.sqBookIndexName+'ID', '', '', 'view', '1:1', false);
+fileServices.AddFileRelationship( __nameof__(C.sqBookExDs), C.sqBookIndexName+'ID', '__fileposition__', 'filepos', 'link', '1:1', true);
 
 //Some more conventional indexes - some requiring a double lookup to resolve the payload
-buildindex(sqHouseExDs, { string40 addr := sqHouseExDs.addr, postcode }, { filepos }, sqHouseIndexName, overwrite);
-buildindex(sqPersonExDs, { string40 forename := sqPersonExDs.forename, string40 surname := sqPersonExDs.surname }, { id }, sqPersonIndexName, overwrite);
-buildindex(sqBookExDs, { string40 name := sqBookExDs.name, string40 author := sqBookExDs.author }, { id }, sqBookIndexName, overwrite);
+buildindex(C.sqHouseExDs, { string40 addr := C.sqHouseExDs.addr, postcode }, { filepos }, C.sqHouseIndexName, overwrite);
+buildindex(C.sqPersonExDs, { string40 forename := C.sqPersonExDs.forename, string40 surname := C.sqPersonExDs.surname }, { id }, C.sqPersonIndexName, overwrite);
+buildindex(C.sqBookExDs, { string40 name := C.sqBookExDs.name, string40 author := C.sqBookExDs.author }, { id }, C.sqBookIndexName, overwrite);
 
-fileServices.AddFileRelationship( __nameof__(sqHouseExDs), sqHouseIndexName, '', '', 'view', '1:1', false);
-fileServices.AddFileRelationship( __nameof__(sqHouseExDs), sqHouseIndexName, '__fileposition__', 'filepos', 'link', '1:1', true);
-fileServices.AddFileRelationship( __nameof__(sqPersonExDs), sqPersonIndexName, '', '', 'view', '1:1', false);
-fileServices.AddFileRelationship( sqPersonIndexName+'ID', sqPersonIndexName, 'id', 'id', 'link', '1:1', true);
-fileServices.AddFileRelationship( __nameof__(sqBookExDs), sqBookIndexName, '', '', 'view', '1:1', false);
-fileServices.AddFileRelationship( sqBookIndexName+'ID', sqBookIndexName, 'id', 'id', 'link', '1:1', true);
+fileServices.AddFileRelationship( __nameof__(C.sqHouseExDs), C.sqHouseIndexName, '', '', 'view', '1:1', false);
+fileServices.AddFileRelationship( __nameof__(C.sqHouseExDs), C.sqHouseIndexName, '__fileposition__', 'filepos', 'link', '1:1', true);
+fileServices.AddFileRelationship( __nameof__(C.sqPersonExDs), C.sqPersonIndexName, '', '', 'view', '1:1', false);
+fileServices.AddFileRelationship( C.sqPersonIndexName+'ID', C.sqPersonIndexName, 'id', 'id', 'link', '1:1', true);
+fileServices.AddFileRelationship( __nameof__(C.sqBookExDs), C.sqBookIndexName, '', '', 'view', '1:1', false);
+fileServices.AddFileRelationship( C.sqBookIndexName+'ID', C.sqBookIndexName, 'id', 'id', 'link', '1:1', true);
 
 //Should try creating a dataset with a set of ids which are used as a link...  (e.g., bookids->bookfile)
 
-DG_MemFileRec t_u2(DG_MemFileRec l, integer c) := transform self.u2 := c-2; self := l; END;
-DG_MemFileRec t_u3(DG_MemFileRec l, integer c) := transform self.u3 := c-2; self := l; END;
-DG_MemFileRec t_bu2(DG_MemFileRec l, integer c) := transform self.bu2 := c-2; self := l; END;
-DG_MemFileRec t_bu3(DG_MemFileRec l, integer c) := transform self.bu3 := c-2; self := l; END;
-DG_MemFileRec t_i2(DG_MemFileRec l, integer c) := transform self.i2 := c-2; self := l; END;
-DG_MemFileRec t_i3(DG_MemFileRec l, integer c) := transform self.i3 := c-2; self := l; END;
-DG_MemFileRec t_bi2(DG_MemFileRec l, integer c) := transform self.bi2 := c-2; self := l; END;
-DG_MemFileRec t_bi3(DG_MemFileRec l, integer c) := transform self.bi3 := c-2; self := l; END;
+C.DG_MemFileRec t_u2(C.DG_MemFileRec l, integer c) := transform self.u2 := c-2; self := l; END;
+C.DG_MemFileRec t_u3(C.DG_MemFileRec l, integer c) := transform self.u3 := c-2; self := l; END;
+C.DG_MemFileRec t_bu2(C.DG_MemFileRec l, integer c) := transform self.bu2 := c-2; self := l; END;
+C.DG_MemFileRec t_bu3(C.DG_MemFileRec l, integer c) := transform self.bu3 := c-2; self := l; END;
+C.DG_MemFileRec t_i2(C.DG_MemFileRec l, integer c) := transform self.i2 := c-2; self := l; END;
+C.DG_MemFileRec t_i3(C.DG_MemFileRec l, integer c) := transform self.i3 := c-2; self := l; END;
+C.DG_MemFileRec t_bi2(C.DG_MemFileRec l, integer c) := transform self.bi2 := c-2; self := l; END;
+C.DG_MemFileRec t_bi3(C.DG_MemFileRec l, integer c) := transform self.bi3 := c-2; self := l; END;
 
-n_blank := dataset([{0,0,0,0, 0,0,0,0}],DG_MemFileRec);
+n_blank := dataset([{0,0,0,0, 0,0,0,0}],C.DG_MemFileRec);
 
 n_u2 := NORMALIZE(n_blank, 4, t_u2(left, counter));
 n_u3 := NORMALIZE(n_u2, 4, t_u3(left, counter));
@@ -459,10 +415,10 @@ n_i3 := NORMALIZE(n_i2, 4, t_i3(left, counter));
 n_bi2 := NORMALIZE(n_i3, 4, t_bi2(left, counter));
 n_bi3 := NORMALIZE(n_bi2, 4, t_bi3(left, counter));
 
-output(n_bi3,,DG_MemFileName,overwrite);
+output(n_bi3,,C.DG_MemFileName,overwrite);
 
 
-DG_IntegerRecord createIntegerRecord(unsigned8 c) := transform
+C.DG_IntegerRecord createIntegerRecord(unsigned8 c) := transform
     SELF.i6 := c;
     SELF.nested.i4 := c;
     SELF.nested.u3 := c;
@@ -471,5 +427,5 @@ DG_IntegerRecord createIntegerRecord(unsigned8 c) := transform
 END;
 
 singleNullRowDs := dataset([transform({unsigned1 i}, self.i := 0;)]);
-output(normalize(singleNullRowDs, 100, createIntegerRecord(counter)),,DG_IntegerDatasetName,overwrite);
-build(DG_IntegerIndex,overwrite);
+output(normalize(singleNullRowDs, 100, createIntegerRecord(counter)),,C.DG_IntegerDatasetName,overwrite);
+build(C.DG_IntegerIndex,overwrite);
