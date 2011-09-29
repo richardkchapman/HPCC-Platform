@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 // NOTE - uses sequential as otherwise we use too many threads (allegedly)
 
 // Try some remote activities reading from normal indexes and local indexes

@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 //nolocal
 
 rawfile2 := DATASET([{0x80000000, 'FRED'},{0x80000001, DG_fnames[1]}],{unsigned4 val, STRING DG_FirstName});

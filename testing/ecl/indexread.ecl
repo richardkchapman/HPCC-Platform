@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 //UseIndexes
 
 // try it with just one limit

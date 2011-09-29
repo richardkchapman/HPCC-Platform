@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 
 //Daft test of fetch retrieving a dataset
 myPeople := sqSimplePersonBookDs(surname <> '');

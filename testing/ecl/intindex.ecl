@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 
 fail('This test is temporarily disabled because it causes lockups in roxie/hthor and probably thor');
 /*

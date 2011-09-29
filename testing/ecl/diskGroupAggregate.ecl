@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 
 // Test a case that needs serialize due to child dataset...
 sort(table(sqSimplePersonBookds, { dataset sqSimplePersonBookDs.books, sqSimplePersonBookDs.surname, sqSimplePersonBookDs.forename, count(group) }, sqSimplePersonBookDs.surname, few), surname, forename);

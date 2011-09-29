@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 //UseIndexes
 TYPEOF(DG_FetchFile) copy(DG_FetchFile l) := TRANSFORM
     SELF.__filepos := 0; // filepos is not consistent between different test modes, so suppress it from output

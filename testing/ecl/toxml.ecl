@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 //noroxie           - shame but it outputs to files etc.
 TOXMLPREFIX := '~REGRESS::' + filePrefix + '::RESULT::';
 

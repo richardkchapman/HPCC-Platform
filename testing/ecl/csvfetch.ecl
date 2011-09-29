@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 fposlist := dataset([{0}], { unsigned8 _fpos });
 
 DG_CSVFile get(DG_CSVFile le, fposlist ri) := transform

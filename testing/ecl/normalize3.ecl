@@ -17,7 +17,7 @@
 ############################################################################## */
 
 //nothor
-//UseStandardFiles
+IMPORT common; C := common.files('');
 
 o1 := normalize(sqNamesTable1, left.books, transform(right));
 o2 := normalize(sqNamesTable1, sort(left.books, -rating100, +author), transform(right));

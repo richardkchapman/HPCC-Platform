@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
+IMPORT common; C := common.files('');
 //Sample query for pulling across some sample related payload indexes
 
 i1 := index({ string40 forename, string40 surname }, { unsigned4 id }, sqPersonIndexName);

@@ -17,7 +17,7 @@
 ############################################################################## */
 
 //nothor
-//UseStandardFiles
+IMPORT common; C := common.files('');
 //UseIndexes
 
 // Very obscure code to try and ensure that a temporary result is evaluated in a child graph that needs to be serialized to the slave
