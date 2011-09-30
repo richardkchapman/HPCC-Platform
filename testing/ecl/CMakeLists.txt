@@ -1,0 +1,11 @@
+# CMakeLists.txt:
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8 FATAL_ERROR)
+PROJECT(EclRegressionSuite)
+
+INCLUDE (ecl_compile.cmake)
+
+FILE(GLOB ECL_FILES "*.ecl")
+FOREACH ( LOOP_VAR ${ECL_FILES} )
+ compile_workunit(${LOOP_VAR})
+ENDFOREACH ( LOOP_VAR ${ECL_FILES} )
+
