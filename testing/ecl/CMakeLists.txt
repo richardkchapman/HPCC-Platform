@@ -1,4 +1,5 @@
-# CMakeLists.txt:
+# CMake file to build the ecl regression suite
+
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8 FATAL_ERROR)
 PROJECT(EclRegressionSuite)
 
