@@ -5,13 +5,12 @@ MACRO(COMPILE_WORKUNIT source)
 GET_FILENAME_COMPONENT(baseName ${source} NAME_WE)
 
 IF(NOT EXISTS ${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt)
-   EXECUTE_PROCESS(
-        COMMAND ${CMAKE_COMMAND}
-        -DTEMPLATE=${CMAKE_SOURCE_DIR}/filelist.cmake.in
-        -Dsource=${source}
-        -DVARIABLE=DEPENDENCIES
-        -DOUTPUT=${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt
-        -P ${CMAKE_SOURCE_DIR}/ecl_dependencies.cmake)
+  SET (OUTPUT ${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt)
+  EXECUTE_PROCESS(
+        COMMAND bash -c "echo SET \\\(DEPENDENCIES  >${OUTPUT};
+                         eclcc -E ${source} 2>/dev/null | grep sourcePath= | grep -v -i lib_ | grep -v -i std[/] | sed 's/.*sourcePath=\\\"\\([^\\\"]*\\).*/\\1/' >> ${OUTPUT};
+                         echo \\\) >>${OUTPUT}"
+  )
 ENDIF()
 
 INCLUDE(${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt)
@@ -19,13 +18,13 @@ INCLUDE(${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt)
 ADD_CUSTOM_COMMAND(
     OUTPUT ${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt
     COMMAND
-     ${CMAKE_COMMAND}
+    ${CMAKE_COMMAND}
      -DTEMPLATE=${CMAKE_SOURCE_DIR}/filelist.cmake.in
      -DVARIABLE=DEPENDENCIES
      -Dsource=${source}
      -DOUTPUT=${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt
      -P ${CMAKE_SOURCE_DIR}/ecl_dependencies.cmake
-#    DEPENDS ${DEPENDENCIES}
+    DEPENDS ${DEPENDENCIES}
 )
 
 IF ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
