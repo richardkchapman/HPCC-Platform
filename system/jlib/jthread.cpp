@@ -33,6 +33,7 @@
 #include <sys/wait.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sched.h>
 #endif
 
 #if defined(_DEBUG) && defined(_WIN32) && !defined(USING_MPATROL)
@@ -378,6 +379,34 @@ void Thread::startRelease()
         ERRLOG("Running threads:\n %s",s.str());
         throw MakeOsException(status);
     }
+#if 0
+    // No point doing this - system does it anyway...
+    cpu_set_t mask, zmask;
+    int err = pthread_getaffinity_np(GetCurrentThreadId(), sizeof(cpu_set_t), &mask);
+    if (err)
+        throw MakeErrnoException(errno, "Thread::start(%s) failed to get affinity tid=%"I64F"x", getName(), (__uint64) GetCurrentThreadId());
+    else
+    {
+        if(pthread_setaffinity_np(threadid, sizeof(cpu_set_t), &mask) != 0)
+            throw MakeErrnoException(errno, "Thread::start(%s) failed to set affinity tid=%"I64F"x", getName(), (__uint64) threadid);
+    }
+#endif
+#ifdef TRACE_AFFINITIES
+    cpu_set_t mask;
+    int err = pthread_getaffinity_np(GetCurrentThreadId(), sizeof(cpu_set_t), &mask);
+    if (err)
+        throw MakeErrnoException(errno, "Thread::start(%s) failed to get affinity tid=%"I64F"x", getName(), (__uint64) GetCurrentThreadId());
+    StringBuffer affinityString;
+    for (int cpu=0; cpu < CPU_SETSIZE; cpu++)
+    {
+        if (CPU_ISSET(cpu, &mask))
+            affinityString.appendf(",%d", cpu);
+    }
+    if (affinityString.length())
+        DBGLOG("Thread::start - %s has affinity %s", getName(), affinityString.str()+1);
+    else
+        DBGLOG("Thread::start - %s has no affinity???", getName());
+#endif
     if (!starting.wait(1000*10))
         throw MakeStringException(-1, "Thread::start(%s) failed",getName());
 #endif
