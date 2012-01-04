@@ -41,7 +41,7 @@ IF ("${COMMONSETUP_DONE}" STREQUAL "")
   cmake_policy ( SET CMP0011 NEW )
 
   option(USE_BINUTILS "Enable use of binutils to embed workunit info into dhard objects" ON)
-  option(USE_CPPUNIT "Enable unit tests (requires cppunit)" OFF)
+  option(USE_CPPUNIT "Enable unit tests (requires cppunit)" ON)
   option(USE_OPENLDAP "Enable OpenLDAP support (requires OpenLDAP)" ON)
   option(USE_ICU "Enable unicode support (requires ICU)" ON)
   option(USE_BOOST_REGEX "Configure use of boost regex" ON)

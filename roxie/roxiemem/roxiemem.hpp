@@ -362,7 +362,7 @@ interface IRowManager : extends IInterface
     virtual unsigned maxSimpleBlock() = 0;
     virtual void checkHeap() = 0;
     // Set the chunk sizes to use. Note that these sizes are before adjusting for per-row overhead
-    virtual void setChunkSizes(const UnsignedArray &) = 0;
+    virtual void setChunkSizes(const UnsignedArray &, bool align) = 0;
 };
 
 extern roxiemem_decl void setDataAlignmentSize(unsigned size);

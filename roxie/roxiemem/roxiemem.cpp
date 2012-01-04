@@ -28,6 +28,7 @@ namespace roxiemem {
 
 #define USE_MADVISE_ON_FREE     // avoid linux swapping 'freed' pages to disk
 #define VARIABLE_CHUNKS
+#define USE_CAS
 
 unsigned memTraceLevel = 1;
 size32_t memTraceSizeLimit = 0;
@@ -548,7 +549,7 @@ class FixedSizeHeaplet : public BigHeapletBase
 {
 protected:
     mutable CriticalSection FSHcrit;
-    char *blocks;
+    unsigned r_blocks;  // the free chain as a relative pointer
     size32_t fixedSize; 
     size32_t freeBase;
     char data[1];  // n really
@@ -603,7 +604,7 @@ public:
         setFlag(isCheckingHeap ? NOTE_RELEASES|EXTRA_DEBUG_INFO : NOTE_RELEASES);
         fixedSize = size;
         freeBase = 0;
-        blocks = NULL;
+        r_blocks = 0;
     }
 
     virtual size32_t sizeInPages() { return 1; }
@@ -660,7 +661,6 @@ public:
                 if (id & ACTIVITY_FLAG_NEEDSDESTRUCTOR)
                     allocatorCache->onDestroy(id & MAX_ACTIVITY_ID, ptr + sizeof(unsigned) + sizeof(atomic_t));
 
-                CriticalBlock b(FSHcrit);
 #ifdef CHECKING_HEAP
                 if (flags & EXTRA_DEBUG_INFO) 
                 {
@@ -672,9 +672,21 @@ public:
                 else
 #endif        
                 {
-                    * (unsigned *) ptr = makeRelative(blocks);
-                    blocks = ptr;
-                }
+                    unsigned r_ptr = makeRelative(ptr);
+#ifdef USE_CAS
+                    loop
+                    {
+                        unsigned saved = r_blocks;
+                        * (unsigned *) ptr = saved;
+                        if (atomic_cas((atomic_t *) &r_blocks, saved, r_ptr))
+                            break;
+                    }
+#else
+                    CriticalBlock b(FSHcrit);
+                    * (unsigned *) ptr = r_blocks;
+                    r_blocks = r_ptr;
+#endif
+                    }
             }
         }
     }
@@ -693,23 +705,58 @@ public:
         if (size == fixedSize)
         {
             char *ret = NULL;
-            CriticalBlock b(FSHcrit);
-            if (blocks)
+#ifdef USE_CAS
+            loop // for retries if another thread nabs free block before us...
             {
-                ret = blocks;
-                blocks = makeAbsolute(*(unsigned *) ret);
-            }
-            else if (freeBase != (size32_t) -1)
-            {
-                size32_t bytesFree = HEAP_ALIGNMENT_SIZE - offsetof(FixedSizeHeaplet,data) - freeBase;
-                if (bytesFree>=size)
+                unsigned temp = r_blocks;
+                if (temp)
                 {
-                    ret = data + freeBase;
-                    freeBase += size;
+                    if (temp != -1 && atomic_cas((atomic_t *) &r_blocks, temp, -1))
+                    {
+                        unsigned r_ret = r_blocks;
+                        atomic_set((atomic_t *) &r_blocks, temp);
+                        ret = makeAbsolute(r_ret);
+                        break;
+                    }
                 }
                 else
-                    freeBase = (size32_t) -1;
+                {
+                    CriticalBlock b(FSHcrit);
+                    if (freeBase != (size32_t) -1)
+                    {
+                        size32_t bytesFree = HEAP_ALIGNMENT_SIZE - offsetof(FixedSizeHeaplet,data) - freeBase;
+                        if (bytesFree>=size)
+                        {
+                            ret = data + freeBase;
+                            freeBase += size;
+                        }
+                        else
+                            freeBase = (size32_t) -1;
+                    }
+                    break;
+                }
             }
+#else
+            {
+                CriticalBlock b(FSHcrit);
+                if (r_blocks)
+                {
+                    ret = makeAbsolute(r_blocks);
+                    r_blocks = *(unsigned *) ret;
+                }
+                else if (freeBase != (size32_t) -1)
+                {
+                    size32_t bytesFree = HEAP_ALIGNMENT_SIZE - offsetof(FixedSizeHeaplet,data) - freeBase;
+                    if (bytesFree>=size)
+                    {
+                        ret = data + freeBase;
+                        freeBase += size;
+                    }
+                    else
+                        freeBase = (size32_t) -1;
+                }
+            }
+#endif
             if (ret)
             {
                 atomic_inc(&count);
@@ -1121,10 +1168,10 @@ public:
 
     static int compareUnsigned(unsigned *a, unsigned *b)
     {
-        return (int) (*b - *a);
+        return (int) (*a - *b);
     }
 
-    virtual void setChunkSizes(const UnsignedArray &sizes)
+    virtual void setChunkSizes(const UnsignedArray &sizes, bool align)
     {
 #ifdef VARIABLE_CHUNKS
         chunkLengths.kill();
@@ -1136,12 +1183,13 @@ public:
             if (isCheckingHeap)
                 size += sizeof(unsigned); // for the magic number
 #endif
+            if (align)
+                size = (size + sizeof(void *) - 1) & ~(sizeof(void *)-1);  // Round up to 8 byte alignment (4 byte is enough in 32-bits)
+
             if (size <= FixedSizeHeaplet::maxHeapSize(isCheckingHeap)/20)
             {
-                bool wasNew;
-                aindex_t added = chunkLengths.bAdd(size, compareUnsigned, wasNew);
-                if (!wasNew)
-                    chunkLengths.remove(added);  // Why is there no bAddUnique ?
+                bool dummy;
+                chunkLengths.bAdd(size, compareUnsigned, dummy); // bAdd should be called bAddUnique?
             }
         }
 #endif
@@ -2094,12 +2142,14 @@ protected:
         Owned<IRowManager> rm1 = createRowManager(0, NULL, logctx, NULL);
         UnsignedArray chunkSizes;
         chunkSizes.append(10);
+        chunkSizes.append(10);
         chunkSizes.append(20);
         chunkSizes.append(30);
-        rm1->setChunkSizes(chunkSizes);
+        rm1->setChunkSizes(chunkSizes, true);
         void *ptrs[50];
         for (int i = 0; i < 50; i++)
             ptrs[i] = rm1->allocate(i);
+        DBGLOG("testBuckets: pages allocated = %d (expected: 4)", rm1->pages());
         ASSERT(rm1->pages()==4);
         for (int i = 0; i < 50; i++)
             ReleaseRoxieRow(ptrs[i]);
