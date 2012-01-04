@@ -708,14 +708,13 @@ public:
 #ifdef USE_CAS
             loop // for retries if another thread nabs free block before us...
             {
-                unsigned temp = r_blocks;
-                if (temp)
+                unsigned r_ret = atomic_read((atomic_t *) &r_blocks);
+                if (r_ret)
                 {
-                    if (temp != -1 && atomic_cas((atomic_t *) &r_blocks, temp, -1))
+                    if (r_ret != (unsigned) -1 && atomic_cas((atomic_t *) &r_blocks, r_ret, -1))
                     {
-                        unsigned r_ret = r_blocks;
-                        atomic_set((atomic_t *) &r_blocks, temp);
                         ret = makeAbsolute(r_ret);
+                        atomic_set((atomic_t *) &r_blocks, *(unsigned *) ret);
                         break;
                     }
                 }

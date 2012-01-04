@@ -21,5 +21,5 @@
 
 int main(int argc, const char *argv[])
 {
-    return start_query(argc, argv);
+     return start_query(argc, argv);
 }

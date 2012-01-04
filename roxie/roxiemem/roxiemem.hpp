@@ -34,7 +34,7 @@
 #endif
 
 #ifdef _DEBUG
-#define CHECKING_HEAP
+//#define CHECKING_HEAP
 #endif
 
 #ifdef __64BIT__
