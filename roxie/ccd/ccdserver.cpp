@@ -28670,9 +28670,10 @@ public:
     virtual void checkAbort()
     {
         CSlaveContext::checkAbort();
-        unsigned ticksNow = msTick();
+        unsigned ticksNow = 0;
         if (warnTimeLimit)
         {
+            ticksNow = msTick();
             unsigned elapsed = ticksNow - startTime;
             if  (elapsed > warnTimeLimit)
             {
@@ -28688,6 +28689,8 @@ public:
         {
             if (socketCheckInterval)
             {
+                if (!ticksNow)
+                    ticksNow = msTick();
                 if (ticksNow - lastSocketCheckTime > socketCheckInterval) 
                 {
                     CriticalBlock b(abortLock);
@@ -28698,10 +28701,12 @@ public:
             }
             if (sendHeartBeats)
             {
+                if (!ticksNow)
+                    ticksNow = msTick();
                 unsigned hb = ticksNow - lastHeartBeat;
                 if (hb > 30000)
                 {
-                    lastHeartBeat = msTick();
+                    lastHeartBeat = ticksNow;
                     client->sendHeartBeat(*this);
                 }
             }

@@ -676,9 +676,9 @@ public:
 #ifdef USE_CAS
                     loop
                     {
-                        unsigned saved = r_blocks;
+                        unsigned saved = atomic_read((atomic_t *) &r_blocks);
                         * (unsigned *) ptr = saved;
-                        if (atomic_cas((atomic_t *) &r_blocks, saved, r_ptr))
+                        if (atomic_cas((atomic_t *) &r_blocks, r_ptr, saved))
                             break;
                     }
 #else
@@ -686,7 +686,7 @@ public:
                     * (unsigned *) ptr = r_blocks;
                     r_blocks = r_ptr;
 #endif
-                    }
+                }
             }
         }
     }
@@ -711,7 +711,7 @@ public:
                 unsigned r_ret = atomic_read((atomic_t *) &r_blocks);
                 if (r_ret)
                 {
-                    if (r_ret != (unsigned) -1 && atomic_cas((atomic_t *) &r_blocks, r_ret, -1))
+                    if (r_ret != (unsigned) -1 && atomic_cas((atomic_t *) &r_blocks, -1, r_ret))
                     {
                         ret = makeAbsolute(r_ret);
                         atomic_set((atomic_t *) &r_blocks, *(unsigned *) ret);
@@ -1046,7 +1046,7 @@ public:
 class CChunkingRowManager : public CInterface, implements IRowManager
 {
     BigHeapletBase active;
-    CriticalSection crit;
+    SpinLock crit;
     unsigned pageLimit;
     ITimeLimiter *timeLimit;
     unsigned peakPages;
@@ -1064,6 +1064,7 @@ class CChunkingRowManager : public CInterface, implements IRowManager
 #ifdef VARIABLE_CHUNKS
     UnsignedArray chunkLengths;
 #endif
+    atomic_t memcalls;
 
     void checkLimit(unsigned numRequested)
     {
@@ -1121,6 +1122,7 @@ public:
 #endif
         if (memTraceLevel >= 2)
             logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager c-tor memLimit=%u pageLimit=%u rowMgr=%p", _memLimit, pageLimit, this);
+        atomic_set(&memcalls, 1000);
     }
 
     ~CChunkingRowManager()
@@ -1216,7 +1218,7 @@ public:
 
     virtual void checkHeap()
     {
-        CriticalBlock c1(crit);
+        SpinBlock c1(crit);
         BigHeapletBase *finger = active.next;
         while (finger != &active)
         {
@@ -1238,7 +1240,7 @@ public:
 
     virtual unsigned allocated()
     {
-        CriticalBlock c1(crit);
+        SpinBlock c1(crit);
         unsigned total = 0;
         BigHeapletBase *finger = active.next;
         while (finger != &active)
@@ -1252,7 +1254,7 @@ public:
 
     virtual unsigned pages()
     {
-        CriticalBlock c1(crit);
+        SpinBlock c1(crit);
         unsigned total = dataBuffPages;
         BigHeapletBase *finger = active.next;
         while (finger != &active)
@@ -1276,7 +1278,7 @@ public:
 
     virtual void getPeakActivityUsage()
     {
-        CriticalBlock c1(crit);
+        SpinBlock c1(crit);
         usageMap.setown(new CActivityMemoryUsageMap);
         BigHeapletBase *finger = active.next;
         while (finger != &active)
@@ -1373,8 +1375,14 @@ public:
             PrintStackReport();
         }
         if (timeLimit)
-            timeLimit->checkAbort(); // MORE - maybe not every time I am called?
-        CriticalBlock b(crit);
+        {
+            if (atomic_dec_and_test(&memcalls))
+            {
+                timeLimit->checkAbort();
+                atomic_set(&memcalls, 1000);
+            }
+        }
+        SpinBlock b(crit);
         if (isUltraCheckingHeap)
             checkHeap();
         if (_size > FixedSizeHeaplet::maxHeapSize(isCheckingHeap))
@@ -1481,7 +1489,7 @@ public:
 
     virtual bool attachDataBuff(DataBuffer *dataBuff) 
     {
-        CriticalBlock b(crit);
+        SpinBlock b(crit);
         
         if (memTraceLevel >= 4)
             logctx.CTXLOG("RoxieMemMgr: attachDataBuff() attaching DataBuff to rowMgr - addr=%p dataBuffs=%u dataBuffPages=%u possibleGoers=%u rowMgr=%p", 
@@ -1527,7 +1535,7 @@ public:
     
     virtual void noteDataBuffReleased(DataBuffer *dataBuff)
     {
-        CriticalBlock b(crit);
+        SpinBlock b(crit);
         possibleGoers++;
         if (memTraceLevel >= 4)
             logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::noteDataBuffReleased dataBuffs=%u dataBuffPages=%u possibleGoers=%u dataBuff=%p rowMgr=%p", 
