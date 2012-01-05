@@ -548,7 +548,9 @@ public:
 class FixedSizeHeaplet : public BigHeapletBase
 {
 protected:
+#ifndef USE_CAS
     mutable CriticalSection FSHcrit;
+#endif
     unsigned r_blocks;  // the free chain as a relative pointer
     size32_t fixedSize; 
     size32_t freeBase;
@@ -582,7 +584,7 @@ private:
         if (ptr)
         {
             ptrdiff_t diff = ptr - (char *) this;
-            assertex(diff < HEAP_ALIGNMENT_SIZE);
+            assert(diff < HEAP_ALIGNMENT_SIZE);
             return (unsigned) diff;
         }
         else
@@ -591,7 +593,7 @@ private:
 
     inline char * makeAbsolute(unsigned v)
     {
-        assertex(v < HEAP_ALIGNMENT_SIZE);
+        assert(v < HEAP_ALIGNMENT_SIZE);
         if (v)
             return ((char *) this) + v;
         else
@@ -720,17 +722,23 @@ public:
                 }
                 else
                 {
-                    CriticalBlock b(FSHcrit);
-                    if (freeBase != (size32_t) -1)
+                    loop
                     {
+                        unsigned _freeBase = atomic_read((atomic_t *) &freeBase);
+                        if (_freeBase==(unsigned) -1)
+                            break;
                         size32_t bytesFree = HEAP_ALIGNMENT_SIZE - offsetof(FixedSizeHeaplet,data) - freeBase;
                         if (bytesFree>=size)
                         {
-                            ret = data + freeBase;
-                            freeBase += size;
+                            ret = data + _freeBase;
+                            if (atomic_cas((atomic_t *) &freeBase, _freeBase + size, _freeBase))
+                                break;
                         }
                         else
-                            freeBase = (size32_t) -1;
+                        {
+                            if (atomic_cas((atomic_t *) &freeBase, (unsigned) -1, _freeBase))
+                                break;
+                        }
                     }
                     break;
                 }
@@ -793,7 +801,9 @@ public:
 
     virtual void reportLeaks(unsigned &leaked, const IContextLogger &logctx) const 
     {
+#ifndef USE_CAS
         CriticalBlock b(FSHcrit);
+#endif
         unsigned base = 0;
         unsigned limit = freeBase;
         if (limit==(unsigned)-1)
@@ -821,7 +831,9 @@ public:
 
     virtual void checkHeap() const 
     {
+#ifndef USE_CAS
         CriticalBlock b(FSHcrit);
+#endif
         unsigned base = 0;
         unsigned limit = freeBase;
         if (limit==(unsigned)-1)
@@ -840,7 +852,9 @@ public:
 
     virtual void getPeakActivityUsage(IActivityMemoryUsageMap *map) const 
     {
+#ifndef USE_CAS
         CriticalBlock b(FSHcrit);
+#endif
         unsigned base = 0;
         unsigned limit = freeBase;
         if (limit==(unsigned)-1)
@@ -1382,11 +1396,11 @@ public:
                 atomic_set(&memcalls, 1000);
             }
         }
-        SpinBlock b(crit);
         if (isUltraCheckingHeap)
             checkHeap();
         if (_size > FixedSizeHeaplet::maxHeapSize(isCheckingHeap))
         {
+            SpinBlock b(crit);
             unsigned numPages = ((_size + HugeHeaplet::dataOffset() - 1) / HEAP_ALIGNMENT_SIZE) + 1;
             checkLimit(numPages);
             HugeHeaplet *head = new (_size) HugeHeaplet(allocatorCache, _size, activityId);
@@ -1399,6 +1413,7 @@ public:
         else
         {
             unsigned needSize = roundup(_size);
+            SpinBlock b(crit);
             BigHeapletBase *finger = active.next;
             while (finger != &active)
             {
