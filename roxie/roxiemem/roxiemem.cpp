@@ -41,6 +41,13 @@ Some thoughts on improving this memory manager:
    We might want to reposition them such that the actual row data was on a better alignment boundary.
    They don't really need to be 4 bytes either (though we'd need some new atomic-types if not)
    We could have an array of link-counts/activity ids at the start of the block...
+2. Fix the list per chunk size to be clean
+3. Use lockfree lists
+4. In 64bit with no memory space constraints, should I simplify?? Give each manager a slab of memory space whose size = limit.
+   Does that simplify? Not really sure it does (unless it allows me to use a third party suballocator?)
+5. If I double the size of a row can I keep it in the same chunk if the space ahead of me is free? Don't see why not...
+   In general allocating 2n blocks in the n size chunkmgr is fine, but need to be careful when freeing them that we add two onto free
+   chain. Allocating from hwm is just as efficient, but allocating from free chain less so. Does it lead to fragmentation?
 
 */
 //================================================================================
@@ -1581,8 +1588,6 @@ public:
         {
 #ifdef USE_MULTIPLE_ACTIVE
             unsigned allocIndex = getChunkIndex(_size);
-            if (!chunkLengths.isItem(allocIndex))
-                throw MakeStringException(0, "%p, Internal error (%d -> %d)", this, _size, allocIndex);
             unsigned needSize = chunkLengths.item(allocIndex);
             SpinBlock b(crit[allocIndex]);
             BigHeapletBase *finger = active[allocIndex];
@@ -1611,8 +1616,6 @@ public:
             head->next = active[allocIndex];
             active[allocIndex] = head;
             return head->allocate(needSize, activityId);
-
-            UNIMPLEMENTED;
 #else
             unsigned needSize = roundup(_size);
             SpinBlock b(crit);
