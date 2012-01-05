@@ -29,6 +29,7 @@ namespace roxiemem {
 #define USE_MADVISE_ON_FREE     // avoid linux swapping 'freed' pages to disk
 #define VARIABLE_CHUNKS
 #define USE_CAS
+#define USE_MULTIPLE_ACTIVE
 
 unsigned memTraceLevel = 1;
 size32_t memTraceSizeLimit = 0;
@@ -456,7 +457,6 @@ class BigHeapletBase : public HeapletBase
 
 protected:
     BigHeapletBase *next;
-    BigHeapletBase *prev;
     const IRowAllocatorCache *allocatorCache;
     
     inline unsigned getActivityId(unsigned rawId) const
@@ -467,29 +467,8 @@ protected:
 public:
     BigHeapletBase(const IRowAllocatorCache *_allocatorCache) : HeapletBase(HEAP_ALIGNMENT_MASK)
     {
-        next = this;
-        prev = this;
+        next = NULL;
         allocatorCache = _allocatorCache;
-    }
-
-    void moveToChainHead(BigHeapletBase &chain)
-    {
-        next->prev = prev;
-        prev->next = next;
-        next = chain.next;
-        prev = &chain;
-        chain.next->prev = this;
-        chain.next = this;
-    }
-
-    void moveToChainTail(BigHeapletBase &chain)
-    {
-        next->prev = prev;
-        prev->next = next;
-        next = &chain;
-        prev = chain.prev;
-        chain.prev->next = this;
-        chain.prev = this;
     }
 
     bool isPointer(void *ptr)
@@ -948,8 +927,7 @@ public:
 
     virtual void *allocate(unsigned size, unsigned activityId)
     {
-        // We share a single list of active with the fixedSizeHeaplets, but we never want to respond to allcoation request from one..
-        return NULL;
+        throwUnexpected();
     }
 
     void *allocateHuge(unsigned size, unsigned activityId)
@@ -1059,8 +1037,14 @@ public:
 //
 class CChunkingRowManager : public CInterface, implements IRowManager
 {
-    BigHeapletBase active;
+#ifdef USE_MULTIPLE_ACTIVE
+    BigHeapletBase *active[100]; // MORE
+    SpinLock crit[100];
+#else
+    BigHeapletBase *active;
     SpinLock crit;
+#endif
+    BigHeapletBase *hugeActive;
     unsigned pageLimit;
     ITimeLimiter *timeLimit;
     unsigned peakPages;
@@ -1105,8 +1089,13 @@ public:
     IMPLEMENT_IINTERFACE;
 
     CChunkingRowManager (unsigned _memLimit, ITimeLimiter *_tl, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, bool _ignoreLeaks)
-        : logctx(_logctx), allocatorCache(_allocatorCache), active(NULL)
+        : logctx(_logctx), allocatorCache(_allocatorCache), hugeActive(NULL)
     {
+#ifdef USE_MULTIPLE_ACTIVE
+        memset(active, 0, sizeof(active));
+#else
+        active = NULL;
+#endif
         logctx.Link();
         pageLimit = _memLimit / HEAP_ALIGNMENT_SIZE;
         timeLimit = _tl;
@@ -1126,6 +1115,11 @@ public:
         isUltraCheckingHeap = false;
 #endif
 #ifdef VARIABLE_CHUNKS
+        UnsignedArray m;
+        for (int i = 28; i <= 40; i++)
+            m.append(i);
+        setChunkSizes(m, true);
+#if 0
         chunkLengths.append(32);
         chunkLengths.append(64);
         chunkLengths.append(128);
@@ -1133,6 +1127,7 @@ public:
         chunkLengths.append(512);
         chunkLengths.append(1024);
         chunkLengths.append(2048);
+#endif
 #endif
         if (memTraceLevel >= 2)
             logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager c-tor memLimit=%u pageLimit=%u rowMgr=%p", _memLimit, pageLimit, this);
@@ -1153,18 +1148,45 @@ public:
             if (leaked > maxLeakReport)
                 leaked = maxLeakReport;
         }
-
-        BigHeapletBase *finger = active.next;
-        while (finger != &active)
+#ifdef USE_MULTIPLE_ACTIVE
+        for (int i = 0; i < 100; i++)
+        {
+            BigHeapletBase *finger = active[i];
+            while (finger)
+            {
+                if (memTraceLevel >= 3)
+                    logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager d-tor freeing heaplet linked in active list - addr=%p rowMgr=%p",
+                            finger, this);
+                if (leaked && memTraceLevel >= 2)
+                    finger->reportLeaks(leaked, logctx);
+                BigHeapletBase *next = finger->next;
+                delete finger;
+                finger = next;
+            }
+        }
+#else
+        BigHeapletBase *finger = active;
+        while (finger)
         {
             if (memTraceLevel >= 3) 
-                logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager d-tor freeing Heaplet linked in active list - addr=%p pages=%u rowMgr=%p", 
-                        finger, finger->sizeInPages(), this);
+                logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager d-tor freeing heaplet linked in active list - addr=%p rowMgr=%p",
+                        finger, this);
             if (leaked && memTraceLevel >= 2)
                 finger->reportLeaks(leaked, logctx);
             BigHeapletBase *next = finger->next;
             delete finger;
             finger = next;
+        }
+#endif
+        BigHeapletBase *hfinger = hugeActive;
+        while (hfinger)
+        {
+            if (memTraceLevel >= 2)
+                logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager d-tor freeing huge heaplet linked in active list - addr=%p pages=%u rowMgr=%p",
+                        hfinger, hfinger->sizeInPages(), this);
+            BigHeapletBase *next = hfinger->next;
+            delete hfinger;
+            hfinger = next;
         }
         DataBufferBase *dfinger = activeBuffs;
         while (dfinger)
@@ -1220,25 +1242,50 @@ public:
             if (leaked > maxLeakReport)
                 leaked = maxLeakReport;
         }
-
-        BigHeapletBase *finger = active.next;
-        while (leaked && finger != &active)
+#ifdef USE_MULTIPLE_ACTIVE
+        for (int i = 0; i < 100; i++)
+        {
+            BigHeapletBase *finger = active[i];
+            while (leaked && finger)
+            {
+                if (leaked && memTraceLevel >= 1)
+                    finger->reportLeaks(leaked, logctx);
+                finger = finger->next;
+            }
+        }
+#else
+        BigHeapletBase *finger = active;
+        while (leaked && finger)
         {
             if (leaked && memTraceLevel >= 1)
                 finger->reportLeaks(leaked, logctx);
             finger = finger->next;
         }
+#endif
     }
 
     virtual void checkHeap()
     {
+#ifdef USE_MULTIPLE_ACTIVE
+        for (int i = 0; i < 100; i++)
+        {
+            SpinBlock c1(crit[i]);
+            BigHeapletBase *finger = active[i];
+            while (finger)
+            {
+                finger->checkHeap();
+                finger = finger->next;
+            }
+        }
+#else
         SpinBlock c1(crit);
-        BigHeapletBase *finger = active.next;
-        while (finger != &active)
+        BigHeapletBase *finger = active;
+        while (finger)
         {
             finger->checkHeap();
             finger = finger->next;
         }
+#endif
     }
 
     virtual void setActivityTracking(bool val)
@@ -1254,56 +1301,131 @@ public:
 
     virtual unsigned allocated()
     {
-        SpinBlock c1(crit);
         unsigned total = 0;
-        BigHeapletBase *finger = active.next;
-        while (finger != &active)
+#ifdef USE_MULTIPLE_ACTIVE
+        for (int i = 0; i < 100; i++)
+        {
+            SpinBlock c1(crit[i]);
+            BigHeapletBase *finger = active[i];
+            while (finger)
+            {
+                total += finger->queryCount() - 1; // There is one refcount for the page itself on the active q
+                assertex(finger != finger->next);
+                finger = finger->next;
+            }
+        }
+#else
+        SpinBlock c1(crit);
+        BigHeapletBase *finger = active;
+        while (finger)
         {
             total += finger->queryCount() - 1; // There is one refcount for the page itself on the active q
             assertex(finger != finger->next);
             finger = finger->next;
         }
+#endif
         return total;
     }
 
     virtual unsigned pages()
     {
-        SpinBlock c1(crit);
         unsigned total = dataBuffPages;
-        BigHeapletBase *finger = active.next;
-        while (finger != &active)
+#ifdef USE_MULTIPLE_ACTIVE
+        for (int i = 0; i < 100; i++)
         {
-            BigHeapletBase *next = finger->next; 
+            SpinBlock c1(crit[i]);
+            BigHeapletBase *finger = active[i];
+            BigHeapletBase *prev = NULL;
+            while (finger)
+            {
+                BigHeapletBase *next = finger->next;
+                if (finger->queryCount()==1)
+                {
+                    if (memTraceLevel >= 3)
+                        logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing Heaplet linked in active list - addr=%p pages=%u recordSize=%u rowMgr=%p",
+                                finger, finger->sizeInPages(), finger->recordSize(), this);
+                    if (prev)
+                        prev->next = next;
+                    else
+                        active[i] = next;
+                    delete finger;
+                }
+                else
+                {
+                    total += finger->sizeInPages(); // always 1...
+                    prev = finger;
+                }
+                finger = next;
+            }
+        }
+#else
+        SpinBlock c1(crit);
+        BigHeapletBase *finger = active;
+        BigHeapletBase *prev = NULL;
+        while (finger)
+        {
+            BigHeapletBase *next = finger->next;
             if (finger->queryCount()==1)
             {
                 if (memTraceLevel >= 3) 
                     logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing Heaplet linked in active list - addr=%p pages=%u capacity=%u rowMgr=%p",
                             finger, finger->sizeInPages(), finger->_capacity(), this);
-                finger->prev->next = next;
-                next->prev = finger->prev;
+                if (prev)
+                    prev->next = next;
+                else
+                    active = next;
                 delete finger;
             }
             else
+            {
                 total += finger->sizeInPages();
+                prev = finger;
+            }
             finger = next;
+        }
+#endif
+        BigHeapletBase *hfinger = hugeActive;
+        BigHeapletBase *hprev = NULL;
+        while (hfinger)
+        {
+            BigHeapletBase *next = hfinger->next;
+            if (hfinger->queryCount()==1)
+            {
+                if (memTraceLevel >= 3)
+                    logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing huge heaplet linked in active list - addr=%p pages=%u recordSize=%u rowMgr=%p",
+                            hfinger, hfinger->sizeInPages(), hfinger->recordSize(), this);
+                if (hprev)
+                    hprev->next = next;
+                else
+                    hugeActive = next;
+                delete hfinger;
+            }
+            else
+            {
+                total += hfinger->sizeInPages();
+                hprev = hfinger;
+            }
+            hfinger = next;
         }
         return total;
     }
 
     virtual void getPeakActivityUsage()
     {
+#ifdef USE_MULTIPLE_ACTIVE
+        UNIMPLEMENTED;
+#else
         SpinBlock c1(crit);
-        usageMap.setown(new CActivityMemoryUsageMap);
-        BigHeapletBase *finger = active.next;
-        while (finger != &active)
+        BigHeapletBase *finger = active;
+        while (finger)
         {
-            BigHeapletBase *next = finger->next; 
             if (finger->queryCount()!=1)
             {
                 finger->getPeakActivityUsage(usageMap);
             }
-            finger = next;
+            finger = finger->next;
         }
+#endif
     }
 
     size32_t roundup(size32_t size) const
@@ -1376,6 +1498,46 @@ public:
         }
     }
 
+#ifdef USE_MULTIPLE_ACTIVE
+    size32_t getChunkIndex(size32_t size) const
+    {
+        if (size <= FixedSizeHeaplet::maxHeapSize(isCheckingHeap))
+        {
+            size += sizeof(atomic_t) + sizeof(unsigned);
+#ifdef CHECKING_HEAP
+            if (isCheckingHeap)
+                size += sizeof(unsigned); // for the magic number
+#endif
+#ifdef VARIABLE_CHUNKS
+            // search the chunkLengths array to find the first one >= size
+            int a = 0;
+            int b = chunkLengths.length();
+            if (b)
+            {
+                // Classic binchop ...
+                while (a<b)
+                {
+                    int i = (a+b)/2;
+                    size32_t cl = chunkLengths.item(i);
+                    if (cl==size)
+                        return i;  // good chance of an exact match since we tune the sizes to what we expect
+                    else if (cl < size)
+                        a = i+1;
+                    else
+                        b = i;
+                }
+                if (a < chunkLengths.length())
+                {
+                    assert(chunkLengths.item(a) >= size);
+                    return a;
+                }
+            }
+        }
+#endif
+        UNIMPLEMENTED;
+    }
+#endif
+
     virtual unsigned maxSimpleBlock()
     {
         return FixedSizeHeaplet::maxHeapSize(isCheckingHeap);
@@ -1400,30 +1562,76 @@ public:
             checkHeap();
         if (_size > FixedSizeHeaplet::maxHeapSize(isCheckingHeap))
         {
+#ifdef USE_MULTIPLE_ACTIVE
+            SpinBlock b(crit[99]); // MORE!
+#else
             SpinBlock b(crit);
+#endif
             unsigned numPages = ((_size + HugeHeaplet::dataOffset() - 1) / HEAP_ALIGNMENT_SIZE) + 1;
             checkLimit(numPages);
             HugeHeaplet *head = new (_size) HugeHeaplet(allocatorCache, _size, activityId);
             if (memTraceLevel >= 2 || _size>= 10000000)
                 logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::allocate(size %u) allocated new HugeHeaplet size %u - addr=%p pages=%u pageLimit=%u peakPages=%u rowMgr=%p", 
                         _size, (unsigned) (numPages*HEAP_ALIGNMENT_SIZE), head, numPages, pageLimit, peakPages, this);
-            head->moveToChainTail(active);
+            head->next = hugeActive;
+            hugeActive = head;
             return head->allocateHuge(_size, activityId);
         }
         else
         {
-            unsigned needSize = roundup(_size);
-            SpinBlock b(crit);
-            BigHeapletBase *finger = active.next;
-            while (finger != &active)
+#ifdef USE_MULTIPLE_ACTIVE
+            unsigned allocIndex = getChunkIndex(_size);
+            if (!chunkLengths.isItem(allocIndex))
+                throw MakeStringException(0, "%p, Internal error (%d -> %d)", this, _size, allocIndex);
+            unsigned needSize = chunkLengths.item(allocIndex);
+            SpinBlock b(crit[allocIndex]);
+            BigHeapletBase *finger = active[allocIndex];
+            BigHeapletBase *prev = NULL;
+            while (finger)
             {
                 void *ret = finger->allocate(needSize, activityId);
                 if (ret)
                 {
-                    if (finger != active.next)
-                        finger->moveToChainHead(active); // store active in LRU order
+                    if (prev)
+                    {
+                        prev->next = finger->next;
+                        finger->next = active[allocIndex];
+                        active[allocIndex] = finger;
+                    }
                     return ret;
                 }
+                prev = finger;
+                finger = (FixedSizeHeaplet *) finger->next;
+            }
+            checkLimit(1);
+            FixedSizeHeaplet *head = new FixedSizeHeaplet(allocatorCache, needSize, isCheckingHeap);
+            if (memTraceLevel >= 5 || (memTraceLevel >= 3 && needSize > 32000))
+                logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::allocate(size %u) allocated new FixedSizeHeaplet size %u - addr=%p pageLimit=%u peakPages=%u rowMgr=%p",
+                        _size, needSize, head, pageLimit, peakPages, this);
+            head->next = active[allocIndex];
+            active[allocIndex] = head;
+            return head->allocate(needSize, activityId);
+
+            UNIMPLEMENTED;
+#else
+            unsigned needSize = roundup(_size);
+            SpinBlock b(crit);
+            BigHeapletBase *finger = active;
+            BigHeapletBase *prev = NULL;
+            while (finger)
+            {
+                void *ret = finger->allocate(needSize, activityId);
+                if (ret)
+                {
+                    if (prev)
+                    {
+                        prev->next = finger->next;
+                        finger->next = active;
+                        active = finger;
+                    }
+                    return ret;
+                }
+                prev = finger;
                 finger = (FixedSizeHeaplet *) finger->next;
             }
             checkLimit(1); // MORE - could make this more efficient by not re-counting active
@@ -1431,8 +1639,10 @@ public:
             if (memTraceLevel >= 5 || (memTraceLevel >= 3 && needSize > 32000))
                 logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::allocate(size %u) allocated new FixedSizeHeaplet size %u - addr=%p pageLimit=%u peakPages=%u rowMgr=%p", 
                         _size, needSize, head, pageLimit, peakPages, this);
-            head->moveToChainHead(active);
+            head->next = active;
+            active = head;
             return head->allocate(needSize, activityId);
+#endif
         }
     }
 
@@ -1504,8 +1714,11 @@ public:
 
     virtual bool attachDataBuff(DataBuffer *dataBuff) 
     {
+#ifdef USE_MULTIPLE_ACTIVE
+        SpinBlock b(crit[99]); // MORE!
+#else
         SpinBlock b(crit);
-        
+#endif
         if (memTraceLevel >= 4)
             logctx.CTXLOG("RoxieMemMgr: attachDataBuff() attaching DataBuff to rowMgr - addr=%p dataBuffs=%u dataBuffPages=%u possibleGoers=%u rowMgr=%p", 
                     dataBuff, dataBuffs, dataBuffPages, possibleGoers, this);
@@ -1550,8 +1763,7 @@ public:
     
     virtual void noteDataBuffReleased(DataBuffer *dataBuff)
     {
-        SpinBlock b(crit);
-        possibleGoers++;
+        atomic_inc((atomic_t *) &possibleGoers);
         if (memTraceLevel >= 4)
             logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::noteDataBuffReleased dataBuffs=%u dataBuffPages=%u possibleGoers=%u dataBuff=%p rowMgr=%p", 
                     dataBuffs, dataBuffPages, possibleGoers, dataBuff, this);
@@ -2170,11 +2382,15 @@ protected:
         rm1->setChunkSizes(chunkSizes, true);
         void *ptrs[50];
         for (int i = 0; i < 50; i++)
+        {
             ptrs[i] = rm1->allocate(i);
+        }
         DBGLOG("testBuckets: pages allocated = %d (expected: 4)", rm1->pages());
         ASSERT(rm1->pages()==4);
         for (int i = 0; i < 50; i++)
+        {
             ReleaseRoxieRow(ptrs[i]);
+        }
         ASSERT(rm1->pages()==0);
     }
 
