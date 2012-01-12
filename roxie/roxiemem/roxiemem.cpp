@@ -1349,8 +1349,8 @@ public:
                 if (finger->queryCount()==1)
                 {
                     if (memTraceLevel >= 3)
-                        logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing Heaplet linked in active list - addr=%p pages=%u recordSize=%u rowMgr=%p",
-                                finger, finger->sizeInPages(), finger->recordSize(), this);
+                        logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing Heaplet linked in active list - addr=%p pages=%u capacity=%u rowMgr=%p",
+                                finger, finger->sizeInPages(), finger->_capacity(), this);
                     if (prev)
                         prev->next = next;
                     else
@@ -1399,8 +1399,8 @@ public:
             if (hfinger->queryCount()==1)
             {
                 if (memTraceLevel >= 3)
-                    logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing huge heaplet linked in active list - addr=%p pages=%u recordSize=%u rowMgr=%p",
-                            hfinger, hfinger->sizeInPages(), hfinger->recordSize(), this);
+                    logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing huge heaplet linked in active list - addr=%p pages=%u capacity=%u rowMgr=%p",
+                            hfinger, hfinger->sizeInPages(), hfinger->_capacity(), this);
                 if (hprev)
                     hprev->next = next;
                 else
