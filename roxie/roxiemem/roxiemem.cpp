@@ -48,6 +48,24 @@ Some thoughts on improving this memory manager:
 5. If I double the size of a row can I keep it in the same chunk if the space ahead of me is free? Don't see why not...
    In general allocating 2n blocks in the n size chunkmgr is fine, but need to be careful when freeing them that we add two onto free
    chain. Allocating from hwm is just as efficient, but allocating from free chain less so. Does it lead to fragmentation?
+6. Use the knowledge that all chunk sizes are 8-byte aligned to reduce by a factor of 8 the size of a lookup table to retrieve the
+   allocator for a chunk size (but then again may not care if you move that lookup to the creation of the EngineRowAllocator
+7. Are any things like defaultRight or the row array for topn REALLY allocated once (and thus could use a singleton mgr) or are they
+   potentially actually per child query? I fear it is the latter...
+8. So what REALLY is the pattern of memory allocations in Roxie? Can I gather stats from anywhere? Do the current stats tell me
+   anything interesting?
+   - some things allocated directly (not via EngineRowAllocator) - typically not many of them, typically long lived
+   - some row sizes allocated a LOT - often short lived but not always
+   - Variable size rows common in roxie, fairly common in thor. But people will use fixed if speed gains are there...
+   - Child datasets ar a mixed blessing. They make more rows fixed size but also generate a need for variable-size blocks for
+     the rowsets themselves.
+   - Knowing the row sizes isn't likely to be a massive help to avoid fragmentation in thor. In Roxie fragmentation isn't issue anyway
+     and probably sticking to the powers-of-two will be smart
+   - If we somehow knew (when creating our engineRowAllocator) how long the row is likely to last, we could decide whether to
+     shrink as we finalize)
+   - OR (maybe this is equivalent) we could NEVER shrink as we finalize BUT do a clone when we want to hang on to a row. The clone
+     be a 'lazy shrink' of just rows which survived long enough to be worth considering shrinking, and would be able to do nothing
+     (avoid the call even?) in cases where there was no shrinking to be done...
 
 */
 //================================================================================
