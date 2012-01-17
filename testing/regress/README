@@ -1,0 +1,18 @@
+To build the regression suite:
+
+1. Create a working directory
+  e.g.
+  mkdir ~/temp
+  cd ~/temp
+
+2. Create the makefile using cmake
+  e.g.
+  cmake ~/hpcc/testing/regress
+
+3. Build the queries
+  e.g.
+  make -j4
+
+Use higher values of -j if you have plenty of CPUs...
+
+4. TBD
