@@ -1514,6 +1514,17 @@ public:
             logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::noteDataBuffReleased dataBuffs=%u dataBuffPages=%u possibleGoers=%u dataBuff=%p rowMgr=%p", 
                     dataBuffs, dataBuffPages, possibleGoers, dataBuff, this);
     }
+
+    virtual size32_t capacity(const void *ptr) const
+    {
+        return HeapletBase::capacity(ptr);
+    }
+
+    virtual IFixedRowHeap * createFixedRowHeap(size32_t size, unsigned activityId, RoxieHeapFlags flags)
+    {
+        //Although the activityId is passed here, there is nothing to stop multiple RowHeaps sharing the same ChunkAllocator
+        return NULL;
+    }
 };
 
 

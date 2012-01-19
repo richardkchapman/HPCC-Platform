@@ -2234,7 +2234,7 @@ public:
         assertex(pos + length <= datalen);
         void *ret = ((char *) data) + pos;
         pos += length;
-        return rowManager->clone(length, ret);
+        return rowManager->clone(length, ret, 0);
     }
 };
 
