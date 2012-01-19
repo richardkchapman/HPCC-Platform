@@ -8,7 +8,7 @@ IF(NOT EXISTS ${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt)
   SET (OUTPUT ${CMAKE_BINARY_DIR}/dependencies_${baseName}.txt)
   EXECUTE_PROCESS(
         COMMAND bash -c "echo SET \\\(DEPENDENCIES  >${OUTPUT};
-                         eclcc -I ${CMAKE_CURRENT_SOURCE_DIR} -E ${source} 2>/dev/null | grep sourcePath= | grep -v -i lib_ | grep -v -i std[/] | sed 's/.*sourcePath=\\\"\\([^\\\"]*\\).*/\\1/' >> ${OUTPUT};
+                         eclcc -I ${CMAKE_CURRENT_SOURCE_DIR} -Md ${source} 2>/dev/null >> ${OUTPUT};
                          echo \\\) >>${OUTPUT}"
   )
 ENDIF()
