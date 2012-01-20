@@ -9,7 +9,7 @@ ENDIF()
 
 INCLUDE (ecl_compile.cmake)
 
-FILE(GLOB ECL_FILES "*.ecl")
+FILE(GLOB ECL_FILES "s*.ecl")
 LIST(SORT ECL_FILES)
 FOREACH ( LOOP_VAR ${ECL_FILES} )
  compile_workunit(${LOOP_VAR})

@@ -44,7 +44,7 @@ IF (REGRESS_LOCAL)
   ADD_CUSTOM_COMMAND(
     OUTPUT ${BINARY_DIR}/${baseName}.out
     COMMAND eclcc -o${BINARY_DIR}/${baseName}.out ${USE_ECL_OPTIONS} ${source}
-    DEPENDS ${DEPENDENCIES})
+    DEPENDS ${DEPENDENCIES} ${source})
 
   ADD_CUSTOM_TARGET(${baseName} ALL DEPENDS ${BINARY_DIR}/${baseName}.out ${DEPENDENCIES_DIR}/${baseName}.dep)
 ELSE()
@@ -56,7 +56,7 @@ ELSE()
   ADD_CUSTOM_COMMAND(
     OUTPUT ${ARCHIVE_DIR}/${baseName}.xml
     COMMAND eclcc -o${ARCHIVE_DIR}/${baseName}.xml -E ${USE_ECL_OPTIONS} ${source}
-    DEPENDS ${DEPENDENCIES})
+    DEPENDS ${DEPENDENCIES} ${source})
 
   ADD_CUSTOM_COMMAND(
     OUTPUT ${DEPLOY_DIR}/${baseName}.log
