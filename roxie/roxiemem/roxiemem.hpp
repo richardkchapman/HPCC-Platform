@@ -344,10 +344,32 @@ private:
 
 
 // Variable size aggregated link-counted Roxie (etc) row manager
+interface IFixedRowHeap : extends IInterface
+{
+    virtual void *allocate() = 0;
+    virtual void *clone(const void *source) = 0;
+    virtual void *finalizeRow(void *final) = 0;
+};
+
+interface IVariableRowHeap : extends IInterface
+{
+    virtual void *allocate(size32_t size) = 0;
+    virtual void *clone(size32_t size, const void *source) = 0;
+    virtual void *resizeRow(void * original, size32_t oldsize, size32_t newsize, size32_t &capacity) = 0;
+    virtual void *finalizeRow(void *final, unsigned originalSize, unsigned finalSize) = 0;
+};
+
+enum RoxieHeapFlags
+{
+    RHFnone             = 0x0000,
+    RHFpacked           = 0x0001,
+    RHFhasdestructor    = 0x0002,
+};
+
 interface IRowManager : extends IInterface
 {
-    virtual void *allocate(size32_t size, unsigned activityId=0) = 0;
-    virtual void *clone(size32_t size, const void *source, unsigned activityId=0) = 0;
+    virtual void *allocate(size32_t size, unsigned activityId) = 0;
+    virtual void *clone(size32_t size, const void *source, unsigned activityId) = 0;
     virtual void *resizeRow(void * original, size32_t oldsize, size32_t newsize, unsigned activityId, size32_t &capacity) = 0;
     virtual void *finalizeRow(void *final, unsigned originalSize, unsigned finalSize, unsigned activityId) = 0;
     virtual void setMemoryLimit(memsize_t size) = 0;
@@ -361,6 +383,8 @@ interface IRowManager : extends IInterface
     virtual void reportLeaks() = 0;
     virtual unsigned maxSimpleBlock() = 0;
     virtual void checkHeap() = 0;
+    virtual size32_t capacity(const void *ptr) const = 0;
+    virtual IFixedRowHeap * createFixedRowHeap(size32_t size, unsigned activityId, RoxieHeapFlags flags) = 0;  // do we want other options and pack->flags
     // Set the chunk sizes to use. Note that these sizes are before adjusting for per-row overhead
     virtual void setChunkSizes(const UnsignedArray &) = 0;
 };
