@@ -42,11 +42,11 @@ IF (REGRESS_LOCAL)
   SET (BINARY_DIR "${CMAKE_BINARY_DIR}/bin")
   FILE (MAKE_DIRECTORY ${BINARY_DIR})
   ADD_CUSTOM_COMMAND(
-    OUTPUT ${baseName}.out
-    COMMAND eclcc -o${baseName}.out ${USE_ECL_OPTIONS} ${source}
+    OUTPUT ${BINARY_DIR}/${baseName}.out
+    COMMAND eclcc -o${BINARY_DIR}/${baseName}.out ${USE_ECL_OPTIONS} ${source}
     DEPENDS ${DEPENDENCIES})
 
-  ADD_CUSTOM_TARGET(${baseName} ALL DEPENDS ${baseName}.out ${DEPENDENCIES_DIR}/${baseName}.dep)
+  ADD_CUSTOM_TARGET(${baseName} ALL DEPENDS ${BINARY_DIR}/${baseName}.out ${DEPENDENCIES_DIR}/${baseName}.dep)
 ELSE()
   SET (ARCHIVE_DIR "${CMAKE_BINARY_DIR}/archive")
   FILE (MAKE_DIRECTORY ${ARCHIVE_DIR})
