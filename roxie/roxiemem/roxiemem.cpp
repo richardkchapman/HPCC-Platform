@@ -1377,7 +1377,46 @@ public:
         hugeHeap.getPeakActivityUsage(usageMap);
     }
 
-    size32_t roundup(size32_t size) const
+    static unsigned smallTable[];
+    static unsigned bigTable[];
+    static unsigned hugeTable[];
+    static unsigned bucketCapacities[];
+
+    static unsigned bucketSizeIndex(size32_t size)
+    {
+        // Basic premise: with a 1Mb (2^20) range that we do buckets with, and stripping the bottom 4 bits (because we align to 16bytes), we have
+        // 16 bits left.
+        // If top 8 of those are 0, we use a lookup table on the lower 8 to determine the bucket size
+        // Otherwise, we will be at least 2^12 (4096) aligned and will use the top 8 bits to determine the bucket size
+        // This is making some assumptions!
+        // to ensure that we round up not down, we start by incrementing
+        size32_t div16 = (size + 15) >> 4;
+        if (div16 < 256)
+        {
+            return smallTable[div16];
+        }
+        else
+        {
+            size32_t div4k = (div16+255) >> 8;
+            if (div4k < 256)
+            {
+                return bigTable[div4k];
+            }
+            else
+            {
+                // It's over 1mb...
+                size32_t div1m = (div4k+255) >> 8;
+                if (div1m < 256)
+                {
+                    return hugeTable[div1m];
+                }
+                else
+                    UNIMPLEMENTED; // too big
+            }
+        }
+    }
+
+    static size32_t roundup(size32_t size, bool isCheckingHeap)
     {
         if (size <= FixedSizeHeaplet::maxHeapSize(isCheckingHeap))
         {
@@ -1447,7 +1486,7 @@ public:
         }
         else
         {
-            unsigned needSize = roundup(_size);
+            unsigned needSize = roundup(_size, isCheckingHeap);
             return normalHeap.doAllocate(needSize, activityId);
         }
     }
@@ -1467,7 +1506,7 @@ public:
         capacity = HeapletBase::capacity(original);
         if (newsize <= capacity)
         {
-            if (newsize >= oldsize || roundup(newsize) == roundup(oldsize))
+            if (newsize >= oldsize || roundup(newsize, isCheckingHeap) == roundup(oldsize, isCheckingHeap))
                 return original;
 
             void *ret = allocate(newsize, activityId);
@@ -1494,7 +1533,7 @@ public:
             assertex(!HeapletBase::isShared(original));
             assertex(finalSize<=initialSize);
         }
-        if (finalSize==initialSize || roundup(finalSize) == roundup(initialSize))
+        if (finalSize==initialSize || roundup(finalSize, isCheckingHeap) == roundup(initialSize, isCheckingHeap))
         {
             // MORE - if we were paranoid we could assert that supplied activityId matched the one stored with the row
             if (activityId & ACTIVITY_FLAG_NEEDSDESTRUCTOR)
@@ -1602,6 +1641,10 @@ public:
     }
 };
 
+unsigned CChunkingRowManager::smallTable[] = {1};
+unsigned CChunkingRowManager::bigTable[] = {2};
+unsigned CChunkingRowManager::hugeTable[] = {3};
+unsigned CChunkingRowManager::bucketCapacities[] = {3};
 
 void * CRoxieFixedRowHeap::allocate()
 {
@@ -2027,6 +2070,7 @@ public:
 class RoxieMemTests : public CppUnit::TestFixture  
 {
     CPPUNIT_TEST_SUITE( RoxieMemTests );
+        CPPUNIT_TEST(testChunkMap);
         CPPUNIT_TEST(testHuge);
         CPPUNIT_TEST(testHeapletCas);
         CPPUNIT_TEST(testCas);
@@ -2052,6 +2096,15 @@ protected:
     static int mc4(const void *x, const void *y)
     {
         return -memcmp(x, y, sizeof(void*));
+    }
+
+    void testChunkMap()
+    {
+        for (unsigned i = 0; i < 1024*1024; i++)
+        {
+            unsigned bsIndex = CChunkingRowManager::bucketSizeIndex(i);
+            ASSERT(CChunkingRowManager::bucketCapacities[bsIndex] == CChunkingRowManager::roundup(i, false));
+        }
     }
 
     void testDatamanager()

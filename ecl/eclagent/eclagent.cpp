@@ -2036,8 +2036,8 @@ void EclAgent::runProcess(IEclProcess *process)
     rtlSetReleaseRowHook(queryHThorRtlRowCallback());
 
     //Get memory limit. Workunit specified value takes precedence over config file
-    int memLimitMB = globals->getPropInt("defaultMemoryLimitMB", DEFAULT_MEM_LIMIT);
-    memLimitMB = queryWorkUnit()->getDebugValueInt("hthorMemoryLimit", memLimitMB);
+    memsize_t memLimitMB = globals->getPropInt("defaultMemoryLimitMB", DEFAULT_MEM_LIMIT);
+    memLimitMB = queryWorkUnit()->getDebugValueInt64("hthorMemoryLimit", memLimitMB);
     roxiemem::setTotalMemoryLimit(memLimitMB * 1024 * 1024);
 
     if (debugContext)

@@ -116,6 +116,7 @@ bool testDaliServixPresent(const IpAddress &ip)
 
 unsigned getDaliServixVersion(const SocketEndpoint &_ep,StringBuffer &ver)
 {
+    return 0;
     SocketEndpoint ep(_ep);
     setDafsEndpointPort(ep);
     if (ep.isNull())

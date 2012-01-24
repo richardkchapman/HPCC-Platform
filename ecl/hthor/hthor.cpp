@@ -3773,7 +3773,7 @@ void CSimpleSorterBase::killSorted()
 
 void CQuickSorter::performSort()
 {
-    qsortvec((void * *)rows.getArray(), rows.ordinality(), *compare);
+    parqsortvec((void * *)rows.getArray(), rows.ordinality(), *compare);
     finger = 0;
 }
 

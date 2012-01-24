@@ -17,15 +17,17 @@
 ############################################################################## */
 
 // Perform global terasort
+import std;
 
 #option('THOR_ROWCRC', 0); // don't need individual row CRCs
-
+#option ('hthorMemoryLimit', 4000);
+#option ('hthorSpillThreshold', 4000000000);
 rec := record
      string10  key;
      string10  seq;
      string80  fill;
        end;
 
-in := DATASET('benchmark::terasort1',rec,FLAT);
-OUTPUT(SORT(in,key,UNSTABLE),,'benchmark::terasort1out',overwrite);
+in := DATASET('terasort1',rec,FLAT);
+OUTPUT(SORT(in,nofold(std.str.ToUpperCase(key)), std.editDistance(key, '1234566789'),UNSTABLE),,'terasort1out',overwrite);
 

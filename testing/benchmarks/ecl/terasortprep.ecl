@@ -20,7 +20,8 @@ IMPORT Std.System.thorlib;
 
 // Generate standard terasort datafile (minutesort format)
 
-unsigned8 totalrecs := 1000*1000*1000*1000/100;
+unsigned8 CLUSTERSIZE := 1;
+unsigned8 totalrecs := 1000*1000*1000/100;
 unsigned8 numrecs := totalrecs/CLUSTERSIZE : stored('numrecs');                       // rows per node except last
 unsigned8 numrecslast := totalrecs-(CLUSTERSIZE-1)*numrecs : stored('numrecslast');   // rows on last node
 
@@ -75,4 +76,4 @@ rec fillRow(rec L, unsigned4 c) := transform
 
 outdata := NORMALIZE(one_per_node, IF(thorlib.node()=thorlib.nodes()-1,numrecslast,numrecs), fillRow(LEFT, counter));  
 
-OUTPUT(outdata,,'benchmark::terasort1',overwrite);
+OUTPUT(outdata,,'~./terasort1',overwrite);
