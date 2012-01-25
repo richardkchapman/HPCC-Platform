@@ -28,6 +28,18 @@ rec := record
      string80  fill;
        end;
 
+string10 fn(string10 key) := BEGINC++
+//extern  void user1(char * __result,const char * key) {
+   char volatile * volatile r = __result;
+   for (unsigned i = 0; i < 100; i++)
+   {
+      for (unsigned j = 0; j < 10; j++)
+      {
+         r[j] = key[j];
+      }
+   }
+ENDC++;
+
 in := DATASET('terasort1',rec,FLAT);
-OUTPUT(SORT(in,nofold(std.str.ToUpperCase(key)), std.editDistance(key, '1234566789'),UNSTABLE),,'terasort1out',overwrite);
+OUTPUT(SORT(in,fn(key),UNSTABLE),,'terasort1out',overwrite);
 

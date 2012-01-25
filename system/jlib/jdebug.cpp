@@ -883,7 +883,7 @@ unsigned getAffinityCpus()
     if (0 == err)
     {
 #if __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 6)
-        return CPU_COUNT(&cpuset);
+        unsigned numCpus = CPU_COUNT(&cpuset);
 #else
         unsigned numCpus = 0;
         unsigned setSize = CPU_SETSIZE;
@@ -892,8 +892,9 @@ unsigned getAffinityCpus()
             if (CPU_ISSET(setSize, &cpuset))
                 ++numCpus;
         }
-        return numCpus;
 #endif /* GLIBC */
+        DBGLOG("getAffinityCpus returns %d", numCpus);
+        return numCpus;
     }
 }
 

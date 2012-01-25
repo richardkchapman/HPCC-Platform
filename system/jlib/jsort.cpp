@@ -49,6 +49,7 @@ static bool sortParallel(unsigned &numcpus)
     numcpus = 2;
     return true;        // to test
 #endif
+    DBGLOG("sortParallel returns %d (%d)", numcpus>1, numcpus);
     return (numcpus>1);
 }
 

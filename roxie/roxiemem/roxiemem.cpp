@@ -1377,46 +1377,43 @@ public:
         hugeHeap.getPeakActivityUsage(usageMap);
     }
 
-    static unsigned smallTable[];
-    static unsigned bigTable[];
-    static unsigned hugeTable[];
-    static unsigned bucketCapacities[];
-
-    static unsigned bucketSizeIndex(size32_t size)
+    static size32_t rawRoundup(size32_t size)
     {
-        // Basic premise: with a 1Mb (2^20) range that we do buckets with, and stripping the bottom 4 bits (because we align to 16bytes), we have
-        // 16 bits left.
-        // If top 8 of those are 0, we use a lookup table on the lower 8 to determine the bucket size
-        // Otherwise, we will be at least 2^12 (4096) aligned and will use the top 8 bits to determine the bucket size
-        // This is making some assumptions!
-        // to ensure that we round up not down, we start by incrementing
-        size32_t div16 = (size + 15) >> 4;
-        if (div16 < 256)
+        if (size <= FixedSizeHeaplet::dataAreaSize())
         {
-            return smallTable[div16];
+            if (size<=32)
+                return 32;
+            else if (size<=64)
+                return 64;
+            else if (size<=128)
+                return 128;
+            else if (size<=256)
+                return 256;
+            else if (size<=512)
+                return 512;
+            else if (size<=1024)
+                return 1024;
+            else if (size<=2048)
+                return 2048;
+            else if (size <= 65536)
+                return (((size-1) / 4096)+1) * 4096;
+            else
+            {
+                // Round up to nearest whole fraction of available heap space
+                unsigned frac = FixedSizeHeaplet::dataAreaSize()/size;
+                unsigned usesize = FixedSizeHeaplet::dataAreaSize()/frac;
+                return usesize;
+            }
         }
         else
         {
-            size32_t div4k = (div16+255) >> 8;
-            if (div4k < 256)
-            {
-                return bigTable[div4k];
-            }
-            else
-            {
-                // It's over 1mb...
-                size32_t div1m = (div4k+255) >> 8;
-                if (div1m < 256)
-                {
-                    return hugeTable[div1m];
-                }
-                else
-                    UNIMPLEMENTED; // too big
-            }
+            // roundup of larger values is used to decide whether worth shrinking or not...
+            unsigned numPages = ((size + HugeHeaplet::dataOffset() - 1) / HEAP_ALIGNMENT_SIZE) + 1;
+            return (numPages*HEAP_ALIGNMENT_SIZE) - HugeHeaplet::dataOffset();
         }
     }
 
-    static size32_t roundup(size32_t size, bool isCheckingHeap)
+    size32_t roundup(size32_t size)
     {
         if (size <= FixedSizeHeaplet::maxHeapSize(isCheckingHeap))
         {
@@ -1457,6 +1454,65 @@ public:
         }
     }
 
+    static unsigned capacityMap[512];     // Indexed by the return values from bucketSizeIndex
+    static unsigned bucketIndexMap[512];  // Indexed by the return values from bucketSizeIndex
+
+    static inline unsigned bucketSizeIndex(size32_t size)
+    {
+        // Basic premise: with a 1Mb (2^20) range that we do buckets with, and stripping the bottom 4 bits (because we align to 16bytes), we have
+        // 16 bits left.
+        // If top 8 of those are 0, we use the lower 8 to determine the bucket size
+        // Otherwise, we will be at least 2^12 (4096) aligned and will use the top 8 bits to determine the bucket size
+        // So we can map all sizes in range 0 - 2^20 into a value in the range 0-512 that we use to determine the bucket.
+        // This does not imply that there need to be 512 distinct bucket sizes - that's the upper limit. We use a 512-byte
+        // lookup table to map this value to a bucket index.
+
+        size32_t div16 = (size + 15) >> 4;
+        if (div16 < 256)
+            return div16;
+        size32_t div4k = (div16+255) >> 8;
+        if (div4k < 256)
+            return div4k + 256;
+#if HEAP_ALIGNMENT > 0x100000
+        // It's over 1mb...
+        size32_t div1m = (div4k+255) >> 8;
+        if (div1m < 256)
+            return div1m + 512;
+#if HEAP_ALIGNMENT > 0x10000000
+        // It's over 256mb...
+        size32_t div256m = (div1m+255) >> 8;
+        if (div256m < 256)
+            return div256m + 768;
+        throwUnexpected();
+#endif
+#endif
+        return (unsigned) -1;  // meaning too big for the table
+    }
+
+    static void initializeMaps()
+    {
+        size32_t i = 0;
+        unsigned lastIndex = 0;
+        loop
+        {
+            unsigned capacity = rawRoundup(i);
+            unsigned index = bucketSizeIndex(capacity);
+            if (index==(unsigned)-1)
+                break;
+            assertex(lastIndex < 512);
+            while (lastIndex <= index)
+                capacityMap[lastIndex++] = capacity;
+            i = capacity+1;
+        }
+        bucketIndexMap[0] = 0;
+        for (i = 1; i < 512; i++)
+        {
+            bucketIndexMap[i] = bucketIndexMap[i-1];
+            if (capacityMap[i-1]!=capacityMap[i])
+                bucketIndexMap[i]++;
+        }
+    }
+
     virtual unsigned maxSimpleBlock()
     {
         return FixedSizeHeaplet::maxHeapSize(isCheckingHeap);
@@ -1486,7 +1542,7 @@ public:
         }
         else
         {
-            unsigned needSize = roundup(_size, isCheckingHeap);
+            unsigned needSize = roundup(_size);
             return normalHeap.doAllocate(needSize, activityId);
         }
     }
@@ -1506,7 +1562,7 @@ public:
         capacity = HeapletBase::capacity(original);
         if (newsize <= capacity)
         {
-            if (newsize >= oldsize || roundup(newsize, isCheckingHeap) == roundup(oldsize, isCheckingHeap))
+            if (newsize >= oldsize || roundup(newsize) == roundup(oldsize))
                 return original;
 
             void *ret = allocate(newsize, activityId);
@@ -1533,7 +1589,7 @@ public:
             assertex(!HeapletBase::isShared(original));
             assertex(finalSize<=initialSize);
         }
-        if (finalSize==initialSize || roundup(finalSize, isCheckingHeap) == roundup(initialSize, isCheckingHeap))
+        if (finalSize==initialSize || roundup(finalSize) == roundup(initialSize))
         {
             // MORE - if we were paranoid we could assert that supplied activityId matched the one stored with the row
             if (activityId & ACTIVITY_FLAG_NEEDSDESTRUCTOR)
@@ -1641,10 +1697,8 @@ public:
     }
 };
 
-unsigned CChunkingRowManager::smallTable[] = {1};
-unsigned CChunkingRowManager::bigTable[] = {2};
-unsigned CChunkingRowManager::hugeTable[] = {3};
-unsigned CChunkingRowManager::bucketCapacities[] = {3};
+unsigned CChunkingRowManager::capacityMap[] = {0};
+unsigned CChunkingRowManager::bucketIndexMap[] = {0};
 
 void * CRoxieFixedRowHeap::allocate()
 {
@@ -2100,11 +2154,9 @@ protected:
 
     void testChunkMap()
     {
-        for (unsigned i = 0; i < 1024*1024; i++)
-        {
-            unsigned bsIndex = CChunkingRowManager::bucketSizeIndex(i);
-            ASSERT(CChunkingRowManager::bucketCapacities[bsIndex] == CChunkingRowManager::roundup(i, false));
-        }
+        CChunkingRowManager::initializeMaps();
+        for (unsigned i = 0; i < 0x100000; i++)
+            ASSERT(CChunkingRowManager::capacityMap[CChunkingRowManager::bucketSizeIndex(i)] == CChunkingRowManager::rawRoundup(i));
     }
 
     void testDatamanager()
