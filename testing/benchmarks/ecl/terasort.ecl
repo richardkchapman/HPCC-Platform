@@ -41,5 +41,5 @@ string10 fn(string10 key) := BEGINC++
 ENDC++;
 
 in := DATASET('terasort1',rec,FLAT);
-OUTPUT(SORT(in,fn(key),UNSTABLE),,'terasort1out',overwrite);
+OUTPUT(SORT(in,REGEXREPLACE('A', 'B', key),UNSTABLE),,'terasort1out',overwrite);
 
