@@ -221,24 +221,27 @@ set(CPACK_SOURCE_IGNORE_FILES
 ## config files.
 ###
 set( BUILD_TAG "${CPACK_RPM_PACKAGE_VERSION}_${CPACK_RPM_PACKAGE_RELEASE}-${stagever}")
-if (USE_GIT_DESCRIBE OR CHECK_GIT_TAG)
+if (CHECK_GIT_TAG)
+    execute_process(COMMAND "${GIT_COMMAND}" describe --exact --tags --dirty --matches ${BUILD_TAG}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE GIT_BUILD_TAG
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT "${GIT_BUILD_TAG}" STREQUAL "${BUILD_TAG}")
+        message(FATAL_ERROR "Git tag ${GIT_BUILD_TAG} does not match source version ${BUILD_TAG}" )
+    endif()
+elseif (USE_GIT_DESCRIBE)
     execute_process(COMMAND "${GIT_COMMAND}" describe --exact --tags --dirty
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         OUTPUT_VARIABLE GIT_BUILD_TAG
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if (CHECK_GIT_TAG)
-        if(NOT "${GIT_BUILD_TAG}" STREQUAL "${BUILD_TAG}")
-            message(FATAL_ERROR "Git tag ${GIT_BUILD_TAG} does not match source version ${BUILD_TAG}" )
-        endif()
-    else()
-        if ("${GIT_BUILD_TAG}" STREQUAL "")
-            execute_process(COMMAND "${GIT_COMMAND}" describe --always --tags --all --abbrev=6 --dirty --long
-                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-                OUTPUT_VARIABLE GIT_BUILD_TAG
-                ERROR_QUIET
-                OUTPUT_STRIP_TRAILING_WHITESPACE)
-        endif()
+    if ("${GIT_BUILD_TAG}" STREQUAL "")
+        execute_process(COMMAND "${GIT_COMMAND}" describe --always --tags --all --abbrev=6 --dirty --long
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            OUTPUT_VARIABLE GIT_BUILD_TAG
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
     endif()
     message ("-- Git tag is '${GIT_BUILD_TAG}'")
     if(NOT "${GIT_BUILD_TAG}" STREQUAL "${BUILD_TAG}")
