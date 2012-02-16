@@ -89,6 +89,8 @@ bool runOnce = false;
 
 unsigned udpMulticastBufferSize = 262142;
 bool roxieMulticastEnabled = true;
+bool sequentialExecutionReversed = false;
+bool sequentialExecution = false;
 
 IPropertyTree* topology;
 CriticalSection ccdChannelsCrit;
@@ -119,6 +121,7 @@ unsigned memoryStatsInterval = 0;
 memsize_t defaultMemoryLimit;
 unsigned defaultTimeLimit[3] = {0, 0, 0};
 unsigned defaultWarnTimeLimit[3] = {0, 5000, 5000};
+CheckPointModeType defaultCheckPointMode = CheckPointNone;
 
 int defaultCheckingHeap = 0;
 unsigned defaultParallelJoinPreload = 0;
@@ -732,6 +735,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         defaultWarnTimeLimit[0] = (unsigned) topology->getPropInt64("@defaultLowPriorityTimeWarning", 0);
         defaultWarnTimeLimit[1] = (unsigned) topology->getPropInt64("@defaultHighPriorityTimeWarning", 0);
         defaultWarnTimeLimit[2] = (unsigned) topology->getPropInt64("@defaultSLAPriorityTimeWarning", 0);
+        defaultCheckPointMode = (CheckPointModeType) topology->getPropInt("@defaultCheckPointMode", CheckPointNone);
 
         defaultXmlReadFlags = topology->getPropBool("@defaultStripLeadingWhitespace", true) ? xr_ignoreWhiteSpace : xr_none;
         defaultParallelJoinPreload = topology->getPropInt("@defaultParallelJoinPreload", 0);
@@ -778,6 +782,8 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         maxGraphLoopIterations = topology->getPropInt("@maxGraphLoopIterations", 1000);
         useTreeCopy = topology->getPropBool("@useTreeCopy", true);
         mergeSlaveStatistics = topology->getPropBool("@mergeSlaveStatistics", true);
+        sequentialExecutionReversed = topology->getPropBool("@sequentialExecutionReversed", false);
+        sequentialExecution = topology->getPropBool("@sequentialExecution", false);
 
         enableKeyDiff = topology->getPropBool("@enableKeyDiff", true);
         enableForceKeyDiffCopy = topology->getPropBool("@enableForceKeyDiffCopy", false);

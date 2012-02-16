@@ -1422,8 +1422,13 @@ private:
             }
             else if (stricmp(queryName, "control:defaultCheckingHeap")==0)
             {
-                defaultCheckingHeap = control->getPropInt("@val", false);
+                defaultCheckingHeap = control->getPropInt("@val", 0);
                 topology->setPropInt("@checkingHeap", defaultCheckingHeap);
+            }
+            else if (stricmp(queryName, "control:defaultCheckPointMode")==0)
+            {
+                defaultCheckPointMode = (CheckPointModeType) control->getPropInt("@val", CheckPointNone);
+                topology->setPropInt("@defaultCheckPointMode", defaultCheckPointMode);
             }
             else if (stricmp(queryName, "control:defaultConcatPreload")==0)
             {
@@ -1907,7 +1912,14 @@ private:
             break;
 
         case 'S':
-            if (stricmp(queryName, "control:setCopyResources")==0)
+            if (stricmp(queryName, "control:sequentialExecution")==0)
+            {
+                sequentialExecution = control->getPropBool("@val", true);
+                topology->setPropInt("@sequentialExecution", sequentialExecution);
+                sequentialExecutionReversed = control->getPropBool("@reversed", false);
+                topology->setPropInt("@sequentialExecutionReversed", sequentialExecutionReversed);
+            }
+            else if (stricmp(queryName, "control:setCopyResources")==0)
             {
                 copyResources = control->getPropBool("@val", true);
                 topology->setPropBool("@copyResources", copyResources);

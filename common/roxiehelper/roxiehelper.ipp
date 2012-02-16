@@ -44,9 +44,21 @@ struct ISimpleInputBase //base for IInputBase and IHThorSimpleInput
 };
 
 interface IOutputMetaData;
+interface IRoxieServerActivity;
+interface IActivityRestartContext : public IInterface // MORE - it's really a query restart context or a job restart context.... poorly named.
+{
+    virtual void toXML(IXmlWriter &out) const = 0;
+    virtual void saveActivityState(unsigned activityId, const MemoryBuffer &buf) = 0;
+    virtual void getActivityState(unsigned activityId, MemoryBuffer &buf) const = 0;
+    virtual bool hasActivityState(unsigned activityId) const = 0;
+    virtual void saveContext(const char *name, const IPropertyTree *context) = 0;
+    virtual IPropertyTree *restoreContext(const char *name) const = 0;
+};
+
 struct IInputBase : public ISimpleInputBase  //base for IRoxieInput and IHThorInput
 {
     virtual IOutputMetaData * queryOutputMeta() const = 0;
+    virtual bool saveRestartState(IActivityRestartContext *) const = 0;
 };
 
 //---------------------------------------------------

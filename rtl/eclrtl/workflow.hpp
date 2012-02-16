@@ -63,6 +63,8 @@ private:
   *  - Support once, stored, persist workflow items.
   *
   */
+interface IActivityRestartContext;
+
 class ECLRTL_API WorkflowMachine : public CInterface
 {
 public:
@@ -76,6 +78,7 @@ public:
     const char * queryEventExtra() const;
     bool hasItemsWaiting() const { return (itemsWaiting > 0); }
     void setCondition(bool value) { condition = value; }
+    virtual bool saveRestartState(IActivityRestartContext *restartInfo) const { return false; }
 
 protected:
     // Machine specific prologue/epilogue

@@ -1374,3 +1374,244 @@ ROXIEHELPER_API StringBuffer & expandLogicalFilename(StringBuffer & logicalName,
     }
     return logicalName;
 }
+
+//==============================================================================================================
+
+ROXIEHELPER_API void serializeRoxieRow(const void *row, MemoryBuffer &buf, IOutputRowSerializer *serializer)
+{
+    CThorDemoRowSerializer serializerTarget(buf);
+    serializer->serialize(serializerTarget, (const byte *) row);
+}
+
+ROXIEHELPER_API const void *deserializeRoxieRow(MemoryBuffer &buf, IOutputRowDeserializer *rowDeserializer, IEngineRowAllocator *rowAllocator)
+{
+    Owned<ISerialStream> bufferStream = createMemoryBufferSerialStream(buf);
+    CThorStreamDeserializerSource rowSource;
+    rowSource.setStream(bufferStream);
+    RtlDynamicRowBuilder rowBuilder(rowAllocator);
+    size32_t size = rowDeserializer->deserialize(rowBuilder, rowSource);
+    return rowBuilder.finalizeRowClear(size);
+}
+
+void RestartableQueue::serializeRestartInfo(MemoryBuffer &buf, IOutputRowSerializer *serializer) const
+{
+    unsigned bufferedCount = ordinality();
+    buf.append(bufferedCount);
+    if (bufferedCount)
+    {
+        CThorDemoRowSerializer serializerTarget(buf);
+        for (unsigned idx = 0; idx < bufferedCount; idx++)
+        {
+            const byte *thisRow = (const byte *) item(idx);
+            bool isNull = (thisRow==NULL);
+            buf.append(isNull);
+            if (!isNull)
+                serializer->serialize(serializerTarget, thisRow);
+        }
+    }
+}
+
+void RestartableQueue::deserializeRestartInfo(MemoryBuffer &buf, IOutputRowDeserializer *rowDeserializer, IEngineRowAllocator *rowAllocator)
+{
+    unsigned bufferedCount;
+    buf.read(bufferedCount);
+    if (bufferedCount)
+    {
+        Owned<ISerialStream> bufferStream = createMemoryBufferSerialStream(buf);
+        CThorStreamDeserializerSource rowSource;
+        rowSource.setStream(bufferStream);
+        RtlDynamicRowBuilder rowBuilder(rowAllocator);
+        while (bufferedCount--)
+        {
+            bool isNull;
+            buf.read(isNull);
+            if (isNull)
+            {
+                enqueue(NULL);
+            }
+            else
+            {
+                size32_t size = rowDeserializer->deserialize(rowBuilder, rowSource);
+                enqueue(rowBuilder.finalizeRowClear(size));
+            }
+        }
+    }
+}
+
+//==============================================================================================================
+
+class CActivityRestartContext : implements IActivityRestartContext, public CInterface
+{
+public:
+    IMPLEMENT_IINTERFACE;
+    CActivityRestartContext()
+    {
+        state.setown(createPTree("RestartState"));
+    }
+
+    CActivityRestartContext(const IPropertyTree *serialized)
+    {
+        // Is this the right interface? i.e. use the same object/interface for serializing it and deserializing it? Maybe...
+        state.setown(createPTreeFromIPT(serialized));
+    }
+
+    virtual void toXML(IXmlWriter &out) const
+    {
+        // ok how do I output an IPropertyTree to an IXmlWriter? Should be a more efficient way than this
+        StringBuffer x;
+        ::toXML(state, x);
+        out.outputQuoted(x.str());
+    }
+
+    virtual void saveActivityState(unsigned activityId, const MemoryBuffer &buf)
+    {
+        VStringBuffer xpath("./ActivityState[@activityId='%d']", activityId);
+        assertex (!state->hasProp(xpath));
+        Owned<IPropertyTree> activityTree = createPTree("ActivityState");
+        activityTree->setPropInt("@activityId", activityId);
+        activityTree->setPropBin(NULL, buf.length(), buf.toByteArray());  // MORE - shame it can't take ownership>
+        state->addPropTree("ActivityState",activityTree.getClear());
+    }
+
+    virtual void getActivityState(unsigned activityId, MemoryBuffer &buf) const
+    {
+        VStringBuffer xpath("./ActivityState[@activityId='%d']", activityId);
+        if (!state->getPropBin(xpath, buf))
+            DBGLOG("No state info available for activity %u", activityId);
+    }
+
+    virtual bool hasActivityState(unsigned activityId) const
+    {
+        VStringBuffer xpath("./ActivityState[@activityId='%d']", activityId);
+        return (state->hasProp(xpath));
+    }
+
+    virtual void saveContext(const char *name, const IPropertyTree *context)
+    {
+        if (context)
+            state->setPropTree(name, createPTreeFromIPT(context));
+    }
+
+    virtual IPropertyTree *restoreContext(const char *name) const
+    {
+        const IPropertyTree *ctx = state->getPropTree(name);
+        return ctx ? createPTreeFromIPT(ctx) : NULL;
+    }
+
+protected:
+    Owned<IPropertyTree> state;
+};
+
+ROXIEHELPER_API IActivityRestartContext *loadRestartContext(const IPropertyTree *serialized)
+{
+    return new CActivityRestartContext(serialized);
+}
+
+ROXIEHELPER_API IActivityRestartContext *createRestartContext()
+{
+    return new CActivityRestartContext;
+}
+
+#ifdef _USE_CPPUNIT
+#include <cppunit/extensions/HelperMacros.h>
+
+#define ASSERT(a) { if (!(a)) CPPUNIT_ASSERT(a); }
+
+class RoxieHelperTest : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE(RoxieHelperTest);
+        CPPUNIT_TEST(testStateVariables);
+        CPPUNIT_TEST(testNamedStateVariables);
+    CPPUNIT_TEST_SUITE_END();
+protected:
+
+    void testStateVariables()
+    {
+        CRoxieStateVariables s;
+        unsigned u1 = 123; s.registerVariable(u1);
+        __uint64 u2 = 456; s.registerVariable(u2);
+        bool b1 = true; s.registerVariable(b1);
+        Owned<IException> e1;
+        Owned<IException> e2 = MakeStringException(789, "Exception");
+        s.registerVariable(e1);
+        s.registerVariable(e2);
+
+        MemoryBuffer buf1;
+        s.serialize(buf1);
+
+        // It's possible I need a memory barrier here if compilers get too aggressive
+
+        u1 = u2 = 0;
+        b1 = false;
+        e1.setown(MakeStringException(2, "Error"));
+        e2.clear();
+
+        // and/or here
+
+        s.deserialize(buf1);
+        ASSERT(u1 == 123);
+        ASSERT(u2 == 456);
+        ASSERT(b1 == true);
+        ASSERT(e1 == NULL);
+        ASSERT(e2 != NULL);
+        ASSERT(e2->errorCode() == 789);
+        StringBuffer msg;
+        e2->errorMessage(msg);
+        ASSERT(strcmp(msg.str(), "Exception")==0);
+
+        MemoryBuffer buf2;
+        s.serialize(buf2);
+        ASSERT(buf1.length() == buf2.length());
+        ASSERT(memcmp(buf1.toByteArray(), buf2.toByteArray(), buf1.length())==0);
+    }
+
+#define registerVariable(a) registerNamedVariable(a, 0, #a)
+
+    void testNamedStateVariables()
+    {
+        traceLevel = 2;
+        // Yes, this code is the same as the code above...
+
+        CRoxieStateVariables s;
+        unsigned u1 = 123; s.registerVariable(u1);
+        __uint64 u2 = 456; s.registerVariable(u2);
+        bool b1 = true; s.registerVariable(b1);
+        Owned<IException> e1;
+        Owned<IException> e2 = MakeStringException(789, "Exception");
+        s.registerVariable(e1);
+        s.registerVariable(e2);
+
+        MemoryBuffer buf1;
+        s.serialize(buf1);
+
+        // It's possible I need a memory barrier here if compilers get too aggressive
+
+        u1 = u2 = 0;
+        b1 = false;
+        e1.setown(MakeStringException(2, "Error"));
+        e2.clear();
+
+        // and/or here
+
+        s.deserialize(buf1);
+        ASSERT(u1 == 123);
+        ASSERT(u2 == 456);
+        ASSERT(b1 == true);
+        ASSERT(e1 == NULL);
+        ASSERT(e2 != NULL);
+        ASSERT(e2->errorCode() == 789);
+        StringBuffer msg;
+        e2->errorMessage(msg);
+        ASSERT(strcmp(msg.str(), "Exception")==0);
+
+        MemoryBuffer buf2;
+        s.serialize(buf2);
+        ASSERT(buf1.length() == buf2.length());
+        ASSERT(memcmp(buf1.toByteArray(), buf2.toByteArray(), buf1.length())==0);
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION( RoxieHelperTest );
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( RoxieHelperTest, "RoxieHelperTest" );
+
+#endif

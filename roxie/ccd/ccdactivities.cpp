@@ -5190,7 +5190,7 @@ public:
         try
         {
             remoteGraph->beforeExecute();
-            Owned<IRoxieInput> input = remoteGraph->startOutput(0, remoteExtractBuilder.size(), remoteExtractBuilder.getbytes(), false);
+            Owned<IRoxieInput> input = remoteGraph->startOutput(0, remoteExtractBuilder.size(), remoteExtractBuilder.getbytes(), false, NULL);
             while (!aborted)
             {
                 const void * next = input->nextInGroup();

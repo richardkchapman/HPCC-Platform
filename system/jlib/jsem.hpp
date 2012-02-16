@@ -68,6 +68,8 @@ public:
     {
         ReleaseSemaphore(hSem,count,NULL);
     }
+
+    unsigned queryCount() const;
 protected:
     HANDLE hSem;
 
@@ -129,12 +131,13 @@ public:
     void signal();
     void signal(unsigned count);
     void reinit(unsigned initialCount=0U);
+    unsigned queryCount() const { return count; }  // For debugging...
 protected:
     void init();
 protected:
     MutexId mx;
     pthread_cond_t cond;
-    int count;
+    int count;  // Why not unsigned?
 };
 
 

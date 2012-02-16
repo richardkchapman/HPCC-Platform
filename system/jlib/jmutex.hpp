@@ -600,8 +600,8 @@ class ReadLockBlock
 {
     ReadWriteLock *lock;
 public:
-    ReadLockBlock(ReadWriteLock &l) : lock(&l)      { lock->lockRead(); }
-    ~ReadLockBlock()                                { if (lock) lock->unlockRead(); }
+    inline ReadLockBlock(ReadWriteLock &l) : lock(&l)      { lock->lockRead(); }
+    inline ~ReadLockBlock()                                { if (lock) lock->unlockRead(); }
     void clear()
     {
         if (lock)
@@ -612,12 +612,20 @@ public:
     }
 };
 
+class ReadUnlockBlock
+{
+    ReadWriteLock &lock;
+public:
+    inline ReadUnlockBlock(ReadWriteLock &l) : lock(l)       { lock.unlockRead(); }
+    inline ~ReadUnlockBlock()                                { lock.lockRead(); }
+};
+
 class WriteLockBlock
 {
     ReadWriteLock *lock;
 public:
-    WriteLockBlock(ReadWriteLock &l) : lock(&l)     { lock->lockWrite(); }
-    ~WriteLockBlock()                               { if (lock) lock->unlockWrite(); }
+    inline WriteLockBlock(ReadWriteLock &l) : lock(&l)     { lock->lockWrite(); }
+    inline ~WriteLockBlock()                               { if (lock) lock->unlockWrite(); }
     void clear()
     {
         if (lock)
@@ -625,6 +633,27 @@ public:
             lock->unlockWrite();
             lock = NULL;
         }
+    }
+};
+
+class TimedWriteLockBlock
+{
+    ReadWriteLock &lock;
+    bool didLock;
+public:
+    inline TimedWriteLockBlock(ReadWriteLock &l, unsigned timeout)
+      : lock(l)
+    {
+        didLock = lock.lockWrite(timeout);
+    }
+    inline ~TimedWriteLockBlock()
+    {
+        if (didLock)
+            lock.unlockWrite();
+    }
+    inline bool locked()
+    {
+        return didLock;
     }
 };
 

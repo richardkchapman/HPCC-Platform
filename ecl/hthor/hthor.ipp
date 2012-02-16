@@ -237,6 +237,7 @@ public:
     virtual bool needsAllocator() const { return false; }       
     void createRowAllocator();                                  
     virtual bool isPassThrough();
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const { return false; }
 
 protected:
     void updateProgressForOther(IWUGraphProgress &progress, unsigned otherActivity, unsigned otherSubgraph, unsigned whichOutput, unsigned __int64 numProcessed) const;
@@ -2690,6 +2691,7 @@ public:
     LibraryCallOutput(CHThorLibraryCallActivity * _owner, unsigned _output, IOutputMetaData * _meta);
 
     virtual const void * nextInGroup();
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const { return false; }
     virtual bool isGrouped();
     virtual IOutputMetaData * queryOutputMeta() const;
 

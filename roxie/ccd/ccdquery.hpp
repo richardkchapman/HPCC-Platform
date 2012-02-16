@@ -56,7 +56,7 @@ interface IActivityGraph : extends IInterface
 {
     virtual void abort() = 0;
     virtual void reset() = 0;
-    virtual void execute() = 0;
+    virtual void execute(const IActivityRestartContext *restartInfo) = 0;
     virtual void getProbeResponse(IPropertyTree *query) = 0;
     virtual void onCreate(IRoxieSlaveContext *ctx, IHThorArg *colocalArg) = 0;
     virtual void noteException(IException *E) = 0;
@@ -66,6 +66,7 @@ interface IActivityGraph : extends IInterface
     virtual IRoxieServerChildGraph * queryLoopGraph() = 0;
     virtual IRoxieServerChildGraph * createGraphLoopInstance(unsigned loopCounter, unsigned parentExtractSize, const byte * parentExtract, const IRoxieContextLogger &logctx) = 0;
     virtual const char *queryName() const = 0;
+    virtual bool saveRestartState(IActivityRestartContext *restartInfo) const = 0;
 };
 
 interface IRoxiePackage;
@@ -108,10 +109,11 @@ interface IQueryFactory : extends IInterface
     virtual void getActivityMetrics(StringBuffer &reply) const = 0;
 
     virtual IPropertyTree *cloneQueryXGMML() const = 0;
-    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IRoxieContextLogger &logctx) const = 0;
+    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IActivityRestartContext *restartInfo, const IRoxieContextLogger &logctx) const = 0;
     virtual char *getEnv(const char *name, const char *defaultValue) const = 0;
     virtual unsigned getPriority() const = 0;
     virtual unsigned getWarnTimeLimit() const = 0;
+    virtual CheckPointModeType getCheckPointMode() const = 0;
     virtual int getDebugValueInt(const char * propname, int defVal) const = 0;
     virtual bool getDebugValueBool(const char * propname, bool defVal) const = 0;
 

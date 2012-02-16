@@ -1546,10 +1546,16 @@ readAnother:
                     }
                     else
                     {
+                        unsigned __int64 queryHash = 0;
+                        if (strnicmp(rawText.str(), "<restart:", 9)==0)
+                        {
+                            queryName.set(queryXml->queryProp("RestartState/Query/@name"));
+                            queryHash = queryXml->getPropInt64("RestartState/Query/@hash", -1);
+                        }
                         queryFactory.setown(globalPackageSetManager->getQuery(queryName, logctx));
                         if (isHTTP)
                             client->setHttpMode(queryName, isRequestArray);
-                        if (queryFactory)
+                        if (queryFactory && (!queryHash || queryHash==queryFactory->queryHash()))
                         {
                             bool stripWhitespace = queryFactory->getDebugValueBool("stripWhitespaceFromStoredDataset", 0 != (xr_ignoreWhiteSpace & defaultXmlReadFlags));
                             stripWhitespace = queryXml->getPropBool("_stripWhitespaceFromStoredDataset", stripWhitespace);
@@ -1662,7 +1668,10 @@ readAnother:
                         else
                         {
                             pool->reportBadQuery(queryName.get(), logctx);
-                            throw MakeStringException(ROXIE_UNKNOWN_QUERY, "Unknown query %s", queryName.get());
+                            if (queryHash)
+                                throw MakeStringException(ROXIE_UNKNOWN_QUERY, "No query %s with hash %"I64F"d", queryName.get(), queryHash);
+                            else
+                                throw MakeStringException(ROXIE_UNKNOWN_QUERY, "Unknown query %s", queryName.get());
                         }
                     }
                 }

@@ -896,6 +896,11 @@ private:
             return ret;
         }
 
+        virtual bool saveRestartState(IActivityRestartContext *ctx) const
+        {
+            return in->saveRestartState(ctx);
+        }
+
         virtual void updateProgress(IWUGraphProgress &progress) const
         {
             IPropertyTree &edge = progress.updateEdge(owner->id, edgeId);

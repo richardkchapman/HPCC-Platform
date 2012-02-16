@@ -1148,7 +1148,7 @@ public:
     {
         return package;
     }
-    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IRoxieContextLogger &logctx) const 
+    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IActivityRestartContext *restartInfo, const IRoxieContextLogger &logctx) const
     {
         throwUnexpected();  // only on server...
     }
@@ -1177,6 +1177,10 @@ public:
     virtual unsigned getWarnTimeLimit() const
     {
         return warnTimeLimit;
+    }
+    virtual CheckPointModeType getCheckPointMode() const
+    {
+        return CheckPointUnspecified; // MORE - could provide a way to set at deploy time...
     }
     virtual int getDebugValueInt(const char * propname, int defVal) const
     {
@@ -1328,12 +1332,12 @@ public:
         return createWorkUnitServerContext(wu, this, _logctx);
     }
 
-    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IRoxieContextLogger &logctx) const
+    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IActivityRestartContext *restartInfo, const IRoxieContextLogger &logctx) const
     {
         IPropertyTree *workflow = queryWorkflowTree();
         if (workflow)
         {
-            return ::createRoxieWorkflowMachine(workflow, isOnce, logctx);
+            return ::createRoxieWorkflowMachine(workflow, isOnce, restartInfo, logctx);
         }
         else
             return NULL;

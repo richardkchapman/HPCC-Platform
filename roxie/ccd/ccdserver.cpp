@@ -85,6 +85,7 @@ namespace ccdserver_hqlhelper
 //#define _CHECK_HEAPSORT
 //#undef PARALLEL_EXECUTE
 //#define TRACE_SEEK_REQUESTS
+#define registerVariable(a) registerNamedVariable(a, queryId(), #a)
 #endif
 
 using roxiemem::OwnedRoxieRow;
@@ -842,12 +843,14 @@ public:
 
 };
 
-typedef enum { STATEreset, STATEstarted, STATEstopped, STATEstarting } activityState;
+typedef enum { STATEconstructed, STATEcreated, STATEreset, STATEstarted, STATEstopped, STATEstarting } ActivityState;
 
-const char *queryStateText(activityState state)
+const char *queryStateText(ActivityState state)
 {
     switch (state)
     {
+    case STATEconstructed: return "constructed";
+    case STATEcreated: return "created";
     case STATEreset: return "reset";
     case STATEstarted: return "started";
     case STATEstopped: return "stopped";
@@ -863,12 +866,13 @@ class CParallelActivityExecutor : public CAsyncFor
 public:
     unsigned parentExtractSize;
     const byte * parentExtract;
+    const IActivityRestartContext *restartInfo;
 
-    CParallelActivityExecutor(IRoxieServerActivityCopyArray & _activities, unsigned _parentExtractSize, const byte * _parentExtract) : 
-        activities(_activities), parentExtractSize(_parentExtractSize), parentExtract(_parentExtract) { }
+    CParallelActivityExecutor(IRoxieServerActivityCopyArray & _activities, unsigned _parentExtractSize, const byte * _parentExtract, const IActivityRestartContext *_restartInfo) :
+        activities(_activities), parentExtractSize(_parentExtractSize), parentExtract(_parentExtract), restartInfo(_restartInfo) { }
     void Do(unsigned i)
     {
-        activities.item(i).execute(parentExtractSize, parentExtract);
+        activities.item(i).execute(parentExtractSize, parentExtract, restartInfo);
     }
 private:
     IRoxieServerActivityCopyArray & activities;
@@ -888,14 +892,16 @@ protected:
     IHThorArg *colocalParent;
     IEngineRowAllocator *rowAllocator;
     CriticalSection statecrit;
+    CRoxieStateVariables stateVariables;
 
     mutable StatsCollector stats;
     unsigned processed;
     unsigned __int64 totalCycles;
     unsigned activityId;
-    activityState state;
+    ActivityState state;
     bool createPending;
     bool debugging;
+    bool restarted;
 
 public:
     IMPLEMENT_IINTERFACE;
@@ -912,11 +918,12 @@ public:
         totalCycles = 0;
         if (factory)
             factory->createChildQueries(childGraphs, this, _probeManager, *this);
-        state=STATEreset;
+        state=STATEconstructed;
         rowAllocator = NULL;
         debugging = _probeManager != NULL; // Don't want to collect timing stats from debug sessions
         colocalParent = NULL;
         createPending = true;
+        restarted = false;
     }
     
     CRoxieServerActivity(IHThorArg & _helper) : factory(NULL), basehelper(_helper)
@@ -927,11 +934,13 @@ public:
         meta.set(basehelper.queryOutputMeta());
         processed = 0;
         totalCycles = 0;
-        state=STATEreset;
+        state=STATEconstructed;
         rowAllocator = NULL;
         debugging = false;
         colocalParent = NULL;
         createPending = true;
+        stateVariables.registerVariable(processed);
+        restarted = false;
     }
 
     inline ~CRoxieServerActivity()
@@ -939,11 +948,8 @@ public:
         CriticalBlock cb(statecrit);
         if (traceStartStop)
             DBGLOG("%p destroy state=%s", this, queryStateText(state)); // Note- CTXLOG may not be safe
-        if (state!=STATEreset)
-        {
+        if (state!=STATEreset && state!=STATEconstructed && state!=STATEcreated)
             DBGLOG("STATE: Activity %d destroyed but not reset", activityId);
-            state = STATEreset;  // bit pointless but there you go... 
-        }
         basehelper.Release();
         ::Release(rowAllocator);
     }
@@ -1109,6 +1115,11 @@ public:
 
     virtual void onCreate(IRoxieSlaveContext *_ctx, IHThorArg *_colocalParent)
     {
+        if (state != STATEconstructed)
+        {
+            CTXLOG("STATE: Expected state to be constructed, but was %s, in activity %d", queryStateText(state), activityId);
+        }
+        state = STATEcreated;
         ctx = _ctx;
         colocalParent = _colocalParent;
         createPending = true;
@@ -1134,14 +1145,40 @@ public:
 
     virtual void serializeExtra(MemoryBuffer &out) {}
 
-    inline void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    inline void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock cb(statecrit);
-        if (state != STATEreset && state != STATEstarting)
+        restarted = false;
+        if (state != STATEcreated && state != STATEreset && state != STATEstarting)
         {
             CTXLOG("STATE: Expected state to be reset, but was %s, in activity %d", queryStateText(state), activityId);
         }
-        state=STATEstarted;
+        if (restartInfo)
+        {
+            MemoryBuffer buf;
+            restartInfo->getActivityState(activityId, buf);
+            assertex (buf.length());
+            if (buf.length()) // We COULD treat missing as non-fatal if we ever decide to optimize saved state of unstarted away entirely
+            {
+                byte savedState;
+                buf.read(savedState);
+                state = (ActivityState) savedState;
+            }
+            if (state > STATEcreated)
+            {
+                deserializeRestartInfo(buf);
+                restarted = true;
+            }
+            else // no state is saved for unstarted activities...
+            {
+                // NOTE - do't be tempted to optimize out the call to start upstream activities
+                // e.g. by setting restartInfo = NULL - upstream splitter activities MAY have been started and
+                // thus need restoring
+                state = STATEstarted;
+            }
+        }
+        else
+            state=STATEstarted;
 #ifdef TRACE_STARTSTOP
         if (traceStartStop)
         {
@@ -1152,22 +1189,31 @@ public:
             }
         }
 #endif
-        executeDependencies(parentExtractSize, parentExtract, 0);
+        executeDependencies(parentExtractSize, parentExtract, restartInfo, 0); // what about paused?
         if (input)
-            input->start(parentExtractSize, parentExtract, paused);
+            input->start(parentExtractSize, parentExtract, paused, restartInfo);
         ensureCreated();
         basehelper.onStart(parentExtract, NULL);
         if (factory)
             factory->noteStarted();
     }
 
-    void executeDependencies(unsigned parentExtractSize, const byte *parentExtract, unsigned controlId)
+    virtual void deserializeRestartInfo(MemoryBuffer &buf)
+    {
+        assertex (state > STATEcreated);  // No state is saved for unstarted activities
+        unsigned checkId;
+        buf.read(checkId);
+        assertex(checkId==activityId);
+        stateVariables.deserialize(buf);
+    }
+
+    void executeDependencies(unsigned parentExtractSize, const byte *parentExtract, const IActivityRestartContext *restartInfo, unsigned controlId)
     {
         //MORE: Create a filtered list and then use asyncfor
         ForEachItemIn(idx, dependencies)
         {
             if (dependencyControlIds.item(idx) == controlId)
-                dependencies.item(idx).execute(parentExtractSize, parentExtract);
+                dependencies.item(idx).execute(parentExtractSize, parentExtract, restartInfo);
         }
     }
 
@@ -1284,6 +1330,16 @@ public:
         }
     }
 
+    virtual bool saveRestartState(IActivityRestartContext *) const
+    {
+        // This is the default implementation for any activity that does not explicitly enable support
+        if (traceLevel)
+            DBGLOG("saveRestartState failed: unsupported activity %d type %s", activityId, getActivityText(factory->getKind()));
+        // Make it fatal for now, so easier to spot
+        throw MakeStringException(ROXIE_INTERNAL_ERROR, "saveRestartState failed: unsupported activity %d type %s", activityId, getActivityText(factory->getKind()));
+        return false;
+    }
+
     virtual void addDependency(IRoxieServerActivity &source, unsigned sourceIdx, int controlId) 
     {
         dependencies.append(source);
@@ -1296,7 +1352,7 @@ public:
     }
 
     // Sink activities should override this....
-    virtual void execute(unsigned parentExtractSize, const byte * parentExtract) 
+    virtual void execute(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         throw MakeStringException(ROXIE_SINK, "Internal error: execute() requires a sink");
     }
@@ -1399,6 +1455,48 @@ public:
     {
         return (factory != NULL) && factory->isSink();
     }
+
+protected:
+    bool saveUpstreamRestartInfo(IActivityRestartContext *restartCtx) const
+    {
+        if (input)
+            if (!input->saveRestartState(restartCtx))
+                return false;
+        ForEachItemIn(idx, dependencies)
+        {
+            // MORE - do I save for ALL controlIds ?
+            if (!dependencies.item(idx).saveRestartState(restartCtx))
+                return false;
+        }
+        return true;
+    }
+
+    virtual bool doSaveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        // We COULD skip saving state for upstream activities of unstarted (or completed) but
+        // it means that I can't detect errors where state SHOULD be present but is missing as easily
+        if (saveUpstreamRestartInfo(restartCtx))
+        {
+            MemoryBuffer serializedState;
+            byte bState = state;
+            serializedState.append(bState);
+            // For unstarted activities, the state is the ONLY thing we save
+            if (state <= STATEcreated || saveActivityRestartState(serializedState))
+            {
+                restartCtx->saveActivityState(activityId, serializedState);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    virtual bool saveActivityRestartState(MemoryBuffer &buf) const
+    {
+        buf.append(activityId);
+        stateVariables.serialize(buf);
+        return true;
+    }
+
 };
 
 //=====================================================================================================
@@ -1411,12 +1509,15 @@ protected:
     bool prefiltered;
     bool eof;
 
-    void lateStart(unsigned parentExtractSize, const byte *parentExtract, bool any)
+    void lateStart(unsigned parentExtractSize, const byte *parentExtract, const IActivityRestartContext *restartInfo, bool any)
     {
         prefiltered = !any;
         eof = prefiltered;
         if (!prefiltered)
-            input->start(parentExtractSize, parentExtract, false);
+        {
+            // MORE we probably need to restore MY state here...
+            input->start(parentExtractSize, parentExtract, false, restartInfo);
+        }
         else
         {
             if (traceStartStop)
@@ -1433,6 +1534,14 @@ public:
         input = NULL;
         prefiltered = false;
         eof = false;
+        stateVariables.registerVariable(eof);
+        // prefiltered is set from helper info in start - no need to save
+    }
+
+    virtual bool doSaveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        // Note that input here hides base class's input...
+        return input->saveRestartState(restartCtx) && CRoxieServerActivity::doSaveRestartState(restartCtx);
     }
 
     virtual void stop(bool aborting)
@@ -1474,7 +1583,6 @@ public:
         assertex(!idx);
         input = _in;
     }
-
 };
 
 //=====================================================================================================
@@ -1539,19 +1647,30 @@ protected:
     Semaphore started;                      // MORE: GH->RKC I'm pretty sure this can be deleted, since handled by RestartableThread
     bool groupAtOnce, eof, eog;
     CriticalSection crit;
-
+    CRoxieStateVariables stateVariables;
+    unsigned activityId;
+    Owned<SinkStartBlock> sinkBlock;
+    IRoxieSlaveContext *ctx;
 public:
-    RecordPullerThread(bool _groupAtOnce) 
-        : RestartableThread("RecordPullerThread"), groupAtOnce(_groupAtOnce)
+    RecordPullerThread(bool _groupAtOnce, unsigned _activityId)
+        : RestartableThread("RecordPullerThread"), groupAtOnce(_groupAtOnce), activityId(_activityId)
     {
+        ctx = NULL;
         input = NULL;
         helper = NULL;
         eof = eog = FALSE;
+        stateVariables.registerVariable(eof);
+        stateVariables.registerVariable(eog);
     }
 
     inline unsigned __int64 queryTotalCycles() const
     {
         return input->queryTotalCycles();
+    }
+
+    inline unsigned queryId()
+    {
+        return activityId;
     }
 
     void setInput(IRecordPullerCallback *_helper, IRoxieInput *_input)
@@ -1565,47 +1684,76 @@ public:
         return input;
     }
 
-    void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, unsigned preload, bool noThread, IRoxieSlaveContext *ctx)
+    bool saveRestartState(IActivityRestartContext *restartCtx) const
     {
-        eof = false;
-        eog = false;
-        input->start(parentExtractSize, parentExtract, paused);
-        try
+        // Note: my own state is saved in saveActivityRestartState below (since all the pullers want to share the buf).
+        return input->saveRestartState(restartCtx);
+    }
+
+    bool saveActivityRestartState(MemoryBuffer &buf) const
+    {
+        stateVariables.serialize(buf);
+        return true;
+    }
+
+    void deserializeRestartInfo(MemoryBuffer &buf)
+    {
+        stateVariables.deserialize(buf);
+    }
+
+    void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo,
+               unsigned preload, bool noThread, IRoxieSlaveContext *_ctx, bool restarted)
+    {
+        ctx = _ctx; // MORE - should have an onCreate
+        if (!restarted)
         {
-            if (preload && !paused)
+            eof = false;
+            eog = false;
+        }
+        input->start(parentExtractSize, parentExtract, paused, restartInfo);
+        if (!eof) // in restarted case may already be at eof
+        {
+            try
             {
-                if (traceLevel > 4)
-                    DBGLOG("Preload fetching first %d records", preload);
-                if (groupAtOnce)
-                    pullGroups(preload);
-                else
-                    pullRecords(preload);
-            }
-            if (eof)
-            {
-                if (traceLevel > 4)
-                    DBGLOG("No need to start puller after preload");
-                helper->processDone();
-            }
-            else
-            {
-                if (!noThread)
+                if (preload && !paused)
                 {
-                    StringBuffer logPrefix("[");
-                    if (ctx) ctx->getLogPrefix(logPrefix);
-                    logPrefix.append("] ");
-                    RestartableThread::start(logPrefix);
-                    started.wait();
+                    if (traceLevel > 4)
+                        DBGLOG("Preload fetching first %d records", preload);
+                    if (groupAtOnce)
+                        pullGroups(preload);
+                    else
+                        pullRecords(preload);
+                }
+                if (eof)
+                {
+                    if (traceLevel > 4)
+                        DBGLOG("No need to start puller after preload");
+                    helper->processDone();
+                }
+                else
+                {
+                    if (!noThread)
+                    {
+                        StringBuffer logPrefix("[");
+                        if (ctx) ctx->getLogPrefix(logPrefix);
+                        logPrefix.append("] ");
+                        sinkBlock.setown(new SinkStartBlock);
+                        if (sinkBlock->start(ctx->queryServerContext()))
+                        {
+                            RestartableThread::start(logPrefix);
+                            started.wait();
+                        }
+                    }
                 }
             }
-        }
-        catch (IException *e)
-        {
-            helper->fireException(e);
-        }
-        catch (...)
-        {
-            helper->fireException(MakeStringException(ROXIE_INTERNAL_ERROR, "Unexpected exception caught in RecordPullerThread::start"));
+            catch (IException *e)
+            {
+                helper->fireException(e);
+            }
+            catch (...)
+            {
+                helper->fireException(MakeStringException(ROXIE_INTERNAL_ERROR, "Unexpected exception caught in RecordPullerThread::start"));
+            }
         }
     }
 
@@ -1644,6 +1792,7 @@ public:
         {
             helper->fireException(MakeStringException(ROXIE_INTERNAL_ERROR, "Unexpected exception caught in RecordPullerThread::run"));
         }
+        sinkBlock.clear();
         return 0;
     }
 
@@ -1656,6 +1805,7 @@ public:
     {
         if (eof)
             return false;
+        IRoxieServerContext *serverContext = ctx->queryServerContext();
         while (preload)
         {
             const void * row;
@@ -1680,6 +1830,11 @@ public:
             }
             if (preload != (unsigned) -1)
                 preload--;
+            if (serverContext && serverContext->checkSaveRestartState())
+            {
+                eof = true;
+                return false;
+            }
         }
         return true;
     }
@@ -1688,6 +1843,7 @@ public:
     {
         ConstPointerArray thisGroup;
         unsigned rowsDone = 0;
+        IRoxieServerContext *serverContext = ctx->queryServerContext();
         while (preload && !eof)
         {
             const void *row;
@@ -1718,6 +1874,11 @@ public:
                 eof = true;
                 break;
             }
+            if (serverContext && serverContext->checkSaveRestartState())
+            {
+                eof = true;
+                break;
+            }
         }
     }
 };
@@ -1744,7 +1905,7 @@ class CRoxieServerReadAheadInput : public CInterface, implements IRoxieInput, im
 
 public:
     IMPLEMENT_IINTERFACE;
-    CRoxieServerReadAheadInput(unsigned _preload) : puller(true), preload(_preload)
+    CRoxieServerReadAheadInput(unsigned _preload, unsigned _activityId) : puller(true, _activityId), preload(_preload)
     {
         eof = false;
         disabled = false;
@@ -1768,17 +1929,17 @@ public:
         return puller.queryInput()->queryIndexReadActivity();
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         totalCycles = 0;
         if (disabled)
-            puller.queryInput()->start(parentExtractSize, parentExtract, paused);
+            puller.queryInput()->start(parentExtractSize, parentExtract, paused, restartInfo);
         else
         {
             space.reinit(READAHEAD_SIZE);
             ready.reinit();
-            puller.start(parentExtractSize, parentExtract, paused, preload, false, ctx);
+            puller.start(parentExtractSize, parentExtract, paused, restartInfo, preload, false, ctx, false);
         }
     }
 
@@ -1871,6 +2032,11 @@ public:
         }
     }
 
+    virtual bool saveRestartState(IActivityRestartContext *) const
+    {
+        return false;
+    }
+
     virtual unsigned queryId() const { throwUnexpected(); }
 
     virtual bool fireException(IException *e)
@@ -1941,10 +2107,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
-        input1->start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        input1->start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void onCreate(IRoxieSlaveContext *_ctx, IHThorArg *_colocalParent)
@@ -2075,12 +2241,12 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerMultiInputBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerMultiInputBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         for (unsigned i = 0; i < numInputs; i++)
         {
-            inputArray[i]->start(parentExtractSize, parentExtract, paused);
+            inputArray[i]->start(parentExtractSize, parentExtract, paused, restartInfo);
         }
     }
 
@@ -2109,6 +2275,8 @@ public:
         : CRoxieServerActivity(_factory, _probeManager)
     {
         executed = false;
+        stateVariables.registerVariable(executed);
+        stateVariables.registerVariable(exception);
     }
 
     virtual void reset()
@@ -2130,16 +2298,30 @@ public:
 
     virtual void onExecute() = 0;
 
-    virtual void execute(unsigned parentExtractSize, const byte * parentExtract) 
+    virtual void execute(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock b(ecrit);
+        ActivityState originalState = state;
+        if (restartInfo)
+        {
+            MemoryBuffer buf;
+            restartInfo->getActivityState(activityId, buf);
+            assertex (buf.length());
+            byte savedState;
+            buf.read(savedState);
+            state = (ActivityState) savedState;
+            if (state > STATEcreated)
+                deserializeRestartInfo(buf);
+            // NOTE - we may in some cases restore the state twice... derived classes will need to be able to handle that
+        }
         if (exception)
             throw exception.getLink();
         if (!executed)
         {
+            state = originalState;  // This is a bit of a hack... restore state so that the call to start() behaves properly
             try
             {
-                start(parentExtractSize, parentExtract, false);
+                start(parentExtractSize, parentExtract, false, restartInfo); // Will set state from restartInfo again if needed
                 {
                     ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext()); // unfortunately this is not really best place for seeing in debugger.
                     onExecute();
@@ -3706,13 +3888,13 @@ public:
         parentExtract = _parentExtract;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
 #ifdef TRACE_STARTSTOP
         if (traceStartStop)
             activity.queryLogCtx().CTXLOG("RRAstart");
 #endif
-        owner->start(parentExtractSize, parentExtract, paused);
+        owner->start(parentExtractSize, parentExtract, paused, restartInfo);
         totalCycles = 0;
     }
 
@@ -3908,6 +4090,11 @@ public:
             if (!reload())
                 return NULL;
         }
+    }
+
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        return false;
     }
 
     bool reload()
@@ -4482,6 +4669,11 @@ public:
     {
     }
 
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
     virtual const void *nextInGroup()
     {
         return NULL;
@@ -4590,11 +4782,11 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         first = true;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 };
 
@@ -4830,9 +5022,9 @@ public:
         aggregated.addRow(next);
     }
             
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerChildBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerChildBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         aggregated.start(rowAllocator);
     }
 
@@ -4911,9 +5103,9 @@ public:
         lastInput = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerChildBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerChildBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numProcessedLastGroup = processed;
         ok = false;
     }
@@ -5018,11 +5210,11 @@ public:
         rowDeserializer.setown(rowAllocator->createDiskDeserializer(ctx->queryCodeContext()));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eogPending = false;
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         size32_t lenData = 0;
         const void * data = NULL;
         helper.queryDataset(lenData, data);
@@ -5150,11 +5342,11 @@ public:
         throwUnexpected();
     }
 
-    virtual void executeChild(size32_t & retSize, void * & ret, unsigned parentExtractSize, const byte * parentExtract)
+    virtual void executeChild(size32_t & retSize, void * & ret, unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         try
         {
-            start(parentExtractSize, parentExtract, false);
+            start(parentExtractSize, parentExtract, false, restartInfo);
             {
                 ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
                 MemoryBuffer result;
@@ -5241,13 +5433,23 @@ public:
         : CRoxieServerActivity(_factory, _probeManager), helper((IHThorTempTableArg &) basehelper)
     {
         curRow = 0;
+        stateVariables.registerVariable(curRow);
+        stateVariables.registerVariable(numRows);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        curRow = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
-        numRows = helper.numRows();
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        if (!restarted)
+        {
+            curRow = 0;
+            numRows = helper.numRows();
+        }
+    }
+
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
     }
 
     virtual bool needsAllocator() const { return true; }
@@ -5313,10 +5515,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         curRow = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numRows = helper.numRows();
     }
 
@@ -5391,9 +5593,9 @@ public:
         }
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         IXmlToRowTransformer * xmlTransformer = helper.queryXmlTransformer();
         wuReader.setown(ctx->getWorkunitRowReader(helper.queryName(), helper.querySequence(), xmlTransformer, rowAllocator, meta.isGrouped()));
         // MORE _ should that be in onCreate?
@@ -5493,10 +5695,10 @@ public:
     {
         return input->queryIndexReadActivity();
     }
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock procedure(cs);
-        input->start(parentExtractSize, parentExtract, paused);
+        input->start(parentExtractSize, parentExtract, paused, restartInfo);
     }
     virtual void stop(bool aborting)
     {
@@ -5523,6 +5725,12 @@ public:
         CriticalBlock procedure(cs);
         return input->nextInGroup();
     }
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        CriticalBlock procedure(cs);
+        return input->saveRestartState(ctx);
+    }
+
     virtual bool nextGroup(ConstPointerArray & group)
     {
         CriticalBlock procedure(cs);
@@ -5530,7 +5738,7 @@ public:
     }
 
 private:
-    CriticalSection cs;
+    mutable CriticalSection cs;
     Linked<IRoxieInput> input;
 };
 
@@ -5574,7 +5782,7 @@ public:
     }
 
     virtual IOutputMetaData * queryOutputMeta() const { throwUnexpected(); }
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused) { }
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo) { }
     virtual void stop(bool aborting) { }
     virtual void reset() { totalCycles = 0; }
     virtual void checkAbort() { }
@@ -5589,9 +5797,9 @@ public:
     CIndirectRoxieInput(IRoxieInput * _input = NULL) : input(_input)
     {
     }
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused) 
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        input->start(parentExtractSize, parentExtract, paused);
+        input->start(parentExtractSize, parentExtract, paused, restartInfo);
     }
     virtual void stop(bool aborting) 
     {
@@ -5610,6 +5818,11 @@ public:
     virtual const void * nextInGroup()
     {
         return input->nextInGroup();
+    }
+
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        return input->saveRestartState(ctx);
     }
 
     virtual const void * nextSteppedGE(const void * seek, unsigned numFields, bool &wasCompleteMatch, const SmartStepExtra & stepExtra)
@@ -5685,9 +5898,9 @@ public:
         savedParentExtract = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        input->start(savedParentExtractSize, savedParentExtract, paused);
+        input->start(savedParentExtractSize, savedParentExtract, paused, restartInfo);
     }
 
     void setParentExtract(unsigned _savedParentExtractSize, const byte * _savedParentExtract)
@@ -5777,6 +5990,11 @@ protected:
         {
             return result->getRow(i++);
         }
+        virtual bool saveRestartState(IActivityRestartContext *ctx) const
+        {
+            // MORE - relatively easy to implement this perhaps?
+            return false;
+        }
     };
 };
 
@@ -5806,9 +6024,9 @@ public:
         sequence = helper.querySequence();
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         iter.setown(graph->createResultIterator(sequence));
     }
 
@@ -5883,11 +6101,11 @@ public:
         sequence = helper.querySequence();
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         assertex(streamInput != NULL);
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
-        streamInput->start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        streamInput->start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void stop(bool aborting)
@@ -6120,11 +6338,11 @@ public:
         graph = static_cast<ILocalGraphEx *>(_ctx->queryCodeContext()->resolveLocalQuery(graphId));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (iter)
-            iter->start(parentExtractSize, parentExtract, paused);
+            iter->start(parentExtractSize, parentExtract, paused, restartInfo);
         else
         {
             sequence = helper.querySequence();
@@ -6199,9 +6417,9 @@ public:
         sequence = _sequence;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if ((int)sequence >= 0)
         {
             try
@@ -6422,11 +6640,11 @@ public:
         numToKeep = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numKept = 0;
         first = true;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numToKeep = helper.numToKeep();
     }
 
@@ -6501,11 +6719,11 @@ public:
         survivorIndex = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         first = true;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -6788,10 +7006,10 @@ public:
         eof = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void onCreate(IRoxieSlaveContext *ctx, IHThorArg *_colocalParent)
@@ -6871,10 +7089,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         readFirstRow = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()    
@@ -6964,12 +7182,12 @@ public:
         numProcessedLastGroup = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numThisRow = 0;
         curRow = 0;
         numProcessedLastGroup = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -7087,14 +7305,14 @@ public:
         curChildRow = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numThisRow = 0;
         curRow = 0;
         numProcessedLastGroup = 0;
         curChildRow = NULL;
 
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         cursor = helper.queryIterator();
     }
 
@@ -7200,10 +7418,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numProcessedLastGroup = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -7451,6 +7669,16 @@ protected:
             diskMerger.setown(createDiskMerger(rowInterfaces, linker, spillBasename));
         }
         return diskMerger;
+    }
+
+    virtual bool saveActivityRestartState(MemoryBuffer &buf, IOutputRowSerializer *serializer) const
+    {
+        UNIMPLEMENTED;
+    }
+
+    virtual void deserializeRestartInfo(MemoryBuffer &buf, IEngineRowAllocator *rowAllocator, IOutputRowDeserializer *rowDeserializer)
+    {
+        UNIMPLEMENTED;
     }
 };
 
@@ -7923,10 +8151,10 @@ public:
         }
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         assertex(!readInput);
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -8070,9 +8298,9 @@ public:
         stepCompare = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         IInputSteppingMeta * stepMeta = input->querySteppingMeta();
         if (stepMeta)
             stepCompare = stepMeta->queryCompare();
@@ -8184,8 +8412,8 @@ public:
     unsigned numOutputs;
     unsigned numOriginalOutputs;
 
-    QueueOf<const void, true> buffer;
-    CriticalSection crit;
+    RestartableQueue buffer;
+    mutable CriticalSection crit;
     CriticalSection crit2;
     unsigned tailIdx;
     unsigned headIdx;
@@ -8194,6 +8422,7 @@ public:
     class OutputAdaptor : public CInterface, implements IRoxieInput
     {
         bool eof, eofpending, stopped;
+        CRoxieStateVariables oidStateVariables;
 
     public:
         CRoxieServerThroughSpillActivity *parent;
@@ -8223,6 +8452,18 @@ public:
                 DBGLOG("%p ~OutputAdaptor %d", this, oid);
         }
 
+        void onCreate(CRoxieServerThroughSpillActivity *_parent, unsigned _oid)
+        {
+            parent = _parent;
+            oid = _oid;
+            oidStateVariables.registerVariable(eof);
+            oidStateVariables.registerVariable(eofpending);
+            oidStateVariables.registerVariable(stopped);
+            oidStateVariables.registerVariable(idx);
+            oidStateVariables.registerVariable(oid);
+            oidStateVariables.registerVariable(processed);
+        }
+
         void init()
         {
             if (traceStartStop)
@@ -8233,6 +8474,21 @@ public:
             eofpending = false;
             eof = false;
             stopped = false;
+        }
+
+        void deserializeRestartInfo(MemoryBuffer &buf)
+        {
+            unsigned checkOid;
+            buf.read(checkOid);
+            assertex(checkOid==oid);
+            oidStateVariables.deserialize(buf);
+        }
+
+        bool saveAdaptorRestartState(MemoryBuffer &buf) const
+        {
+            buf.append(oid); // sanity check
+            oidStateVariables.serialize(buf);
+            return true;
         }
 
         virtual unsigned queryId() const
@@ -8287,21 +8543,28 @@ public:
             return ret;
         }
 
+        virtual bool saveRestartState(IActivityRestartContext *restartInfo) const
+        {
+            return parent->saveRestartState(restartInfo); // calls back to save adaptor state - we need to save all adaptor states if any is reached
+        }
+
         virtual IOutputMetaData * queryOutputMeta() const
         {
             return parent->queryOutputMeta();
         }
 
-        virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+        virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
         {
             // NOTE: it is tempting to move the init() of all output adaptors here. However that is not a good idea, 
-            // since adaptors that have not yet started or stoppped (but are going to) still need to have been init()'ed 
+            // since adaptors that have not yet started or stopped (but are going to) still need to have been init()'ed
             // for minIndex to give the correct answers
             // therefore, we call init() on all adaptors on receipt of the first start() or stop()
+            //
+            // For similar reasons, the restartInfo has to be processed for ALL adaptors by the first one to receive it, not here
 
             if (traceStartStop)
                 parent->CTXLOG("%p start Input adaptor %d stopped = %d", this, oid, stopped);
-            parent->start(oid, parentExtractSize, parentExtract, paused);
+            parent->start(oid, parentExtractSize, parentExtract, paused, restartInfo);
         }
 
         virtual void stop(bool aborting) 
@@ -8382,13 +8645,19 @@ public:
         used = new bool[numOutputs];
         for (unsigned i = 0; i < numOutputs; i++)
         {
-            adaptors[i].parent = this;
-            adaptors[i].oid = i;
+            adaptors[i].onCreate(this, i);
             used[i] = false;
+            stateVariables.registerVariable(used[i]);
         }
         tailIdx = 0;
         headIdx = 0;
         activeOutputs = numOutputs;
+        stateVariables.registerVariable(activeOutputs);
+        stateVariables.registerVariable(numOutputs);
+        stateVariables.registerVariable(numOriginalOutputs);
+        stateVariables.registerVariable(tailIdx);
+        stateVariables.registerVariable(headIdx);
+        stateVariables.registerVariable(error);
     }
 
     ~CRoxieServerThroughSpillActivity()
@@ -8464,7 +8733,7 @@ public:
         return ret;
     }
 
-    virtual void start(unsigned oid, unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned oid, unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock b(crit);
         if (error)
@@ -8482,7 +8751,7 @@ public:
             error.clear();
             try
             {
-                CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+                CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
             }
             catch (IException *E)
             {
@@ -8606,7 +8875,37 @@ public:
         return numOutputs==1;
     }
 
+    virtual void deserializeRestartInfo(MemoryBuffer &buf)
+    {
+        CRoxieServerActivity::deserializeRestartInfo(buf);
+        createRowAllocator();
+        Owned<IOutputRowDeserializer> rowDeserializer = meta.createDiskDeserializer(ctx->queryCodeContext(), activityId);
+        buffer.deserializeRestartInfo(buf, rowDeserializer, rowAllocator);
+        for (unsigned i = 0; i < numOriginalOutputs; i++)
+            if (used[i])
+                adaptors[i].deserializeRestartInfo(buf);
+    }
 
+    virtual bool saveActivityRestartState(MemoryBuffer &buf) const
+    {
+        if (CRoxieServerActivity::saveActivityRestartState(buf))
+        {
+            Owned<IOutputRowSerializer> serializer = meta.createDiskSerializer(ctx->queryCodeContext(), activityId);
+            buffer.serializeRestartInfo(buf, serializer);
+            for (unsigned i = 0; i < numOriginalOutputs; i++)
+                if (used[i])
+                    adaptors[i].saveAdaptorRestartState(buf);
+            return true;
+        }
+        return false;
+    }
+
+    virtual bool saveRestartState(IActivityRestartContext *restartInfo) const
+    {
+        // The synchronization of the sinks should mean this is all safe... But a critsec doesn't hurt
+        CriticalBlock b(crit);
+        return restartInfo->hasActivityState(activityId) || doSaveRestartState(restartInfo);
+    }
 };
 
 class CRoxieServerThroughSpillActivityFactory : public CRoxieServerMultiOutputFactory
@@ -8715,10 +9014,10 @@ public:
         rowDeserializer.setown(rowAllocator->createDiskDeserializer(ctx->queryCodeContext()));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         groupSignalled = true; // i.e. don't start with a NULL row
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (!readTransformer)
             readTransformer.setown(createReadRowStream(rowAllocator, rowDeserializer, helper.queryXmlTransformer(), helper.queryCsvTransformer(), helper.queryXmlIteratorPath(), helper.getPipeFlags()));
         openPipe(helper.getPipeProgram());
@@ -8810,7 +9109,7 @@ class CRoxieServerPipeThroughActivity : public CRoxieServerActivity, implements 
 public:
 
     CRoxieServerPipeThroughActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
-        : CRoxieServerActivity(_factory, _probeManager), helper((IHThorPipeThroughArg &)basehelper), puller(false)
+        : CRoxieServerActivity(_factory, _probeManager), helper((IHThorPipeThroughArg &)basehelper), puller(false, activityId)
     {
         recreate = helper.recreateEachRow();
         groupSignalled = true;
@@ -8828,7 +9127,7 @@ public:
         writeTransformer.setown(createPipeWriteXformHelper(helper.getPipeFlags(), helper.queryXmlOutput(), helper.queryCsvOutput(), rowSerializer));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         firstRead = true;
         inputExhausted = false;
@@ -8836,12 +9135,12 @@ public:
         pipeVerified.reinit();
         pipeOpened.reinit();
         writeTransformer->ready();
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (!readTransformer)
             readTransformer.setown(createReadRowStream(rowAllocator, rowDeserializer, helper.queryXmlTransformer(), helper.queryCsvTransformer(), helper.queryXmlIteratorPath(), helper.getPipeFlags()));
         if(!recreate)
             openPipe(helper.getPipeProgram());
-        puller.start(parentExtractSize, parentExtract, paused, 0, false, ctx);  // Pipe does not support preload presently - locks up
+        puller.start(parentExtractSize, parentExtract, paused, restartInfo, 0, false, ctx, restarted);  // Pipe does not support preload presently - locks up
     }
 
     virtual void setInput(unsigned idx, IRoxieInput *_in)
@@ -9018,12 +9317,12 @@ public:
         writeTransformer.setown(createPipeWriteXformHelper(helper.getPipeFlags(), helper.queryXmlOutput(), helper.queryCsvOutput(), rowSerializer));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         firstRead = true;
         inputExhausted = false;
         writeTransformer->ready();
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if(!recreate)
             openPipe(helper.getPipeProgram());
     }
@@ -9153,9 +9452,9 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         rows.setown(helper.createInput());
     }
 
@@ -9215,21 +9514,27 @@ public:
     {
         anyThisGroup = false;
         stepCompare = NULL;
+        stateVariables.registerVariable(anyThisGroup);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         anyThisGroup = false;
-        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused);
-        lateStart(parentExtractSize, parentExtract, helper.canMatchAny());
+        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        lateStart(parentExtractSize, parentExtract, restartInfo, helper.canMatchAny());
 
-        stepCompare = NULL;
+        stepCompare = NULL; // MORE - this code looks to me as though should be in the onCreate
         if (!eof)
         {
             IInputSteppingMeta * stepMeta = input->querySteppingMeta();
             if (stepMeta)
                 stepCompare = stepMeta->queryCompare();
         }
+    }
+
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
     }
 
     virtual const void * nextInGroup()
@@ -9368,10 +9673,10 @@ public:
         stepCompare = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused);
-        lateStart(parentExtractSize, parentExtract, helper.canMatchAny());//sets eof
+        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        lateStart(parentExtractSize, parentExtract, restartInfo, helper.canMatchAny());//sets eof
         assertex(eof == !helper.canMatchAny());
 
         curIndex = 0;
@@ -9574,7 +9879,7 @@ public:
         return NULL;
     }
 
-    virtual void execute(unsigned parentExtractSize, const byte * parentExtract) 
+    virtual void execute(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock b(ecrit);
         if (exception)
@@ -9585,7 +9890,7 @@ public:
             {
                 ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
                 executed = true;
-                start(parentExtractSize, parentExtract, false);
+                start(parentExtractSize, parentExtract, false, restartInfo);
                 helper.action();
                 stop(false);
             }
@@ -9692,11 +9997,11 @@ public:
         eof = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         anyThisGroup = false;
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numSamples = helper.getProportion();
         whichSample = helper.getSampleNumber();
         numToSkip = (whichSample ? whichSample-1 : 0);
@@ -9779,10 +10084,10 @@ public:
         done = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numSets = helper.getNumSets();
         setCounts = new unsigned[numSets];
         memset(setCounts, 0, sizeof(unsigned)*numSets);
@@ -9875,11 +10180,11 @@ public:
         numSets = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
         curIndex = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numSets = helper.getNumSets();
         setCounts = new unsigned[numSets];
         memset(setCounts, 0, sizeof(unsigned)*numSets);
@@ -9947,9 +10252,9 @@ public:
         numToSkip = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerChooseSetsExActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerChooseSetsExActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numToSkip = (unsigned *)calloc(sizeof(unsigned), numSets);
     }
 
@@ -9994,9 +10299,9 @@ public:
         counter = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerChooseSetsExActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerChooseSetsExActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         counter = (count_t *)calloc(sizeof(count_t), numSets);
     }
 
@@ -10084,18 +10389,28 @@ public:
     {
         eof = false;
         numerator = denominator = counter = 0;
+        stateVariables.registerVariable(counter);
+        stateVariables.registerVariable(eof);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         numerator = helper.getProportionNumerator();
         denominator = helper.getProportionDenominator();
         if(denominator == 0) denominator = 1; //MORE: simplest way to avoid disaster in this case
-        counter = (helper.getSampleNumber()-1) * greatestCommonDivisor(numerator, denominator);
-        if (counter >= denominator)
-            counter %= denominator;
+        if (!restarted)
+        {
+            counter = (helper.getSampleNumber()-1) * greatestCommonDivisor(numerator, denominator);
+            if (counter >= denominator)
+                counter %= denominator;
+        }
     }
 
     inline bool wanted()
@@ -10159,22 +10474,62 @@ class CRoxieServerAggregateActivity : public CRoxieServerActivity
     bool eof;
     bool isInputGrouped;
     bool abortEarly;
+    bool interrupted;
+    RtlDynamicRowBuilder rowBuilder;
+    size32_t totalSize;
 
 public:
     CRoxieServerAggregateActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
-        : CRoxieServerActivity(_factory, _probeManager), helper((IHThorAggregateArg &)basehelper)
+        : CRoxieServerActivity(_factory, _probeManager), helper((IHThorAggregateArg &)basehelper), rowBuilder(NULL)
     {
         eof = false;
         isInputGrouped = false;
         abortEarly = false;
+        interrupted = false;
+        totalSize = 0;
+        stateVariables.registerVariable(eof);
+        stateVariables.registerVariable(interrupted);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual bool saveActivityRestartState(MemoryBuffer &buf) const
+    {
+        if (CRoxieServerActivity::saveActivityRestartState(buf))
+        {
+            Owned<IOutputRowSerializer> serializer = meta.createDiskSerializer(ctx->queryCodeContext(), activityId);
+            CThorDemoRowSerializer serializerTarget(buf);
+            serializer->serialize(serializerTarget, rowBuilder.row()); // MORE - is it safe to serialize if not finalized?
+            return true;
+        }
+        return false;
+    }
+
+    virtual void deserializeRestartInfo(MemoryBuffer &buf)
+    {
+        CRoxieServerActivity::deserializeRestartInfo(buf);
+        Owned<IOutputRowDeserializer> rowDeserializer = meta.createDiskDeserializer(ctx->queryCodeContext(), activityId);
+        Owned<ISerialStream> bufferStream = createMemoryBufferSerialStream(buf);
+        CThorStreamDeserializerSource rowSource;
+        rowSource.setStream(bufferStream);
+        totalSize = rowDeserializer->deserialize(rowBuilder, rowSource);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         isInputGrouped = input->queryOutputMeta()->isGrouped();     // could be done earlier, in setInput?
         abortEarly = !isInputGrouped && (factory->getKind() == TAKexistsaggregate); // ditto
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+    }
+
+    virtual void onCreate(IRoxieSlaveContext *_ctx, IHThorArg *_colocalParent)
+    {
+        CRoxieServerActivity::onCreate(_ctx, _colocalParent);
+        rowBuilder.setAllocator(rowAllocator);
     }
 
     virtual bool needsAllocator() const { return true; }
@@ -10185,32 +10540,25 @@ public:
         if (eof)
             return NULL;
 
-        const void * next = input->nextInGroup();
-        if (!next && isInputGrouped)
+        if (interrupted)
         {
-            eof = true;
-            return NULL;
+            aggregateGroup();
         }
-
-        RtlDynamicRowBuilder rowBuilder(rowAllocator);
-        size32_t finalSize = helper.clearAggregate(rowBuilder);
-
-        if (next)
+        else
         {
-            finalSize = helper.processFirst(rowBuilder, next);
-            ReleaseRoxieRow(next);
-
-            if (!abortEarly)
+            const void * next = input->nextInGroup();
+            if (!next && isInputGrouped)
             {
-                loop
-                {
-                    next = input->nextInGroup();
-                    if (!next)
-                        break;
-
-                    finalSize = helper.processNext(rowBuilder, next);
-                    ReleaseRoxieRow(next);
-                }
+                eof = true;
+                return NULL;
+            }
+            totalSize = helper.clearAggregate(rowBuilder);
+            if (next)
+            {
+                totalSize = helper.processFirst(rowBuilder, next);
+                ReleaseRoxieRow(next);
+                if (!abortEarly)
+                    aggregateGroup();
             }
         }
 
@@ -10218,7 +10566,29 @@ public:
             eof = true;
 
         processed++;
-        return rowBuilder.finalizeRowClear(finalSize);
+        return rowBuilder.finalizeRowClear(totalSize);
+    }
+
+protected:
+    void aggregateGroup()
+    {
+        IRoxieServerContext *serverContext = ctx->queryServerContext();
+        loop
+        {
+            const void *next = input->nextInGroup();
+            if (!next)
+                break;
+
+            totalSize = helper.processNext(rowBuilder, next);
+            ReleaseRoxieRow(next);
+            interrupted = true;
+            if (serverContext->checkSaveRestartState())
+            {
+                eof = true; // MORE - should this be using an exception instead?
+                break;
+            }
+            interrupted = false;
+        }
     }
 };
 
@@ -10263,11 +10633,11 @@ public:
         gathered = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         gathered = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -10360,12 +10730,18 @@ public:
         : CRoxieServerActivity(_factory, _probeManager), helper((IHThorDegroupArg &)basehelper)
     {
         eof = false;
+        stateVariables.registerVariable(eof);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual const void * nextInGroup()
@@ -10453,15 +10829,21 @@ public:
         choosenLimit = 0;
         eof = false;
         anyThisGroup = false;
+        stateVariables.registerVariable(anyThisGroup);
+        stateVariables.registerVariable(eof);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         anyThisGroup = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
-        if (helper.canMatchAny())
-            eof = false;
-        else
+        eof = false;
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        if (!helper.canMatchAny())
             eof = true;
         choosenLimit = helper.getChooseNLimit();
         rowLimit = helper.getRowLimit();
@@ -10586,6 +10968,11 @@ public:
     {
     }
 
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
     virtual const void *nextInGroup()
     {
         ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
@@ -10708,9 +11095,9 @@ public:
         return true;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         
         resolve();
         Owned<IFileIO> io;
@@ -10948,9 +11335,9 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerDiskWriteActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerDiskWriteActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         const char * path = xmlHelper.queryIteratorPath();
         if (!path)
             rowTag.set("Row");
@@ -11163,9 +11550,9 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         resolve();
     }
 
@@ -11517,14 +11904,14 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         left = NULL;
         rightIndex = 0;
         state = JSfill;
         matchedLeft = false;
 
-        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
 
         keepLimit = helper.getKeepLimit();
         if (keepLimit == 0) 
@@ -11566,7 +11953,7 @@ public:
         case 0:
             if ((helper.getJoinFlags() & JFparallel) != 0)
             {
-                puller.setown(new CRoxieServerReadAheadInput(0)); // MORE - cant ask context for parallelJoinPreload as context is not yet set up.
+                puller.setown(new CRoxieServerReadAheadInput(0, activityId)); // MORE - can't ask context for parallelJoinPreload as context is not yet set up.
                 puller->setInput(0, _in);
                 _in = puller;
             }
@@ -12134,7 +12521,7 @@ MAKEPointerArray(RecordPullerThread, RecordPullerArray);
 
 class CRoxieServerThreadedConcatActivity : public CRoxieServerActivity, implements IRecordPullerCallback
 {
-    QueueOf<const void, true> buffer;
+    RestartableQueue buffer;
     InterruptableSemaphore ready;
     InterruptableSemaphore space;
     CriticalSection crit;
@@ -12144,13 +12531,14 @@ class CRoxieServerThreadedConcatActivity : public CRoxieServerActivity, implemen
 
 public:
     CRoxieServerThreadedConcatActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _grouped, unsigned _numInputs)
-        : CRoxieServerActivity(_factory, _probeManager)
+        : CRoxieServerActivity(_factory, _probeManager), numInputs(_numInputs)
     {
         eofs = 0;
-        numInputs = _numInputs;
         for (unsigned i = 0; i < numInputs; i++)
-            pullers.append(*new RecordPullerThread(_grouped));
-
+            pullers.append(*new RecordPullerThread(_grouped, activityId));
+        stateVariables.registerVariable(eofs);
+        stateVariables.registerVariable(ready);
+        stateVariables.registerVariable(space);
     }
 
     ~CRoxieServerThreadedConcatActivity()
@@ -12159,15 +12547,53 @@ public:
             delete &pullers.item(idx);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        ForEachItemIn(idx, pullers)
+        {
+            if (!pullers.item(idx).saveRestartState(restartCtx))
+                return false;
+        }
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual bool saveActivityRestartState(MemoryBuffer &buf) const
+    {
+        if (CRoxieServerActivity::saveActivityRestartState(buf))
+        {
+            ForEachItemIn(idx, pullers)
+            {
+                if (!pullers.item(idx).saveActivityRestartState(buf))
+                    return false;
+            }
+            Owned<IOutputRowSerializer> serializer = meta.createDiskSerializer(ctx->queryCodeContext(), activityId);
+            buffer.serializeRestartInfo(buf, serializer);
+            return true;
+        }
+        return false;
+    }
+
+    virtual void deserializeRestartInfo(MemoryBuffer &buf)
+    {
+        CRoxieServerActivity::deserializeRestartInfo(buf);
+        ForEachItemIn(idx, pullers)
+        {
+            pullers.item(idx).deserializeRestartInfo(buf); // MORE - not seven sure I should be calling this here (rather than deserializing in puller::start)
+        }
+        createRowAllocator();
+        Owned<IOutputRowDeserializer> rowDeserializer = meta.createDiskDeserializer(ctx->queryCodeContext(), activityId);
+        buffer.deserializeRestartInfo(buf, rowDeserializer, rowAllocator);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         space.reinit(CONCAT_READAHEAD);
         ready.reinit();
         eofs = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         ForEachItemIn(idx, pullers)
         {
-            pullers.item(idx).start(parentExtractSize, parentExtract, paused, ctx->concatPreload(), false, ctx);  
+            pullers.item(idx).start(parentExtractSize, parentExtract, paused, restartInfo, ctx->concatPreload(), false, ctx, restarted);
             // NOTE - it is ok to start the thread running while parts of the subgraph are still being started, since everything 
             // in the part of the subgraph that the thread uses has been started.
             // Note that splitters are supposed to cope with being used when only some outputs have been started.
@@ -12225,7 +12651,13 @@ public:
                 if (eofs==numInputs && !buffer.ordinality())
                     return NULL;  // eof
             }
-            ready.wait();
+            {
+                SinkStartUnblock sinkBlock;
+                sinkBlock.stop(ctx->queryServerContext()); // MORE - some efficiency concerns here
+                ready.wait();
+                if (sinkBlock.checkAborted())
+                    return NULL;
+            }
             const void *ret;
             {
                 CriticalBlock b(crit);
@@ -12300,16 +12732,17 @@ class CRoxieServerOrderedConcatActivity : public CRoxieServerActivity
 
 public:
     CRoxieServerOrderedConcatActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _grouped, unsigned _numInputs)
-        : CRoxieServerActivity(_factory, _probeManager)
+        : CRoxieServerActivity(_factory, _probeManager), grouped(_grouped), numInputs(_numInputs)
     {
         eogSeen = false;
         anyThisGroup = false;
-        grouped = _grouped;
-        numInputs = _numInputs;
         inputIdx = 0;
         inputArray = new IRoxieInput*[numInputs];
         for (unsigned i = 0; i < numInputs; i++)
             inputArray[i] = NULL;
+        stateVariables.registerVariable(eogSeen);
+        stateVariables.registerVariable(anyThisGroup);
+        stateVariables.registerVariable(inputIdx);
     }
 
     ~CRoxieServerOrderedConcatActivity()
@@ -12317,15 +12750,25 @@ public:
         delete [] inputArray;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        for (unsigned i = 0; i < numInputs; i++)
+        {
+            if (!inputArray[i]->saveRestartState(restartCtx))
+                return false;
+        }
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         inputIdx = 0;
-        curInput = inputArray[inputIdx];
         eogSeen = false;
         anyThisGroup = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         for (unsigned i = 0; i < numInputs; i++)
-            inputArray[i]->start(parentExtractSize, parentExtract, paused);
+            inputArray[i]->start(parentExtractSize, parentExtract, paused, restartInfo);
+        curInput = inputArray[inputIdx];
     }
 
     virtual void stop(bool aborting)    
@@ -12451,10 +12894,10 @@ public:
         savedParentExtract = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         //Don't start the inputs yet so we can short-circuit...
-        CRoxieServerMultiInputBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerMultiInputBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         savedParentExtractSize = parentExtractSize;
         savedParentExtract = parentExtract;
     }
@@ -12496,7 +12939,7 @@ public:
             for (unsigned i=0; i < numInputs; i++)
             {
                 selectedInput = inputArray[i];
-                selectedInput->start(savedParentExtractSize, savedParentExtract, false);
+                selectedInput->start(savedParentExtractSize, savedParentExtract, false, NULL);
                 const void * next = selectedInput->nextInGroup();
                 if (next)
                 {
@@ -12723,14 +13166,14 @@ public:
         delete [] pending;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         activeInputs = 0;
         first = true;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         for (unsigned i = 0; i < numInputs; i++)
         {
-            inputArray[i]->start(parentExtractSize, parentExtract, paused);
+            inputArray[i]->start(parentExtractSize, parentExtract, paused, restartInfo);
         }
 
     }
@@ -12817,12 +13260,12 @@ public:
         numProcessedLastGroup = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         inputIndex = 0;
         eof = false;
         numProcessedLastGroup = processed;
-        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     const void * nextFromInputs()
@@ -12927,10 +13370,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numProcessedLastGroup = processed;
-        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     void nextInputs(ConstPointerArray & out)
@@ -13022,10 +13465,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numProcessedLastGroup = processed;
-        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void setInput(unsigned idx, IRoxieInput *_in)
@@ -13191,10 +13634,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual bool needsAllocator() const { return true; }
@@ -13277,18 +13720,25 @@ public:
     {
         numProcessedLastGroup = 0;
         recordCount = 0;
+        stateVariables.registerVariable(numProcessedLastGroup);
+        stateVariables.registerVariable(recordCount);
     }
 
     ~CRoxieServerFilterProjectActivity()
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numProcessedLastGroup = 0;
         recordCount = 0;
-        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused);
-        lateStart(parentExtractSize, parentExtract, helper.canMatchAny()); //sets eof
+        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        lateStart(parentExtractSize, parentExtract, restartInfo, helper.canMatchAny()); //sets eof
     }
 
     virtual bool needsAllocator() const { return true; }
@@ -13365,17 +13815,24 @@ public:
     {
         numProcessedLastGroup = 0;
         recordCount = 0;
+        stateVariables.registerVariable(numProcessedLastGroup);
+        stateVariables.registerVariable(recordCount);
     }
 
     ~CRoxieServerProjectActivity()
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numProcessedLastGroup = 0;
         recordCount = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual bool needsAllocator() const { return true; }
@@ -13482,7 +13939,7 @@ public:
     CRoxieServerPrefetchProjectActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _count)
         : CRoxieServerActivity(_factory, _probeManager), 
         helper((IHThorPrefetchProjectArg &) basehelper),
-        puller(false),
+        puller(false, activityId),
         count(_count)
     {
         numProcessedLastGroup = 0;
@@ -13506,19 +13963,19 @@ public:
         puller.setInput(this, _in);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numProcessedLastGroup = 0;
         recordCount = 0;
         eof = false;
         allPulled = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         preload = helper.getLookahead();
         if (!preload)
             preload = ctx->prefetchProjectPreload();
         space.reinit(preload);
         ready.reinit();
-        puller.start(parentExtractSize, parentExtract, paused, preload, !isThreaded, ctx);
+        puller.start(parentExtractSize, parentExtract, paused, restartInfo, preload, !isThreaded, ctx, restarted);
     }
 
     virtual void stop(bool aborting)
@@ -13696,6 +14153,12 @@ public:
         }
         return NULL;
     }
+    virtual bool saveRestartState(IActivityRestartContext *) const
+    {
+        // MORE - should be implementable
+        return false;
+    }
+
 protected:
     byte **rowset;
     size32_t rowcount;
@@ -13729,10 +14192,10 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         int iterations = (int) helper.numIterations();
         maxIterations = (iterations >= 0) ? iterations : 0;
         finishedLooping = ((activityKind == TAKloopcount) && (maxIterations == 0));
@@ -13791,11 +14254,11 @@ public:
         loopQuery.set(_ctx->queryChildGraph(loopGraphId));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         curInput = input;
         loopCounter = 1;
-        CRoxieServerLoopActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerLoopActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
 
         //MORE: Not sure about this, should IRoxieServerChildGraph be combined with IActivityGraph?
         loopGraph.set(loopQuery->queryLoopGraph());
@@ -13964,6 +14427,10 @@ public:
             eof = true;
         return ret;
     }
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        return false;
+    }
 
 protected:
     SafeRowQueue & input;
@@ -13981,6 +14448,10 @@ public:
     }
 
     virtual const void * nextInGroup();
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        return false;
+    }
 
 protected:
     CRoxieServerParallelLoopActivity * activity;
@@ -14033,7 +14504,7 @@ public:
 
     void onCreate(IRoxieSlaveContext * _ctx);
 
-    void start(unsigned parentExtractSize, const byte *parentExtract, bool paused);
+    void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo);
     void stop(bool aborting);
     void reset();
 
@@ -14086,12 +14557,12 @@ public:
         executor.onCreate(_ctx);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock b(scrit); // can stop while still starting, if unlucky...
         readySpace.reinit(parallelLoopFlowLimit);
         recordsReady.reinit();    
-        CRoxieServerLoopActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerLoopActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         defaultNumParallel = helper.defaultParallelIterations();
         if (!defaultNumParallel)
             defaultNumParallel = DEFAULT_PARALLEL_LOOP_THREADS;
@@ -14100,7 +14571,7 @@ public:
         //MORE: If numIterations <= number of parallel iterations[1], 
         //then we don't need to create a separate thread to do the processing, and the results will also avoid
         //being transferred via a queue
-        executor.start(parentExtractSize, parentExtract, paused);
+        executor.start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void setInput(unsigned idx, IRoxieInput *_in)
@@ -14222,7 +14693,7 @@ void LoopExecutorThread::onCreate(IRoxieSlaveContext * _ctx)
 }
 
 
-void LoopExecutorThread::start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+void LoopExecutorThread::start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
 {
     savedParentExtractSize = parentExtractSize;
     savedParentExtract = parentExtract;
@@ -14335,7 +14806,7 @@ void LoopExecutorThread::executeLoopInstance(unsigned counter, unsigned numItera
 
     try
     {
-        curInput->start(savedParentExtractSize, savedParentExtract, false);
+        curInput->start(savedParentExtractSize, savedParentExtract, false, NULL);
         if (spillOutput)
         {
             loop
@@ -14468,9 +14939,9 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         int iterations = (int) helper.numIterations();
         maxIterations = (iterations >= 0) ? iterations : 0;
         if (maxIterations > maxGraphLoopIterations)
@@ -14524,9 +14995,9 @@ public:
         GraphQuery.set(_ctx->queryChildGraph(loopGraphId));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerGraphLoopActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerGraphLoopActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
 
         //MORE: Not sure about this, should IRoxieServerChildGraph be combined with IActivityGraph?
         loopGraph.set(GraphQuery->queryLoopGraph());
@@ -14713,13 +15184,13 @@ public:
         inputExtractMapper->setInput(_in);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerGraphLoopActivity::start(parentExtractSize, parentExtract, paused);         // initialises GraphExtractBuilder
+        CRoxieServerGraphLoopActivity::start(parentExtractSize, parentExtract, paused, restartInfo);         // initialises GraphExtractBuilder
         inputExtractMapper->setParentExtract(parentExtractSize, parentExtract);
 
         createExpandedGraph(GraphExtractBuilder.size(), GraphExtractBuilder.getbytes(), probeManager);
-        resultInput->start(GraphExtractBuilder.size(), GraphExtractBuilder.getbytes(), paused);
+        resultInput->start(GraphExtractBuilder.size(), GraphExtractBuilder.getbytes(), paused, restartInfo);
     }
 
     virtual void stop(bool aborting)
@@ -14876,10 +15347,10 @@ class CRoxieServerLibraryCallActivity : public CRoxieServerActivity
             return parent->queryId();
         }
 
-        virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+        virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
         {
-            parent->start(oid, parentExtractSize, parentExtract, paused);
-            CExtractMapperInput::start(parentExtractSize, parentExtract, paused);
+            parent->start(oid, parentExtractSize, parentExtract, paused, restartInfo);
+            CExtractMapperInput::start(parentExtractSize, parentExtract, paused, restartInfo);
         }
 
         virtual void stop(bool aborting) 
@@ -14976,7 +15447,7 @@ public:
         }
     }
 
-    virtual void start(unsigned oid, unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned oid, unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock b(crit);
         if (error)
@@ -14991,7 +15462,7 @@ public:
             //see notes on splitter above
             try
             {
-                CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+                CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
             }
             catch (IException *E)
             {
@@ -15187,9 +15658,9 @@ public:
         delete [] inputs;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
 
         bool selectionIsAll;
         size32_t selectionLen;
@@ -15223,7 +15694,7 @@ public:
         }
 
         ForEachItemIn(i2, selectedInputs)
-            selectedInputs.item(i2)->start(parentExtractSize, parentExtract, paused);
+            selectedInputs.item(i2)->start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void stop(bool aborting)
@@ -15328,9 +15799,9 @@ public:
         selectionIsAll = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
 
         if (inputs.ordinality() == 0)
         {
@@ -15345,13 +15816,13 @@ public:
                 resultReaders.append(*resultInput);
                 inputs.append(resultInput->queryOutput(0));
                 resultInput->onCreate(ctx, colocalParent);
-                resultInput->start(parentExtractSize, parentExtract, paused);
+                resultInput->start(parentExtractSize, parentExtract, paused, restartInfo);
             }
         }
         else
         {
             ForEachItemIn(i, inputs)
-                inputs.item(i)->start(parentExtractSize, parentExtract, paused);
+                inputs.item(i)->start(parentExtractSize, parentExtract, paused, restartInfo);
         }
     }
 
@@ -15560,9 +16031,9 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         for (unsigned i=0; i < numInputs; i++)
         {
             IRoxieInput * cur = inputArray[i];
@@ -15632,9 +16103,9 @@ public:
         initializedMeta = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerNaryActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerNaryActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         merger.init(helper.queryCompare(), helper.dedup(), helper.querySteppingMeta()->queryCompare());
         merger.initInputs(expandedInputs.length(), expandedInputs.getArray());
     }
@@ -15729,9 +16200,9 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerNaryActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerNaryActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         ForEachItemIn(i1, expandedInputs)
         {
             IRoxieInput * cur = expandedInputs.item(i1);
@@ -15887,9 +16358,9 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerMultiInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
 
         unsigned whichInput = helper.getInputIndex();
         selectedInput = NULL;
@@ -16002,9 +16473,9 @@ public:
         remote.onCreate(this, this, _ctx, _colocalParent);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         remote.onStart(parentExtractSize, parentExtract);
 
         remote.setLimits(helper.getRowLimit(), (unsigned __int64) -1, I64C(0x7FFFFFFFFFFFFFFF));
@@ -16104,10 +16575,10 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         counter = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         RtlDynamicRowBuilder rowBuilder(rowAllocator);
         size32_t thisSize = helper.createDefault(rowBuilder);
         defaultRecord.setown(rowBuilder.finalizeRowClear(thisSize));
@@ -16198,10 +16669,10 @@ public:
         rightRowAllocator.setown(ctx->queryCodeContext()->getRowAllocator(QUERYINTERFACE(helper.queryRightRecordSize(), IOutputMetaData), activityId));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         counter = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
 
         RtlDynamicRowBuilder rowBuilder(rightRowAllocator);
         size32_t thisSize = helper.createInitialRight(rowBuilder);
@@ -16290,15 +16761,52 @@ public:
         endPending = false;
         eof = false;
         first = true;
+        stateVariables.registerVariable(endPending);
+        stateVariables.registerVariable(eof);
+        stateVariables.registerVariable(first);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual bool saveActivityRestartState(MemoryBuffer &buf) const
+    {
+        if (CRoxieServerActivity::saveActivityRestartState(buf))
+        {
+            bool isNull = (next==NULL);
+            buf.append(isNull);
+            if (!isNull)
+            {
+                Owned<IOutputRowSerializer> serializer = meta.createDiskSerializer(ctx->queryCodeContext(), activityId);
+                serializeRoxieRow(next, buf, serializer);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    virtual void deserializeRestartInfo(MemoryBuffer &buf)
+    {
+        CRoxieServerActivity::deserializeRestartInfo(buf);
+        bool nextIsNull;
+        buf.read(nextIsNull);
+        if (!nextIsNull)
+        {
+            createRowAllocator();
+            Owned<IOutputRowDeserializer> rowDeserializer = meta.createDiskDeserializer(ctx->queryCodeContext(), activityId);
+            next = deserializeRoxieRow(buf, rowDeserializer, rowAllocator);
+        }
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         endPending = false;
         eof = false;
         first = true;
         assertex(next == NULL);
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()    
@@ -16375,17 +16883,24 @@ public:
         doneThisGroup = 0;
         limit = 0;
         skip = 0;
+        stateVariables.registerVariable(doneThisGroup);
+        // limit and skip are set by start from helper - no need to save...
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         doneThisGroup = 0;
-        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         limit = helper.getLimit();
         skip = helper.numToSkip();
-        lateStart(parentExtractSize, parentExtract, limit > 0);
+        lateStart(parentExtractSize, parentExtract, restartInfo, limit > 0);
         if (limit + skip >= limit)
             limit += skip;
+    }
+
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
     }
 
     const void * nextInGroup()
@@ -16473,10 +16988,10 @@ public:
         done = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     const void *defaultRow()
@@ -16738,12 +17253,12 @@ public:
         dualCacheInput = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         first = true;
         failingLimit.clear();
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         keepLimit = helper.getKeepLimit();
         if(keepLimit == 0)
             keepLimit = (unsigned)-1;
@@ -17142,12 +17657,12 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eog = false;
         matchedGroup = false;
         left = NULL;
-        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         keepLimit = helper.getKeepLimit();
         if(keepLimit==0) keepLimit = static_cast<unsigned>(-1);
         atmostLimit = helper.getJoinLimit();
@@ -17168,7 +17683,7 @@ public:
         {
             if ((helper.getJoinFlags() & JFparallel) != 0)
             {
-                puller.setown(new CRoxieServerReadAheadInput(0)); // MORE - cant ask context for parallelJoinPreload as context is not yet set up.
+                puller.setown(new CRoxieServerReadAheadInput(0, activityId)); // MORE - can't ask context for parallelJoinPreload as context is not yet set up.
                 puller->setInput(0, _in);
                 _in = puller;
             }
@@ -17592,7 +18107,7 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eog = false;
         eos = false;
@@ -17601,7 +18116,7 @@ public:
         started = false;
         left = NULL;
 
-        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerTwoInputActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         keepLimit = helper.getKeepLimit();
         if(keepLimit==0)
             keepLimit = (unsigned) -1;
@@ -17638,7 +18153,7 @@ public:
         {
             if ((helper.getJoinFlags() & JFparallel) != 0)
             {
-                puller.setown(new CRoxieServerReadAheadInput(0)); // MORE - cant ask context for parallelJoinPreload as context is not yet set up.
+                puller.setown(new CRoxieServerReadAheadInput(0, activityId)); // MORE - can't ask context for parallelJoinPreload as context is not yet set up.
                 puller->setInput(0, _in);
                 _in = puller;
             }
@@ -17913,21 +18428,69 @@ public:
         limit = 0;
         eoi = false;
         hasBest = false;
+        stateVariables.registerVariable(sortedCount);
+        stateVariables.registerVariable(curIndex);
+        stateVariables.registerVariable(eoi);
+        stateVariables.registerVariable(limit);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
+    virtual bool saveActivityRestartState(MemoryBuffer &buf) const
+    {
+        if (CRoxieServerActivity::saveActivityRestartState(buf))
+        {
+            if (sortedCount)
+            {
+                Owned<IOutputRowSerializer> serializer = meta.createDiskSerializer(ctx->queryCodeContext(), activityId);
+                CThorDemoRowSerializer serializerTarget(buf);
+                for (unsigned idx = curIndex; idx < sortedCount; idx++)
+                    serializer->serialize(serializerTarget, (const byte *) sorted[idx]);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    virtual void deserializeRestartInfo(MemoryBuffer &buf)
+    {
+        CRoxieServerActivity::deserializeRestartInfo(buf);
+        if (sortedCount)
+        {
+            createRowAllocator();
+            sorted = (const void **) ctx->queryRowManager().allocate((limit+1) * sizeof(const void *), activityId);
+            Owned<IOutputRowDeserializer> rowDeserializer = meta.createDiskDeserializer(ctx->queryCodeContext(), activityId);
+            Owned<ISerialStream> bufferStream = createMemoryBufferSerialStream(buf);
+            CThorStreamDeserializerSource rowSource;
+            rowSource.setStream(bufferStream);
+            for (unsigned idx = curIndex; idx < sortedCount; idx++)
+            {
+                RtlDynamicRowBuilder rowBuilder(rowAllocator);
+                size32_t size = rowDeserializer->deserialize(rowBuilder, rowSource);
+                sorted[idx] = rowBuilder.finalizeRowClear(size);
+            }
+        }
+    }
+
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         assertex(sorted == NULL);
         sortedCount = 0;
         curIndex = 0;
         eoi = false;
         
-        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused);
-        limit = (unsigned) helper.getLimit();
+        CRoxieServerLateStartActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        if (restarted)
+            assertex(limit==helper.getLimit());
+        else
+            limit = (unsigned) helper.getLimit();
         hasBest = helper.hasBest();
-        lateStart(parentExtractSize, parentExtract, limit > 0);
+        lateStart(parentExtractSize, parentExtract, restartInfo, limit > 0);
         // MORE - should we use an expanding array instead?
-        if (limit > 0)
+        if (limit > 0 && !sorted)  // restart may have allocated it already
             sorted = (const void **) ctx->queryRowManager().allocate((limit+1) * sizeof(const void *), activityId); 
     }
 
@@ -17940,6 +18503,8 @@ public:
             ReleaseRoxieRow(sorted);
         }
         sorted = NULL;
+        sortedCount = 0;
+        curIndex = 0;
         CRoxieServerLateStartActivity::reset();
     }
 
@@ -17978,6 +18543,7 @@ public:
         const void * next;
         while ((next = input->nextInGroup()) != NULL)
         {
+            // MORE - may want to add ability to restart in here
             if (sortedCount < limit)
             {
                 binary_vec_insert_stable(next, sorted, sortedCount, compare);
@@ -18020,7 +18586,10 @@ public:
                 return NULL;
         }
         processed++;
-        return sorted[curIndex++];
+        const void *ret = sorted[curIndex];
+        sorted[curIndex] = NULL;
+        curIndex++;
+        return ret;
     }
 
 };
@@ -18059,9 +18628,9 @@ public:
         rowLimit = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         rowLimit = helper.getRowLimit();  // could conceivably depend on context so should not compute any earlier than this
     }
 
@@ -18157,11 +18726,11 @@ public:
             transformExtra = static_cast<IHThorLimitTransformExtra *>(helper.selectInterface(TAIlimittransformextra_1));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         started = false;
         index = 0;
-        CRoxieServerLimitActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerLimitActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -18332,13 +18901,13 @@ public:
         index = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         started = false;
         index = 0;
         try
         {
-            CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+            CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         }
         catch (IException *E)
         {
@@ -18480,14 +19049,14 @@ public:
         delete [] inputs;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         cond = helper.getBranch();
         //CHOOSE defaults to the last argument if out of range.
         if (cond >= numInputs)
             cond = numInputs - 1;
-        inputs[cond]->start(parentExtractSize, parentExtract, paused);
+        inputs[cond]->start(parentExtractSize, parentExtract, paused, restartInfo);
         for (unsigned idx = 0; idx < numInputs; idx++)
         {
             if (idx!=cond)
@@ -18584,20 +19153,20 @@ public:
         cond = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         cond = helper.getCondition();
         if (cond)
         {
-            inputTrue->start(parentExtractSize, parentExtract, paused);
+            inputTrue->start(parentExtractSize, parentExtract, paused, restartInfo);
             if (inputFalse)
                 inputFalse->stop(false); // Note: stopping unused branches early helps us avoid buffering splits too long.
         }
         else 
         {
             if (inputFalse)
-                inputFalse->start(parentExtractSize, parentExtract, paused);
+                inputFalse->start(parentExtractSize, parentExtract, paused, restartInfo);
             inputTrue->stop(false);
         }
         unusedStopped = true;
@@ -18753,9 +19322,9 @@ public:
         executed = false;
     }
 
-    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract) = 0; 
+    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo) = 0;
 
-    virtual void execute(unsigned parentExtractSize, const byte * parentExtract) 
+    virtual void execute(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         CriticalBlock b(ecrit);
         if (exception)
@@ -18765,8 +19334,8 @@ public:
             try
             {
                 executed = true;
-                start(parentExtractSize, parentExtract, false);
-                doExecuteAction(parentExtractSize, parentExtract);
+                start(parentExtractSize, parentExtract, false, restartInfo);
+                doExecuteAction(parentExtractSize, parentExtract, restartInfo);
                 stop(false);
             }
             catch (IException * E)
@@ -18813,14 +19382,14 @@ public:
     {
     }
 
-    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract) 
+    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         int controlId;
         {
             ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
             controlId = helper.getCondition() ? 1 : 2;
         }
-        executeDependencies(parentExtractSize, parentExtract, controlId);
+        executeDependencies(parentExtractSize, parentExtract, restartInfo, controlId);
     }
 
 };
@@ -18860,15 +19429,15 @@ public:
     {
     }
 
-    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract) 
+    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
 #ifdef PARALLEL_EXECUTE
-        CParallelActivityExecutor afor(dependencies, parentExtractSize, parentExtract);
+        CParallelActivityExecutor afor(dependencies, parentExtractSize, parentExtract, restartInfo);
         afor.For(dependencies.ordinality(), dependencies.ordinality(), true);
 #else
         ForEachItemIn(idx, dependencies)
         {
-            dependencies.item(idx).execute(parentExtractSize, parentExtract);
+            dependencies.item(idx).execute(parentExtractSize, parentExtract, restartInfo);
         }
 #endif
     }
@@ -18913,11 +19482,11 @@ public:
     {
     }
 
-    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract) 
+    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         unsigned numBranches = helper.numBranches();
         for (unsigned branch=1; branch <= numBranches; branch++)
-            executeDependencies(parentExtractSize, parentExtract, branch);
+            executeDependencies(parentExtractSize, parentExtract, restartInfo, branch);
     }
 
 };
@@ -18959,18 +19528,18 @@ public:
         savedExtract = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         savedExtractSize = parentExtractSize;
         savedExtract = parentExtract;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
-        executeDependencies(parentExtractSize, parentExtract, WhenParallelId);        // MORE: This should probably be done in parallel!
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        executeDependencies(parentExtractSize, parentExtract, restartInfo, WhenParallelId);        // MORE: This should probably be done in parallel!
     }
 
     virtual void stop(bool aborting)
     {
         if (state != STATEstopped)
-            executeDependencies(savedExtractSize, savedExtract, aborting ? WhenFailureId : WhenSuccessId);
+            executeDependencies(savedExtractSize, savedExtract, NULL, aborting ? WhenFailureId : WhenSuccessId);
         CRoxieServerActivity::stop(aborting);
     }
 
@@ -19019,24 +19588,24 @@ public:
         savedExtract = NULL;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         savedExtractSize = parentExtractSize;
         savedExtract = parentExtract;
-        CRoxieServerActionBaseActivity::start(parentExtractSize, parentExtract, paused);
-        executeDependencies(parentExtractSize, parentExtract, WhenParallelId);        // MORE: This should probably be done in parallel!
+        CRoxieServerActionBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
+        executeDependencies(parentExtractSize, parentExtract, restartInfo, WhenParallelId);        // MORE: This should probably be done in parallel!
     }
 
     virtual void stop(bool aborting)
     {
         if (state != STATEstopped)
-            executeDependencies(savedExtractSize, savedExtract, aborting ? WhenFailureId : WhenSuccessId);
+            executeDependencies(savedExtractSize, savedExtract, NULL, aborting ? WhenFailureId : WhenSuccessId);
         CRoxieServerActionBaseActivity::stop(aborting);
     }
 
-    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract)
+    virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
-        executeDependencies(parentExtractSize, parentExtract, 1);
+        executeDependencies(parentExtractSize, parentExtract, restartInfo, 1);
     }
 
 
@@ -19123,14 +19692,14 @@ public:
         rowIter = parser->queryResultIter();
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         anyThisGroup = false;
         curSearchTextLen = 0;
         curSearchText = NULL;
         in = NULL;
         parser->reset();
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -19242,6 +19811,11 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
+    }
+
     virtual void onExecute() 
     {
         int sequence = helper.getSequence();
@@ -19332,6 +19906,8 @@ public:
                 response->flush(false);
             }
             ReleaseRoxieRow(row);
+            if (serverContext->checkSaveRestartState())
+                break;
         }
         if (saveInContext)
             serverContext->appendResultDeserialized(storedName, sequence, builder.getcount(), builder.linkrows(), (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
@@ -19450,6 +20026,11 @@ public:
     CRoxieServerRemoteResultActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
         : CRoxieServerInternalSinkActivity(_factory, _probeManager), helper((IHThorRemoteResultArg &)basehelper)
     {
+	}
+
+    virtual bool saveRestartState(IActivityRestartContext *restartCtx) const
+    {
+        return doSaveRestartState(restartCtx);
     }
 
     virtual void onExecute() 
@@ -19514,12 +20095,12 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         numProcessedLastGroup = 0;
         srchStr = NULL;
         in = NULL;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -19689,9 +20270,9 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (compoundHelper)
         {
             rowLimit = compoundHelper->getRowLimit();
@@ -19864,11 +20445,11 @@ public:
         readIndex = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         rowLimit = compoundHelper->getRowLimit();
         stopAfter = compoundHelper->getChooseNLimit();
-        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         readAheadDone = false;
         readIndex = 0;
     }
@@ -20024,11 +20605,11 @@ public:
         localOffset = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         rowLimit = readHelper->getRowLimit();
         stopAfter = readHelper->getChooseNLimit();
-        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (!useRemote())
         {
             rowTransformer.set(readHelper->queryTransformer());
@@ -20131,11 +20712,11 @@ public:
         headerLines = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         rowLimit = readHelper->getRowLimit();
         stopAfter = readHelper->getChooseNLimit();
-        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (!useRemote())
         {
             headerLines = csvInfo->queryHeaderLen(); 
@@ -20355,10 +20936,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
-        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerDiskReadBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual IRoxieInput *queryOutput(unsigned idx)
@@ -20401,7 +20982,7 @@ public:
         choosenLimit = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         choosenLimit = countHelper.getChooseNLimit();
         if (limitHelper)
@@ -20409,7 +20990,7 @@ public:
             rowLimit = limitHelper->getRowLimit();
 //          keyedLimit = limitHelper->getKeyedLimit(); // more - should there be one?
         }
-        CRoxieServerDiskAggregateBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerDiskAggregateBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual const void *nextInGroup()
@@ -20607,10 +21188,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         gathered= false;
-        CRoxieServerDiskAggregateBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerDiskAggregateBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         resultAggregator.start(rowAllocator);
     }
 
@@ -20833,14 +21414,14 @@ public:
         remote.onCreate(this, this, _ctx, _colocalParent);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         accepted = 0;
         rejected = 0;
         rowLimit = (unsigned __int64) -1;
         keyedLimit = (unsigned __int64 ) -1;
         choosenLimit = I64C(0x7fffffffffffffff);
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         remote.onStart(parentExtractSize, parentExtract);
         variableInfoPending = variableFileName;
     }
@@ -21090,9 +21671,9 @@ public:
         delete [] seekSizes;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerIndexReadBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerIndexReadBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         steppingMeta.setDistributed();
         if (steppedExtra)
             steppingMeta.setExtra(steppedExtra);
@@ -21495,13 +22076,13 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         firstRead = true;
         accepted = 0;
         rejected = 0;
         keyedCount = 0;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (steppedExtra)
             steppingMeta.setExtra(steppedExtra);
         eof = !indexHelper.canMatchAny();
@@ -21885,10 +22466,10 @@ public:
         done = false;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual bool needsAllocator() const { return true; }
@@ -21928,10 +22509,10 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
-        CRoxieServerIndexActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerIndexActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         choosenLimit = countHelper.getChooseNLimit();
         if (limitHelper)
         {
@@ -22145,10 +22726,10 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual const void *nextInGroup()
@@ -22176,10 +22757,10 @@ public:
     {
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         done = false;
-        CRoxieServerIndexActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerIndexActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (!paused)
             processAllKeys();
     }
@@ -22316,11 +22897,11 @@ public:
 
     IMPLEMENT_IINTERFACE
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         gathered= false;
-        CRoxieServerIndexActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerIndexActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         groupSegCount = 0;
         if (!paused)
             processAllKeys();
@@ -22500,9 +23081,9 @@ public:
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerIndexReadBaseActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerIndexReadBaseActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         rowLimit = readHelper.getRowLimit();
         keyedLimit = readHelper.getKeyedLimit();
         if (!paused)
@@ -22777,7 +23358,8 @@ class CRoxieServerFetchActivity : public CRoxieServerActivity, implements IRecor
 
 public:
     CRoxieServerFetchActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, const RemoteActivityId &_remoteId, IFilePartMap *_map)
-        : CRoxieServerActivity(_factory, _probeManager), helper((IHThorFetchBaseArg &)basehelper), map(_map), remote(_remoteId, meta.queryOriginal(), helper, *this, true, true), puller(false)
+        : CRoxieServerActivity(_factory, _probeManager), helper((IHThorFetchBaseArg &)basehelper), map(_map),
+          remote(_remoteId, meta.queryOriginal(), helper, *this, true, true), puller(false, activityId)
     {
         fetchContext = static_cast<IHThorFetchContext *>(helper.selectInterface(TAIfetchcontext_1));
         needsRHS = helper.transformNeedsRhs();
@@ -22803,9 +23385,9 @@ public:
         puller.setInput(this, _in);
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         remote.onStart(parentExtractSize, parentExtract);
         remote.setLimits(helper.getRowLimit(), (unsigned __int64) -1, I64C(0x7FFFFFFFFFFFFFFF));
         if (variableFileName)
@@ -22813,7 +23395,7 @@ public:
             varFileInfo.setown(resolveLFN(fetchContext->getFileName(), isOpt));
             map.setown(varFileInfo->getFileMap());
         }
-        puller.start(parentExtractSize, parentExtract, paused, ctx->fetchPreload(), false, ctx);
+        puller.start(parentExtractSize, parentExtract, paused, restartInfo, ctx->fetchPreload(), false, ctx, restarted);
     }
 
     virtual void stop(bool aborting)
@@ -23276,14 +23858,14 @@ public:
         ccdRecordAllocator.setown(ctx->queryCodeContext()->getRowAllocator(QUERYINTERFACE(helper.queryJoinFieldsRecordSize(), IOutputMetaData), activityId));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
         joinProcessed = 0;
         totalCycles = 0;
         allPulled = false;
         assertex(ready.ordinality()==0);
-        CRemoteResultAdaptor::start(parentExtractSize, parentExtract, paused);
+        CRemoteResultAdaptor::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()
@@ -23419,7 +24001,7 @@ public:
           remote(_remoteId, 0, helper, *this, true, true),
           indexReadMeta(_indexReadMeta),
           joinHandler(_joinHandler),
-          puller(false),
+          puller(false, activityId),
           isLocal(_isLocal)
     {
         variableIndexFileName = (helper.getJoinFlags() & (JFvarindexfilename|JFdynamicindexfilename)) != 0;
@@ -23471,12 +24053,12 @@ public:
         }
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (indexReadInput)
         {
-            indexReadInput->start(parentExtractSize, parentExtract, true); // paused=true because we don't want to actually run the index read
+            indexReadInput->start(parentExtractSize, parentExtract, true, restartInfo); // paused=true because we don't want to actually run the index read
             rootIndex = indexReadInput->queryIndexReadActivity();
             if (!rootIndex)
                 throw MakeStringException(ROXIE_INTERNAL_ERROR,"Index in keyed join %d could not be resolved", queryId());
@@ -23495,7 +24077,7 @@ public:
             translators.setown(new TranslatorArray);
             keySet.setown(varFileInfo->getKeyArray(factory->queryActivityMeta(), translators, false, isLocal ? factory->queryQueryFactory().queryChannel() : 0, factory->queryQueryFactory().getEnableFieldTranslation())); // MORE - isLocal?
         }
-        puller.start(parentExtractSize, parentExtract, paused, ctx->fullKeyedJoinPreload(), false, ctx);
+        puller.start(parentExtractSize, parentExtract, paused, restartInfo, ctx->fullKeyedJoinPreload(), false, ctx, restarted);
     }
 
     virtual void stop(bool aborting)
@@ -23742,7 +24324,7 @@ public:
           remote(_remoteId, helper, *this, isFull, _isSimple, puller, *this), 
           joinFlags(_joinFlags), 
           preserveGroups(meta.isGrouped()),
-          puller(false),
+          puller(false, activityId),
           isSimple(_isSimple),
           isLocal(_isLocal),
           abortLimit(0),
@@ -23776,12 +24358,12 @@ public:
 
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (indexReadInput)
         {
-            indexReadInput->start(parentExtractSize, parentExtract, true); // paused=true because we don't want to actually run the index read
+            indexReadInput->start(parentExtractSize, parentExtract, true, restartInfo); // paused=true because we don't want to actually run the index read
             rootIndex = indexReadInput->queryIndexReadActivity();
             if (!rootIndex)
                 throw MakeStringException(ROXIE_INTERNAL_ERROR,"Index in keyed join %d could not be resolved", queryId());
@@ -24141,15 +24723,15 @@ public:
         fetchInputAllocator.setown(ctx->queryCodeContext()->getRowAllocator(helper.queryFetchInputRecordSize(), activityId));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerKeyedJoinBase::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerKeyedJoinBase::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (variableFetchFileName)
         {
             varFetchFileInfo.setown(resolveLFN(helper.getFileName(), false));
             map.setown(varFetchFileInfo->getFileMap());
         }
-        puller.start(parentExtractSize, parentExtract, paused, ctx->keyedJoinPreload(), false, ctx);
+        puller.start(parentExtractSize, parentExtract, paused, restartInfo, ctx->keyedJoinPreload(), false, ctx, restarted);
     }
 
     virtual void setInput(unsigned idx, IRoxieInput *in)
@@ -24268,9 +24850,9 @@ public:
         joinFieldsAllocator.setown(ctx->queryCodeContext()->getRowAllocator(joinPrefixedMeta, activityId));
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
-        CRoxieServerKeyedJoinBase::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerKeyedJoinBase::start(parentExtractSize, parentExtract, paused, restartInfo);
         if (rootIndex)
         {
             varFileInfo.setown(rootIndex->getVarFileInfo());
@@ -24283,7 +24865,7 @@ public:
             translators.setown(new TranslatorArray);
             keySet.setown(varFileInfo->getKeyArray(factory->queryActivityMeta(), translators, false, isLocal ? factory->queryQueryFactory().queryChannel() : 0, factory->queryQueryFactory().getEnableFieldTranslation())); 
         }
-        puller.start(parentExtractSize, parentExtract, paused, ctx->keyedJoinPreload(), isSimple, ctx);
+        puller.start(parentExtractSize, parentExtract, paused, restartInfo, ctx->keyedJoinPreload(), isSimple, ctx, restarted);
 
     }
 
@@ -24596,10 +25178,10 @@ public:
     virtual const void * getNextRow() { return NULL; };
     virtual void releaseRow(const void * r) { ReleaseRoxieRow(r); };
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         eof = false;
-        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
+        CRoxieServerActivity::start(parentExtractSize, parentExtract, paused, restartInfo);
         authToken.append(ctx->queryAuthToken());
     }
     virtual void reset()
@@ -24687,9 +25269,10 @@ public:
         : CRoxieServerSoapActivityBase(_factory, _probeManager)
     {}
 
-    virtual void execute(unsigned parentExtractSize, const byte * parentExtract)
+    virtual void execute(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         //MORE: parentExtract not passed to start - although shouldn't be a problem.
+        assertex(!restartInfo);
         soaphelper.setown(createSoapCallHelper(this, NULL, ctx->queryAuthToken(), SCrow, pClientCert, *ctx, this));
         soaphelper->start();
         soaphelper->waitUntilDone();
@@ -24830,11 +25413,11 @@ public:
         return nextrec;
     }
 
-    virtual void execute(unsigned parentExtractSize, const byte * parentExtract)
+    virtual void execute(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
         try
         {
-            start(parentExtractSize, parentExtract, false);
+            start(parentExtractSize, parentExtract, false, restartInfo);
             soaphelper.setown(createSoapCallHelper(this, NULL, ctx->queryAuthToken(), SCdataset, pClientCert, *ctx, this));
             soaphelper->start();
             soaphelper->waitUntilDone();
@@ -25244,9 +25827,9 @@ public:
             throw exception.getLink();
     }
 
-    virtual void execute()
+    virtual void execute(const IActivityRestartContext *restartInfo)
     {
-        doExecute(0, NULL);
+        doExecute(0, NULL, restartInfo);
     }
 
     //New child query code...
@@ -25275,27 +25858,39 @@ public:
         return loopCounter;
     }
 
-    void doExecute(unsigned parentExtractSize, const byte * parentExtract)
+    void doExecute(unsigned parentExtractSize, const byte * parentExtract, const IActivityRestartContext *restartInfo)
     {
+        IRoxieServerContext *serverContext = graphSlaveContext.queryServerContext();
         if (sinks.ordinality()==1)
-            sinks.item(0).execute(parentExtractSize, parentExtract);
+        {
+            SinkStartBlock sinkBlock;
+            if (sinkBlock.start(serverContext)) // MORE - not sure this is right if not called from CSlaveContext::runGraph() via CActivityGraph::execute.
+                sinks.item(0).execute(parentExtractSize, parentExtract, restartInfo);
+        }
 #ifdef PARALLEL_EXECUTE
-        else if (!probeManager && !graphDefinition.isSequential())
+        else if (!probeManager && !graphDefinition.isSequential() && !sequentialExecution)
         {
             class casyncfor: public CAsyncFor
             {
             public:
+                IRoxieServerContext *serverContext;
                 IActivityGraph &parent;
                 unsigned parentExtractSize;
                 const byte * parentExtract;
+                const IActivityRestartContext *restartInfo;
 
-                casyncfor(IRoxieServerActivityCopyArray &_sinks, IActivityGraph &_parent, unsigned _parentExtractSize, const byte * _parentExtract) : 
-                    sinks(_sinks), parent(_parent), parentExtractSize(_parentExtractSize), parentExtract(_parentExtract) { }
+                casyncfor(IRoxieServerActivityCopyArray &_sinks, IActivityGraph &_parent, unsigned _parentExtractSize,
+                          const byte * _parentExtract, const IActivityRestartContext *_restartInfo, IRoxieServerContext *_serverContext)
+                  : sinks(_sinks), parent(_parent), parentExtractSize(_parentExtractSize),
+                    parentExtract(_parentExtract), restartInfo(_restartInfo), serverContext(_serverContext)
+                { }
                 void Do(unsigned i)
                 {
                     try
                     {
-                        sinks.item(i).execute(parentExtractSize, parentExtract);
+                        SinkStartBlock sinkBlock;
+                        if (sinkBlock.start(serverContext))
+                            sinks.item(i).execute(parentExtractSize, parentExtract, restartInfo);
                     }
                     catch (IException *E)
                     {
@@ -25305,16 +25900,31 @@ public:
                 }
             private:
                 IRoxieServerActivityCopyArray &sinks;
-            } afor(sinks, *this, parentExtractSize, parentExtract);
+            } afor(sinks, *this, parentExtractSize, parentExtract, restartInfo, serverContext);
             afor.For(sinks.ordinality(), sinks.ordinality());
         }
 #endif
+        // The sequentialExecution and sequentialExecutionReversed options sometimes
+        // help make intermittent threading-related issues into reproducible ones.
+        // They should NOT be used other than while trying to debug such issues!
+        else if (sequentialExecutionReversed)
+        {
+            ForEachItemInRev(idx, sinks)
+            {
+                IRoxieServerActivity &sink = sinks.item(idx);
+                SinkStartBlock sinkBlock;
+                if (sinkBlock.start(serverContext))
+                    sink.execute(parentExtractSize, parentExtract, restartInfo);
+            }
+        }
         else
         {
             ForEachItemIn(idx, sinks)
             {
                 IRoxieServerActivity &sink = sinks.item(idx);
-                sink.execute(parentExtractSize, parentExtract);
+                SinkStartBlock sinkBlock;
+                if (sinkBlock.start(serverContext))
+                    sink.execute(parentExtractSize, parentExtract, restartInfo);
             }
         }
     }
@@ -25325,7 +25935,7 @@ public:
         results.setown(new CGraphResults);
         try
         {
-            doExecute(parentExtractSize, parentExtract);
+            doExecute(parentExtractSize, parentExtract, NULL);
         }
         catch (...)
         {
@@ -25343,10 +25953,10 @@ public:
         results.setown(new CGraphResults);
     }
 
-    virtual IRoxieInput * startOutput(unsigned id, unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual IRoxieInput * startOutput(unsigned id, unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         IRoxieInput * ret = selectOutput(id);
-        ret->start(parentExtractSize, parentExtract, paused);
+        ret->start(parentExtractSize, parentExtract, paused, restartInfo);
         return ret;
     }
 
@@ -25397,7 +26007,7 @@ public:
 
     virtual IRoxieGraphResults * execute(size32_t parentExtractSize, const byte *parentExtract)
     {
-        doExecute(parentExtractSize, parentExtract);
+        doExecute(parentExtractSize, parentExtract, NULL);
         return LINK(results);
     }
     virtual void getResult(size32_t & retSize, void * & ret, unsigned id)
@@ -25442,7 +26052,7 @@ public:
     }
     virtual void executeGraphLoop(size32_t parentExtractSize, const byte *parentExtract)
     {
-        doExecute(parentExtractSize, parentExtract);
+        doExecute(parentExtractSize, parentExtract, NULL);
     }
     virtual void setGraphLoopResult(unsigned id, IGraphResult * result)
     {
@@ -25477,6 +26087,16 @@ public:
     virtual void associateIterationOutputs(IRoxieServerLoopResultProcessor & processor)
     {
         throwUnexpected();
+    }
+
+    virtual bool saveRestartState(IActivityRestartContext *restartInfo) const
+    {
+        ForEachItemIn(idx, sinks)
+        {
+            if (!sinks.item(idx).saveRestartState(restartInfo))
+                return false;
+        }
+        return true;
     }
 };
 
@@ -25661,13 +26281,14 @@ public:
     virtual const char *queryName() const { return graphName.get(); }
     virtual void abort() { throwUnexpected(); }
     virtual void reset() { }
-    virtual void execute() { throwUnexpected(); }
+    virtual void execute(const IActivityRestartContext *restartInfo) { throwUnexpected(); }
     virtual void getProbeResponse(IPropertyTree *query) { throwUnexpected(); }
     virtual void noteException(IException *E) { throwUnexpected(); }
     virtual void checkAbort() { throwUnexpected(); }
     virtual IThorChildGraph * queryChildGraph() { throwUnexpected(); }
     virtual ILocalGraph * queryLocalGraph() { throwUnexpected(); }
     virtual IRoxieServerChildGraph * queryLoopGraph() { throwUnexpected(); }
+    virtual bool saveRestartState(IActivityRestartContext *restartInfo) const { throwUnexpected(); }
 
     virtual void onCreate(IRoxieSlaveContext *_ctx, IHThorArg *_colocalParent) 
     { 
@@ -25769,7 +26390,7 @@ public:
     {
         ASSERT(state == STATEreset);
     }
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused) 
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         ASSERT(state == STATEreset);
         state = STATEstarted; 
@@ -25836,7 +26457,10 @@ public:
     {
         return NULL;
     }
-
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        return false;
+    }
 };
 
 struct SortActivityTest : public ccdserver_hqlhelper::CThorSortArg {
@@ -26008,7 +26632,7 @@ protected:
             unsigned count = 0;
             if (iteration % 4 != 3)
             {
-                activity->start(0, NULL, false);
+                activity->start(0, NULL, false, NULL);
                 ASSERT(in.state == TestInput::STATEstarted);
                 ASSERT(!input2 || in2.state == TestInput::STATEstarted);
                 loop

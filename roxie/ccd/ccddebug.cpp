@@ -104,14 +104,14 @@ public:
     {
         return in->queryOutputMeta();
     }
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         // NOTE: totalRowCount/maxRowSize not reset, as we want them cumulative when working in a child query.
         rowCount = 0;
         hasStarted = true;
         hasStopped = false;
         everStarted = true;
-        in->start(parentExtractSize, parentExtract, paused);
+        in->start(parentExtractSize, parentExtract, paused, restartInfo);
         inMeta = in->queryOutputMeta();
         assertex(inMeta);
     }
@@ -161,6 +161,11 @@ public:
         }
         return ret;
     }
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        return in->saveRestartState(ctx);
+    }
+
     virtual const void * nextSteppedGE(const void * seek, unsigned numFields, bool &wasCompleteMatch, const SmartStepExtra & stepExtra)
     {
         const void *ret = in->nextSteppedGE(seek, numFields, wasCompleteMatch, stepExtra);
@@ -831,7 +836,7 @@ public:
         nextHistorySlot = 0;
     }
 
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo)
     {
         forceEOF = false;
         EOGseen = false;
@@ -841,7 +846,7 @@ public:
             lastSequence = debugContext->querySequence();
             edgeRecord->incrementCount(0, lastSequence);
         }
-        InputProbe::start(parentExtractSize, parentExtract, paused);
+        InputProbe::start(parentExtractSize, parentExtract, paused, restartInfo);
     }
 
     virtual void reset()

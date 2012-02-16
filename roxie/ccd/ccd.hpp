@@ -309,6 +309,8 @@ interface IRoxieQueryPacket : extends IInterface
 
 interface IQueryDll;
 
+enum CheckPointModeType {CheckPointNone, CheckPointUnspecified, CheckPointStop};
+
 // Global configuration info
 extern bool isMonitor;
 extern bool shuttingDown;
@@ -358,6 +360,7 @@ extern unsigned socketCheckInterval;
 extern memsize_t defaultMemoryLimit;
 extern unsigned defaultTimeLimit[3];
 extern unsigned defaultWarnTimeLimit[3];
+extern CheckPointModeType defaultCheckPointMode;
 extern bool deleteUnneededFiles;
 extern bool checkPrimaries;
 extern bool pretendAllOpt;
@@ -400,6 +403,8 @@ extern XmlReaderOptions defaultXmlReadFlags;
 extern bool mergeSlaveStatistics;
 extern bool roxieMulticastEnabled;   // enable use of multicast for sending requests to slaves
 extern bool preloadOnceData;
+extern bool sequentialExecutionReversed;
+extern bool sequentialExecution;
 
 extern unsigned udpMulticastBufferSize;
 extern size32_t diskReadBufferSize;

@@ -21,7 +21,26 @@
 #include "jisem.hpp"
 #include "jmutex.hpp"
 
-#ifndef _WIN32
+#ifdef _WIN32
+
+typedef struct _SEMAPHORE_BASIC_INFORMATION {
+    ULONG CurrentCount;
+    ULONG MaximumCount;
+} SEMAPHORE_BASIC_INFORMATION;
+
+unsigned Semaphore::queryCount()
+{
+    _NtQuerySemaphore NtQuerySemaphore = (_NtQuerySemaphore)GetProcAddress (GetModuleHandle ("ntdll.dll"), "NtQuerySemaphore");
+    assertex(NtQuerySemaphore);
+    SEMAPHORE_BASIC_INFORMATION BasicInfo;
+    NTSTATUS status = NtQuerySemaphore (Semaphore, 0 /*SemaphoreBasicInformation*/,
+            &BasicInfo, sizeof (SEMAPHORE_BASIC_INFORMATION), NULL);
+    if (status == ERROR_SUCCESS)
+        return BasicInfo.CurrentCount;
+    throwUnexpected();
+}
+
+#else
 
 #include <sys/time.h>
 

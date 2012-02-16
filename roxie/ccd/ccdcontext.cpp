@@ -35,6 +35,8 @@
 
 using roxiemem::IRowManager;
 
+#define CHECKPOINT_LOCK_TIMEOUT 1000
+
 //=======================================================================================================================
 
 #define DEBUGEE_TIMEOUT 10000
@@ -191,7 +193,8 @@ public:
 class CRoxieWorkflowMachine : public WorkflowMachine
 {
 public:
-    CRoxieWorkflowMachine(IPropertyTree *_workflowInfo, bool _doOnce, const IRoxieContextLogger &_logctx) : WorkflowMachine(_logctx)
+    CRoxieWorkflowMachine(IPropertyTree *_workflowInfo, bool _doOnce, const IActivityRestartContext *_restartInfo, const IRoxieContextLogger &_logctx)
+      : WorkflowMachine(_logctx), restartInfo(_restartInfo)
     {
         workflowInfo = _workflowInfo;
         doOnce = _doOnce;
@@ -200,6 +203,9 @@ protected:
     virtual void begin()
     {
         // MORE - should pre-do more of this work
+        const IPropertyTree *workflowRestartInfo = NULL;
+        if (restartInfo)
+            workflowRestartInfo = restartInfo->restoreContext("Workflow");
         unsigned count = 0;
         Owned<IConstWorkflowItemIterator> iter = createWorkflowItemIterator(workflowInfo);
         for(iter->first(); iter->isValid(); iter->next())
@@ -208,10 +214,17 @@ protected:
         for(iter->first(); iter->isValid(); iter->next())
         {
             IConstWorkflowItem *item = iter->query();
+            int id = item->queryWfid();
             bool isOnce = (item->queryMode() == WFModeOnce);
             workflow->addClone(item);
-            if (isOnce != doOnce)
-                workflow->queryWfid(item->queryWfid()).setState(WFStateDone);
+            bool alreadyDone = false;
+            if (workflowRestartInfo)
+            {
+                VStringBuffer xpath("Workflow[@wfid='%d']/@completed", id);
+                alreadyDone = workflowRestartInfo->getPropBool(xpath.str(), false);
+            }
+            if (isOnce != doOnce || alreadyDone)
+                workflow->queryWfid(id).setState(WFStateDone);
         }
     }
     virtual void end()
@@ -224,14 +237,32 @@ protected:
     virtual void reportContingencyFailure(char const * type, IException * e) {}
     virtual void checkForAbort(unsigned wfid, IException * handling) {}
     virtual void doExecutePersistItem(IRuntimeWorkflowItem & item) { throw MakeStringException(ROXIE_UNIMPLEMENTED_ERROR, "Persists not supported in roxie"); }
+    virtual bool saveRestartState(IActivityRestartContext *restartInfo) const
+    {
+        Owned<IConstWorkflowItemIterator> iter = createWorkflowItemIterator(workflowInfo);
+        Owned<IPropertyTree> wfRestartInfo = createPTree("Workflow");
+        for(iter->first(); iter->isValid(); iter->next())
+        {
+            IConstWorkflowItem *item = iter->query();
+            int id = item->queryWfid();
+            Owned<IPropertyTree> c = createPTree("Workflow");
+            c->setPropInt("@wfid", id);
+            c->setPropBool("@completed",workflow->queryWfid(id).queryState()==WFStateDone);
+            wfRestartInfo->addPropTree("Workflow", c.getClear());
+            // MORE - sort out the format of this info, or use memorybuffer
+        }
+        restartInfo->saveContext("Workflow", wfRestartInfo);
+        return true;
+    }
 private:
+    const IActivityRestartContext *restartInfo; // MORE - do I need to link?
     IPropertyTree *workflowInfo;
     bool doOnce;
 };
 
-WorkflowMachine *createRoxieWorkflowMachine(IPropertyTree *_workflowInfo, bool _doOnce, const IRoxieContextLogger &_logctx)
+WorkflowMachine *createRoxieWorkflowMachine(IPropertyTree *_workflowInfo, bool _doOnce, const IActivityRestartContext *_restartInfo, const IRoxieContextLogger &_logctx)
 {
-    return new CRoxieWorkflowMachine(_workflowInfo, _doOnce, _logctx);
+    return new CRoxieWorkflowMachine(_workflowInfo, _doOnce, _restartInfo, _logctx);
 }
 
 //=======================================================================================================================
@@ -588,6 +619,7 @@ protected:
     Owned<IProbeManager> probeManager; // must be destroyed after childGraphs
     MapXToMyClass<unsigned, unsigned, IActivityGraph> childGraphs;
     Owned<IActivityGraph> graph;
+    Owned<IActivityRestartContext> restartInfo;
     unsigned priority;
     StringBuffer authToken;
     Owned<IPropertyTree> probeQuery;
@@ -1005,11 +1037,11 @@ public:
         }
     }
 
-    void runGraph()
+    void runGraph(const IActivityRestartContext *restartInfo)
     {
         try
         {
-            graph->execute();
+            graph->execute(restartInfo);
 
             if (probeQuery)
                 graph->getProbeResponse(probeQuery);
@@ -1035,7 +1067,8 @@ public:
         {
             beginGraph(name);
             created = true;
-            runGraph();
+            Owned<IActivityRestartContext> useRestart = restartInfo.getClear();
+            runGraph(useRestart);
         }
         catch (IException *e)
         {
@@ -1106,7 +1139,7 @@ public:
         {
             Owned<IRoxieServerActivity> fa = f->createFunction(*a.getClear(), NULL);
             fa->onCreate(this, NULL);
-            fa->start(0, NULL, false);
+            fa->start(0, NULL, false, NULL);
             __int64 ret = fa->evaluate();
             fa->stop(false);
             fa->reset();
@@ -1834,6 +1867,8 @@ class CRoxieServerContext : public CSlaveContext, implements IRoxieServerContext
     unsigned warnTimeLimit;
     unsigned lastSocketCheckTime;
     unsigned lastHeartBeat;
+    CheckPointModeType checkPointMode; // Move into slave?
+    ReadWriteLock checkPointLock; // Move into slave?
 
 protected:
     Owned<WorkflowMachine> workflow;
@@ -1889,6 +1924,9 @@ protected:
         trim = false;
         priority = 0;
         sendHeartBeats = false;
+        checkPointMode = serverQueryFactory->getCheckPointMode();
+        if (checkPointMode == CheckPointUnspecified)
+            checkPointMode = defaultCheckPointMode;
         timeLimit = serverQueryFactory->getTimeLimit();
         if (!timeLimit)
             timeLimit = defaultTimeLimit[priority];
@@ -1906,6 +1944,7 @@ protected:
         ctxPrefetchProjectPreload = defaultPrefetchProjectPreload;
 
         traceActivityTimes = false;
+        calls = 0; // MORE - hack!
     }
 
     void startWorkUnit()
@@ -1955,6 +1994,16 @@ protected:
         warnTimeLimit = 0;
     }
 
+    unsigned calls;
+
+    inline bool doSaveCheckpoint()
+    {
+        if (checkPointMode==CheckPointNone || checkPointMode==CheckPointUnspecified)
+            return false;
+        // MORE - check time since last checkpoint, etc
+        return calls++ > (int) checkPointMode;  // hack for testing
+    }
+
 public:
     IMPLEMENT_IINTERFACE;
 
@@ -1963,7 +2012,7 @@ public:
     {
         init();
         rowManager->setMemoryLimit(serverQueryFactory->getMemoryLimit());
-        workflow.setown(_factory->createWorkflowMachine(true, logctx));
+        workflow.setown(_factory->createWorkflowMachine(true, NULL, logctx));
         context.setown(createPTree(ipt_caseInsensitive));
     }
 
@@ -1973,7 +2022,7 @@ public:
         init();
         workUnit.set(_workUnit);
         rowManager->setMemoryLimit(serverQueryFactory->getMemoryLimit());
-        workflow.setown(_factory->createWorkflowMachine(false, logctx));
+        workflow.setown(_factory->createWorkflowMachine(false, NULL, logctx));
         context.setown(createPTree(ipt_caseInsensitive));
         startWorkUnit();
     }
@@ -1994,6 +2043,7 @@ public:
         sendHeartBeats = enableHeartBeat && isRaw && isBlocked && priority==0;
         timeLimit = context->getPropInt("_TimeLimit", timeLimit);
         warnTimeLimit = context->getPropInt("_warnTimeLimit", warnTimeLimit);
+        checkPointMode = (CheckPointModeType) context->getPropInt("_CheckPointMode", checkPointMode); // MORE use strings?
 
         const char *wuid = context->queryProp("@wuid");
         if (wuid)
@@ -2019,7 +2069,10 @@ public:
         rowManager->setActivityTracking(context->getPropBool("_TraceMemory", false));
         rowManager->setMemoryLimit((memsize_t) context->getPropInt64("_MemoryLimit", _factory->getMemoryLimit()));
         authToken.append(httpHelper.queryAuthToken());
-        workflow.setown(_factory->createWorkflowMachine(false, logctx));
+        const IPropertyTree *restartInfoTree = context->queryPropTree("RestartState");
+        if (restartInfoTree)
+            restartInfo.setown(loadRestartContext(restartInfoTree));
+        workflow.setown(_factory->createWorkflowMachine(false, restartInfo, logctx));
 
         ctxParallelJoinPreload = context->getPropInt("_ParallelJoinPreload", defaultParallelJoinPreload);
         ctxFullKeyedJoinPreload = context->getPropInt("_FullKeyedJoinPreload", defaultFullKeyedJoinPreload);
@@ -2088,6 +2141,89 @@ public:
                 }
             }
         }
+    }
+
+    virtual void executeGraph(const char * name, bool realThor, size32_t parentExtractSize, const void * parentExtract)
+    {
+        if (restartInfo)
+        {
+            context.setown(restartInfo->restoreContext("Stored"));
+            temporaries = restartInfo->restoreContext("Internal");
+            rereadResults = restartInfo->restoreContext("RereadResults");
+        }
+        CSlaveContext::executeGraph(name, realThor, parentExtractSize, parentExtract);
+    }
+
+    Owned<IActivityRestartContext> writeRestartInfo;
+
+    virtual bool startSink(bool alwaysLock)
+    {
+        checkPointLock.lockRead();
+        if (writeRestartInfo && !alwaysLock)
+            checkPointLock.unlockRead();
+        return writeRestartInfo==NULL;
+    }
+    virtual void stopSink()
+    {
+        checkPointLock.unlockRead();
+    }
+
+    virtual bool checkSaveRestartState()
+    {
+        // Check whether a checkpoint save is due...
+        if (doSaveCheckpoint())
+        {
+            // If there are multiple sinks active, need to block for all of them
+            ReadUnlockBlock rb(checkPointLock);
+            TimedWriteLockBlock wb(checkPointLock, CHECKPOINT_LOCK_TIMEOUT);
+            if (wb.locked())
+            {
+                if (!writeRestartInfo)
+                {
+                    Owned<IActivityRestartContext> newRestartInfo = createRestartContext();
+                    if (!graph->saveRestartState(newRestartInfo))
+                        return false;
+                    if (workUnit)
+                    {
+                        // In workunit case the context and workflow info should already be correct in the WU
+                        UNIMPLEMENTED;
+                    }
+                    else
+                    {
+                        // Save additional state information
+                        if (workflow)
+                        {
+                            if (!workflow->saveRestartState(newRestartInfo))
+                                return false; // MORE - save the fact that not worth trying?
+                        }
+                        // save the query's name and hash - don't want to execute a different query
+                        // Libraries could be fun though
+                        Owned<IPropertyTree> queryInfo = createPTree("Query");
+                        queryInfo->setProp("@name", factory->queryQueryName());
+                        queryInfo->setPropInt64("@hash", factory->queryHash());
+                        newRestartInfo->saveContext("Query", queryInfo);
+                        newRestartInfo->saveContext("Stored", context);
+                        newRestartInfo->saveContext("Internal", temporaries);
+                        newRestartInfo->saveContext("RereadResults", rereadResults);
+                        // Now output it
+                        Owned<FlushingStringBuffer> response = new FlushingStringBuffer(client, isBlocked, isXml, isRaw, isHttp, *this);
+                        response->isSoap = isHttp;
+                        response->trim = trim;
+                        response->queryName.set("restart:restartInfo");
+                        response->startDataset("restart:restartInfo", NULL, (unsigned) -1);
+                        {
+                            // Only way to flush CommonXmlWriter is to destroy it
+                            CommonXmlWriter xmlwrite(getXmlFlags(), 1, response);
+                            newRestartInfo->toXML(xmlwrite);
+                            writeRestartInfo.setown(newRestartInfo.getClear());
+                        }
+                        response->flush(true);
+                    }
+                }
+                return true; // checkPointMode==StopOnCheckPoint; // continuous mode needs some work...
+            }
+        }
+        return false;
     }
 
     virtual unsigned getXmlFlags() const

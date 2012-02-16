@@ -91,7 +91,7 @@ class ClusterWriteHandler;
 
 interface IRoxieInput : extends IInterface, extends IInputBase
 {
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused) = 0;
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo) = 0;
     virtual void stop(bool aborting) = 0;
     virtual void reset() = 0;
     virtual void checkAbort() = 0;
@@ -146,9 +146,9 @@ interface IRoxieServerActivity : extends IActivityBase
 {
     virtual void setInput(unsigned idx, IRoxieInput *in) = 0;
     virtual IRoxieInput *queryOutput(unsigned idx) = 0;
-    virtual void execute(unsigned parentExtractSize, const byte *parentExtract) = 0;
+    virtual void execute(unsigned parentExtractSize, const byte *parentExtract, const IActivityRestartContext *restartInfo) = 0;
     virtual void onCreate(IRoxieSlaveContext *ctx, IHThorArg *colocalArg) = 0;
-    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused) = 0;
+    virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo) = 0;
     virtual void stop(bool aborting) = 0;
     virtual void reset() = 0;
     virtual void addDependency(IRoxieServerActivity &source, unsigned sourceIdx, int controlId) = 0;
@@ -177,6 +177,7 @@ interface IRoxieServerActivity : extends IActivityBase
     virtual void serializeSkipInfo(MemoryBuffer &out, unsigned seekLen, const void *rawSeek, unsigned numFields, const void * seek, const SmartStepExtra &stepExtra) const = 0;
     virtual ThorActivityKind getKind() const = 0;
     virtual const IRoxieContextLogger &queryLogCtx() const = 0;
+    virtual bool saveRestartState(IActivityRestartContext *) const = 0;
 };
 
 interface IRoxieServerActivityFactory : extends IActivityFactory
@@ -234,7 +235,7 @@ class CGraphIterationInfo;
 interface IRoxieServerChildGraph : public IInterface
 {
     virtual void beforeExecute() = 0;
-    virtual IRoxieInput * startOutput(unsigned id, unsigned parentExtractSize, const byte *parentExtract, bool paused) = 0;
+    virtual IRoxieInput * startOutput(unsigned id, unsigned parentExtractSize, const byte *parentExtract, bool paused, const IActivityRestartContext *restartInfo) = 0;
     virtual IRoxieInput * selectOutput(unsigned id) = 0;
     virtual void setInputResult(unsigned id, IGraphResult * result) = 0;
     virtual bool querySetInputResult(unsigned id, IRoxieInput * result) = 0;

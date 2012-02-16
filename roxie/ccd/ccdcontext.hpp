@@ -95,6 +95,70 @@ interface IRoxieServerContext : extends IInterface
     virtual bool outputResultsToSocket() const = 0;
 
     virtual IRoxieDaliHelper *checkDaliConnection() = 0;
+    virtual bool startSink(bool alwaysLock) = 0;
+    virtual void stopSink() = 0;
+    virtual bool checkSaveRestartState() = 0;
+};
+
+class SinkStartBlock : public CInterface, implements IInterface
+{
+    IRoxieServerContext *serverContext;
+public:
+    IMPLEMENT_IINTERFACE;
+
+    SinkStartBlock()
+    {
+        serverContext = NULL;
+    }
+    ~SinkStartBlock()
+    {
+        if (serverContext)
+            serverContext->stopSink();
+    }
+    bool start(IRoxieServerContext *_serverContext)
+    {
+        if (!_serverContext || _serverContext->startSink(false))
+        {
+            serverContext = _serverContext;
+            return true;
+        }
+        return false;
+    }
+};
+
+class SinkStartUnblock : public CInterface, implements IInterface
+{
+    IRoxieServerContext *serverContext;
+public:
+    IMPLEMENT_IINTERFACE;
+
+    SinkStartUnblock()
+    {
+        serverContext = NULL;
+    }
+    ~SinkStartUnblock()
+    {
+        if (serverContext)
+            serverContext->startSink(true);
+    }
+    void stop(IRoxieServerContext *_serverContext)
+    {
+        if (_serverContext)
+        {
+            serverContext = _serverContext;
+            _serverContext->stopSink();
+        }
+    }
+    bool checkAborted()
+    {
+        if (serverContext)
+        {
+            bool ret = serverContext->startSink(true);
+            serverContext = NULL;
+            return !ret;  // startSink returns true if it's ok to continue...
+        }
+        return false;
+    }
 };
 
 interface IDeserializedResultStore : public IInterface
@@ -112,6 +176,5 @@ extern IRoxieSlaveContext *createSlaveContext(const IQueryFactory *factory, cons
 extern IRoxieServerContext *createRoxieServerContext(IPropertyTree *context, const IQueryFactory *factory, SafeSocket &client, bool isXml, bool isRaw, bool isBlocked, HttpHelper &httpHelper, bool trim, unsigned priority, const IRoxieContextLogger &logctx, XmlReaderOptions xmlReadFlags);
 extern IRoxieServerContext *createOnceServerContext(const IQueryFactory *factory, const IRoxieContextLogger &_logctx);
 extern IRoxieServerContext *createWorkUnitServerContext(IConstWorkUnit *wu, const IQueryFactory *factory, const IRoxieContextLogger &logctx);
-extern WorkflowMachine *createRoxieWorkflowMachine(IPropertyTree *_workflowInfo, bool doOnce, const IRoxieContextLogger &_logctx);
-
+extern WorkflowMachine *createRoxieWorkflowMachine(IPropertyTree *_workflowInfo, bool doOnce, const IActivityRestartContext *_restartInfo, const IRoxieContextLogger &_logctx);
 #endif

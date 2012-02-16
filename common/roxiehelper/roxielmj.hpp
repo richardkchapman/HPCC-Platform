@@ -118,6 +118,7 @@ public:
     private:
         void stop();
         virtual IRecordSize * queryRecordSize() { return parent; }
+        virtual bool saveRestartState(IActivityRestartContext *) const { return false; }
     } *strm1, *strm2;
 
     IInputBase *queryOut1() { return strm1; }

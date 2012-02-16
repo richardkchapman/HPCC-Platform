@@ -3566,6 +3566,11 @@ public:
         hasStopped = true;
         in->done(); 
     }
+
+    virtual bool saveRestartState(IActivityRestartContext *ctx) const
+    {
+        return in->saveRestartState(ctx);
+    }
 };
 
 //=======================================================================================
