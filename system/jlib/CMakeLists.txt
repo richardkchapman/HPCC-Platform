@@ -102,6 +102,7 @@ set (    INCLUDES
         jexcept.hpp
         jexpdef.hpp
         jfile.hpp
+        juri.hpp
         jfile.ipp
         jflz.hpp
         jhash.hpp

@@ -1,9 +1,7 @@
 ################################################################################
-#    Copyright (C) 2011 HPCC Systems.
+#    Copyright (C) 2012 HPCC Systems.
 #
-#    This program is free software: you can redistribute it and/or All rights
-#    reserved. This program is NOT PRESENTLY free software: you can NOT
-#    redistribute
+#    All rights reserved. This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as
 #    published by the Free Software Foundation, either version 3 of the
 #    License, or (at your option) any later version.
@@ -16,13 +14,37 @@
 #    You should have received a copy of the GNU Affero General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ################################################################################
-HPCC_ADD_SUBDIRECTORY (hrpc)
-HPCC_ADD_SUBDIRECTORY (include "PLATFORM")
-HPCC_ADD_SUBDIRECTORY (jhtree)
-HPCC_ADD_SUBDIRECTORY (jlib)
-HPCC_ADD_SUBDIRECTORY (lzma)
-HPCC_ADD_SUBDIRECTORY (regress)
-HPCC_ADD_SUBDIRECTORY (mp)
-HPCC_ADD_SUBDIRECTORY (security)
-HPCC_ADD_SUBDIRECTORY (xmllib)
-HPCC_ADD_SUBDIRECTORY (xmllibtest "PLATFORM")
+
+
+# Component: systemtest
+#####################################################
+# Description:
+# ------------
+#    Cmake Input File for systemtest
+#####################################################
+
+project( systemtest )
+
+set (    SRCS
+         jlibtest.cpp
+    )
+
+include_directories (
+         .
+         ./../common/remote
+         ./../mp
+         ./../include
+         ./../jlib
+    )
+
+ADD_DEFINITIONS( -D_CONSOLE )
+
+HPCC_ADD_EXECUTABLE ( systemtest ${SRCS} )
+
+install ( TARGETS systemtest DESTINATION ${OSSDIR}/bin )
+target_link_libraries ( systemtest
+         jlib
+         mp
+         hrpc
+         remote
+    )
