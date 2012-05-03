@@ -1373,6 +1373,20 @@ public:
     void insertSymbols(IHqlExpression * expr);
 };
 
+class CHqlDictionary : public CHqlExpression // , implements IHqlDictionary
+{
+public:
+    IMPLEMENT_IINTERFACE_USING(CHqlExpression)
+    static CHqlDictionary *makeDictionary(node_operator op, ITypeInfo *type, HqlExprArray &operands);
+
+public:
+    CHqlDictionary(node_operator op, ITypeInfo *_type, HqlExprArray &_ownedOperands);
+    ~CHqlDictionary();
+
+//    virtual StringBuffer &printAliases(StringBuffer &s, unsigned, bool &) { return s; }
+    //virtual void sethash();     // needed while it has a name....
+
+};
 
 
 class CHqlDataset : public CHqlExpression, implements IHqlDataset

@@ -625,6 +625,8 @@ public:
     void addToActiveRecord(IHqlExpression * newField);
     void beginIfBlock();
     IHqlExpression * endIfBlock();
+    void beginPayload();
+    IHqlExpression * endPayload();
 
     IHqlExpression * expandedSortListByReference(attribute * module, attribute & list);
     IHqlExpression *bindParameters(const attribute & errpos, IHqlExpression * function, HqlExprArray & ownedActuals);
