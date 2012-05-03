@@ -1429,8 +1429,9 @@ const char *getOpString(node_operator op)
     case no_assign_addfiles: return "+=";
     case no_debug_option_value: return "__DEBUG__";
     case no_dataset_alias: return "TABLE";
+    case no_inlinedictionary: return "DICTIONARY";
 
-    case no_unused2: case no_unused3: case no_unused4: case no_unused5: case no_unused6:
+    case no_unused3: case no_unused4: case no_unused5: case no_unused6:
     case no_unused13: case no_unused14: case no_unused15: case no_unused18: case no_unused19:
     case no_unused20: case no_unused21: case no_unused22: case no_unused23: case no_unused24: case no_unused25: case no_unused26: case no_unused27: case no_unused28: case no_unused29:
     case no_unused30: case no_unused31: case no_unused32: case no_unused33: case no_unused34: case no_unused35: case no_unused36: case no_unused37: case no_unused38:
@@ -5281,6 +5282,24 @@ bool isInImplictScope(IHqlExpression * scope, IHqlExpression * dataset)
     return false;
 }
 
+//===========================================================================
+
+CHqlDictionary *CHqlDictionary::makeDictionary(node_operator _op, ITypeInfo *type, HqlExprArray &_ownedOperands)
+{
+    CHqlDictionary *e = new CHqlDictionary(_op, type, _ownedOperands);
+    return (CHqlDictionary *) e->closeExpr();
+}
+
+CHqlDictionary::CHqlDictionary(node_operator _op, ITypeInfo *_type, HqlExprArray &_ownedOperands)
+: CHqlExpression(_op, _type, _ownedOperands)
+{
+}
+
+CHqlDictionary::~CHqlDictionary()
+{
+}
+
+//===========================================================================
 
 CHqlDataset *CHqlDataset::makeDataset(node_operator _op, ITypeInfo *type, HqlExprArray &_ownedOperands)
 {
@@ -9423,6 +9442,50 @@ extern IHqlExpression *createDatasetF(node_operator op, ...)
     return createDataset(op, children);
 }
 
+IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
+{
+#ifdef GATHER_LINK_STATS
+    insideCreate++;
+#endif
+    Owned<ITypeInfo> type = NULL;
+
+    switch (op)
+    {
+    case no_inlinedictionary:
+        {
+            type.setown(makeDictionaryType(makeRowType(createRecordType(&parms.item(1)))));
+        }
+        break;
+    default:
+        UNIMPLEMENTED_XY("Type calculation for dictionary operator", getOpString(op));
+        break;
+    }
+
+    IHqlExpression * ret = CHqlDictionary::makeDictionary(op, type.getClear(), parms);
+#ifdef GATHER_LINK_STATS
+    insideCreate--;
+#endif
+    return ret;
+}
+
+IHqlExpression *createDictionary(node_operator op, IHqlExpression *dictionary, IHqlExpression *list)
+{
+    HqlExprArray parms;
+    parms.append(*dictionary);
+    if (list)
+    {
+        list->unwindList(parms, no_comma);
+        list->Release();
+    }
+    return createDictionary(op, parms);
+}
+
+IHqlExpression *createDictionary(node_operator op, IHqlExpression *dictionary)
+{
+    HqlExprArray parms;
+    parms.append(*dictionary);
+    return createDictionary(op, parms);
+}
 
 IHqlExpression * createAliasOwn(IHqlExpression * expr, IHqlExpression * attr)
 {

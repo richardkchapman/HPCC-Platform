@@ -9861,6 +9861,7 @@ static void getTokenText(StringBuffer & msg, int token)
     case DENORMALIZE: msg.append("DENORMALIZE"); break;
     case DEPRECATED: msg.append("DEPRECATED"); break;
     case DESC: msg.append("DESC"); break;
+    case DICTIONARY: msg.append("DICTIONARY"); break;
     case DISTRIBUTE: msg.append("DISTRIBUTE"); break;
     case DISTRIBUTED: msg.append("DISTRIBUTED"); break;
     case DISTRIBUTION: msg.append("DISTRIBUTION"); break;
@@ -10179,6 +10180,7 @@ static void getTokenText(StringBuffer & msg, int token)
 
     case DATASET_ID: msg.append("dataset"); break;
     case DATAROW_ID: msg.append("datarow"); break;
+    case DICTIONARY_ID: msg.append("dictionary"); break;
     case RECORD_ID: msg.append("record-name"); break;
     case RECORD_FUNCTION: msg.append("record-name"); break;
     case VALUE_ID: msg.append("identifier"); break;
@@ -10204,6 +10206,7 @@ static void getTokenText(StringBuffer & msg, int token)
     case SCOPE_FUNCTION: msg.append("module-name"); break;
     case TRANSFORM_FUNCTION: msg.append("transform-name"); break;
     case DATAROW_FUNCTION: msg.append("datarow"); break;
+    case DICTIONARY_FUNCTION: msg.append("dictionary"); break;
     case LIST_DATASET_FUNCTION: msg.append("identifier"); break;
 
     case VALUE_FUNCTION: 
@@ -10300,7 +10303,7 @@ void HqlGram::simplifyExpected(int *expected)
                        TOXML, '@', SECTION, EVENTEXTRA, EVENTNAME, __SEQUENCE__, IFF, OMITTED, GETENV, __DEBUG__, __STAND_ALONE__, 0);
     simplify(expected, DATA_CONST, REAL_CONST, STRING_CONST, INTEGER_CONST, UNICODE_CONST, 0);
     simplify(expected, VALUE_MACRO, DEFINITIONS_MACRO, 0);
-    simplify(expected, VALUE_ID, DATASET_ID, RECORD_ID, ACTION_ID, UNKNOWN_ID, SCOPE_ID, VALUE_FUNCTION, DATAROW_FUNCTION, DATASET_FUNCTION, LIST_DATASET_FUNCTION, LIST_DATASET_ID, ALIEN_ID, TYPE_ID, SET_TYPE_ID, TRANSFORM_ID, TRANSFORM_FUNCTION, RECORD_FUNCTION, FEATURE_ID, EVENT_ID, EVENT_FUNCTION, SCOPE_FUNCTION, ENUM_ID, PATTERN_TYPE_ID, 0); 
+    simplify(expected, VALUE_ID, DATASET_ID, DICTIONARY_ID, RECORD_ID, ACTION_ID, UNKNOWN_ID, SCOPE_ID, VALUE_FUNCTION, DATAROW_FUNCTION, DATASET_FUNCTION, DICTIONARY_FUNCTION, LIST_DATASET_FUNCTION, LIST_DATASET_ID, ALIEN_ID, TYPE_ID, SET_TYPE_ID, TRANSFORM_ID, TRANSFORM_FUNCTION, RECORD_FUNCTION, FEATURE_ID, EVENT_ID, EVENT_FUNCTION, SCOPE_FUNCTION, ENUM_ID, PATTERN_TYPE_ID, 0);
     simplify(expected, LIBRARY, LIBRARY, SCOPE_FUNCTION, STORED, PROJECT, INTERFACE, MODULE, 0);
     simplify(expected, MATCHROW, MATCHROW, LEFT, RIGHT, IF, IFF, ROW, HTTPCALL, SOAPCALL, PROJECT, GLOBAL, NOFOLD, NOHOIST, ALLNODES, THISNODE, SKIP, DATAROW_FUNCTION, TRANSFER, RIGHT_NN, FROMXML, 0);
     simplify(expected, TRANSFORM_ID, TRANSFORM_FUNCTION, TRANSFORM, '@', 0);

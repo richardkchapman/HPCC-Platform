@@ -353,7 +353,7 @@ enum _node_operator {
     no_unused23,
     no_unused24,
         no_dataset_from_transform,
-    no_unused2,
+        no_inlinedictionary,
         no_unknown,
     no_unused3,
     no_unused4,
@@ -1246,6 +1246,9 @@ extern HQL_API IHqlExpression *createDataset(node_operator op, IHqlExpression *d
 extern HQL_API IHqlExpression *createDataset(node_operator op, IHqlExpression *dataset, IHqlExpression *elist);
 extern HQL_API IHqlExpression *createDataset(node_operator op, HqlExprArray & parms);       // inScope should only be set internally.
 extern HQL_API IHqlExpression *createDatasetF(node_operator op, ...);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, IHqlExpression *initializer, IHqlExpression *recordDef);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, IHqlExpression *dictionary);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms);
 extern HQL_API IHqlExpression *createNewDataset(IHqlExpression *name, IHqlExpression *recorddef, IHqlExpression *mode, IHqlExpression *parent, IHqlExpression *joinCondition, IHqlExpression * options = NULL);
 extern HQL_API IHqlExpression *createRow(node_operator op, IHqlExpression *Dataset, IHqlExpression *element = NULL);
 extern HQL_API IHqlExpression *createRow(node_operator op, HqlExprArray & args);
