@@ -224,7 +224,7 @@ enum _node_operator {
         no_comma,
         no_count,
         no_countgroup,
-    no_unused82,
+        no_selectmap,
         no_exists,
         no_within,
         no_notwithin,

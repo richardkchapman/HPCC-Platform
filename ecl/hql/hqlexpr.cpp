@@ -989,6 +989,7 @@ const char *getOpString(node_operator op)
     case no_mergedscope: return "<scope>";
     case no_privatescope: return "<private_scope>";
     case no_list: return "<list>";
+    case no_selectmap: return "SELECT_MAP";
     case no_selectnth: return "SELECT_NTH";
     case no_filter: return "FILTER";
     case no_param: return "<parameter>";

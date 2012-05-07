@@ -6703,7 +6703,7 @@ dataRow
                         }
     | dictionary '[' expressionList ']'
                         {
-                            $$.setExpr(createRow(no_selectnth, $1.getExpr(), $3.getExpr()));
+                            $$.setExpr(createRow(no_selectmap, $1.getExpr(), $3.getExpr()));
                         }
     | dataSet '[' NOBOUNDCHECK expression ']'
                         {   
