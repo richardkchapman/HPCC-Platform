@@ -7035,8 +7035,8 @@ simpleDictionary
                         {
                             HqlExprArray values;
                             parser->endList(values);
-                            OwnedHqlExpr table = createDictionary(no_inlinedictionary, createValue(no_recordlist, NULL, values), $8.getExpr());
-                            $$.setExpr(table.getClear());
+                            OwnedHqlExpr table = createDataset(no_temptable, createValue(no_recordlist, NULL, values), $8.getExpr());
+                            $$.setExpr(convertTempTableToInlineDictionary(parser->errorHandler, $5.pos, table));
                             $$.setPosition($1);
                         }
     | '(' dictionary  ')'  {

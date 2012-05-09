@@ -14312,6 +14312,7 @@ extern HQL_API bool hasUnknownTransform(IHqlExpression * expr)
         if (expr->hasProperty(mergeTransformAtom))
             return true;
         break;
+    case no_inlinedictionary:
     case no_inlinetable:
         {
             IHqlExpression * transforms = expr->queryChild(0);
