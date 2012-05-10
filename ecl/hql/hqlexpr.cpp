@@ -4151,6 +4151,27 @@ bool CHqlExpression::isDataset()
     }
 }
 
+bool CHqlExpression::isDictionary()
+{
+    ITypeInfo * cur = type;
+    loop
+    {
+        if (!cur)
+            return false;
+
+        switch(cur->getTypeCode())
+        {
+        case type_dictionary:
+            return true;
+        case type_function:
+            cur = cur->queryChildType();
+            break;
+        default:
+            return false;
+        }
+    }
+}
+
 bool CHqlExpression::isDatarow() 
 {
     return matchesTypeCode(type, type_row);
@@ -5301,6 +5322,11 @@ CHqlDictionary::CHqlDictionary(node_operator _op, ITypeInfo *_type, HqlExprArray
 
 CHqlDictionary::~CHqlDictionary()
 {
+}
+
+IHqlExpression *CHqlDictionary::clone(HqlExprArray &newkids)
+{
+    return createDictionary(op, newkids);
 }
 
 //===========================================================================

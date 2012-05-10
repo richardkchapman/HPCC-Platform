@@ -2929,12 +2929,6 @@ indexFlag
                             $$.setExpr(createAttribute(fixedAtom));
                             $$.setPosition($1);
                         }
-    | PAYLOAD '(' expression ')'
-                        {
-                            parser->normalizeExpression($3);        //$3 indicates the first payload field
-                            $$.setExpr(createExprAttribute(payloadAtom, $3.getExpr()));
-                            $$.setPosition($1);
-                        }
     | COMPRESSED '(' compressMode ')'
                         {
                             $$.setExpr(createExprAttribute(compressedAtom, $3.getExpr()));
@@ -3727,15 +3721,9 @@ funcRetType
 
 payloadPart
     :  		            {
-                            // NOTE - this reduction happens as soon as the DOESTO is seen,
+                            // NOTE - this reduction happens as soon as the GOESTO is seen,
                             // so it ensures that the following fields go into the payload record def
-                            IHqlExpression * record = parser->popRecord();
-                            record->Link();     // link should be in startrecord, but can only link after closeExpr()
-                            parser->popSelfScope();
-                            OwnedHqlExpr newRecord = record->closeExpr();
-                            if (newRecord->hasProperty(packedAtom))
-                                newRecord.setown(getPackedRecord(newRecord));
-                            $$.setExpr(newRecord.getClear());
+                            $$.setExpr(parser->endRecordDef());
                             parser->beginRecord();
                         }
       GOESTO fieldDefs optSemiComma
@@ -3754,11 +3742,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $3.getExpr();
                             OwnedHqlExpr payload = $4.getExpr();
-                            parser->checkRecordIsValid($1, record);
-                            parser->checkRecordIsValid($1, payload);
-                            OwnedHqlExpr extra;
-                            parser->modifyIndexPayloadRecord(record, payload, extra, $1);
-                            parser->pushTopScope(record);
+                            parser->modifyIndexPayloadRecord(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
@@ -3775,11 +3759,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $4.getExpr();
                             OwnedHqlExpr payload = $5.getExpr();
-                            parser->checkRecordIsValid($1, record);
-                            parser->checkRecordIsValid($1, payload);
-                            OwnedHqlExpr extra;
-                            parser->modifyIndexPayloadRecord(record, payload, extra, $1);
-                            parser->pushTopScope(record);
+                            parser->modifyIndexPayloadRecord(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
@@ -3796,11 +3776,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $4.getExpr();
                             OwnedHqlExpr payload = $5.getExpr();
-                            parser->checkRecordIsValid($1, record);
-                            parser->checkRecordIsValid($1, payload);
-                            OwnedHqlExpr extra;
-                            parser->modifyIndexPayloadRecord(record, payload, extra, $1);
-                            parser->pushTopScope(record);
+                            parser->modifyIndexPayloadRecord(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
@@ -3817,11 +3793,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $5.getExpr();
                             OwnedHqlExpr payload = $6.getExpr();
-                            parser->checkRecordIsValid($1, record);
-                            parser->checkRecordIsValid($1, payload);
-                            OwnedHqlExpr extra;
-                            parser->modifyIndexPayloadRecord(record, payload, extra, $1);
-                            parser->pushTopScope(record);
+                            parser->modifyIndexPayloadRecord(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
@@ -4046,13 +4018,7 @@ recordOption
 endrecord
     : endOfRecordMarker
                         {
-                            IHqlExpression * record = parser->popRecord();
-                            record->Link();     // link should be in startrecord, but can only link after closeExpr()
-                            parser->popSelfScope();
-                            OwnedHqlExpr newRecord = record->closeExpr();
-                            if (newRecord->hasProperty(packedAtom))
-                                newRecord.setown(getPackedRecord(newRecord));
-                            $$.setExpr(newRecord.getClear());
+                            $$.setExpr(parser->endRecordDef());
                             parser->popLocale();
                             $$.setPosition($1);
                         }
@@ -7006,22 +6972,14 @@ dictionary
 
 simpleDictionary
     : scopedDictionaryId
-/*
-    | setOfDictionaries '[' expression ']'
-                        {
-                            parser->normalizeExpression($3, type_int, false);
-                            $$.setExpr(createDataset(no_rowsetindex, $1.getExpr(), $3.getExpr()));
-                            $$.setPosition($1);
-                        }
-*/
     | NOFOLD '(' dictionary ')'
                         {
-                            $$.setExpr(createDataset(no_nofold, $3.getExpr(), NULL));
+                            $$.setExpr(createDictionary(no_nofold, $3.getExpr(), NULL));
                             $$.setPosition($1);
                         }
     | NOHOIST '(' dictionary ')'
                         {
-                            $$.setExpr(createDataset(no_nohoist, $3.getExpr(), NULL));
+                            $$.setExpr(createDictionary(no_nohoist, $3.getExpr(), NULL));
                             $$.setPosition($1);
                         }
 /*
@@ -8048,7 +8006,6 @@ simpleDataSet
                             parser->extractRecordFromExtra(record, extra);
                             OwnedHqlExpr transform = parser->extractTransformFromExtra(extra);
 
-                            parser->applyPayloadAttribute($6, record, extra);
                             parser->inheritRecordMaxLength(dataset, record);
 
                             record.setown(parser->checkIndexRecord(record, $5));
@@ -8075,8 +8032,6 @@ simpleDataSet
                             OwnedHqlExpr record = $3.getExpr();
                             OwnedHqlExpr extra = $4.getExpr();
                             parser->extractRecordFromExtra(record, extra);
-                            parser->applyPayloadAttribute($6, record, extra);
-
                             $$.setExpr(parser->createIndexFromRecord(record, extra, $3));
                             parser->checkIndexRecordTypes($$.queryExpr(), $1);
                             $$.setPosition($1);
@@ -9201,7 +9156,7 @@ indexTopRecordAndName
                             }
                             OwnedHqlExpr payload = $3.getExpr();
                             OwnedHqlExpr extra = $5.getExpr();
-                            parser->modifyIndexPayloadRecord(record, payload, extra, $1);
+                            parser->modifyIndexPayloadRecord(record, payload, $1);
 
                             parser->pushTopScope(record);
                             $$.setExpr(createComma(record.getClear(), extra.getClear()));

@@ -9273,7 +9273,7 @@ void HqlCppTranslator::buildRecordEcl(BuildCtx & subctx, IHqlExpression * datase
 
 void HqlCppTranslator::buildFormatCrcFunction(BuildCtx & ctx, const char * name, IHqlExpression * dataset, IHqlExpression * expr, unsigned payloadDelta)
 {
-    IHqlExpression * payload = expr ? expr->queryProperty(_payload_Atom) : NULL;
+    IHqlExpression * payload = dataset->queryRecord()->queryProperty(_payload_Atom);
     OwnedHqlExpr exprToCrc = getSerializedForm(dataset->queryRecord());
     unsigned payloadSize = 1;
     if (payload)
@@ -9628,9 +9628,9 @@ ABoundActivity * HqlCppTranslator::doBuildActivityOutputIndex(BuildCtx & ctx, IH
     HqlExprArray fields;
     unwindChildren(fields, record);
     removeProperties(fields);
-    fields.popn(numPayloadFields(expr));
+    fields.popn(numPayloadFields(record));
     OwnedHqlExpr keyedRecord = createRecord(fields); // must be fixed length => no maxlength
-    if (expr->hasProperty(_payload_Atom))
+    if (record->hasProperty(_payload_Atom))
         instance->classctx.addQuoted(s.clear().append("virtual unsigned getKeyedSize() { return ").append(getFixedRecordSize(keyedRecord)).append("; }"));
     else
         instance->classctx.addQuoted(s.clear().append("virtual unsigned getKeyedSize() { return (unsigned) -1; }"));

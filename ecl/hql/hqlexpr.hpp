@@ -1062,6 +1062,7 @@ interface IHqlExpression : public IInterface
     virtual bool isBoolean() = 0;
     virtual bool isDataset() = 0;
     virtual bool isDatarow() = 0;
+    virtual bool isDictionary() = 0;
     virtual bool isScope() = 0;
     virtual bool isType() = 0;
     virtual bool isAction() = 0;
