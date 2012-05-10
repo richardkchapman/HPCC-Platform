@@ -1163,6 +1163,9 @@ IHqlExpression * createIf(IHqlExpression * cond, IHqlExpression * left, IHqlExpr
     if (left->isDatarow() || right->isDatarow())
         return createRow(no_if, cond, createComma(left, right));
 
+    if (left->isDictionary() || right->isDictionary())
+        return createDictionary(no_if, cond, createComma(left, right));
+
     ITypeInfo * type = ::getPromotedECLType(left->queryType(), right->queryType());
     return createValue(no_if, type, cond, left, right);
 }
@@ -5232,7 +5235,7 @@ IHqlExpression * convertTempRowToCreateRow(IErrorReceiver * errors, ECLlocation 
     return expr->cloneAllAnnotations(ret);
 }
 
-IHqlExpression * convertTempTableToInline(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr, bool isDictionary)
+static IHqlExpression * convertTempTableToInline(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr, bool isDictionary)
 {
     IHqlExpression * oldValues = expr->queryChild(0);
     IHqlExpression * record = expr->queryChild(1);

@@ -166,6 +166,10 @@ public:
     {
         return queryExpr()->isDatarow();
     }
+    inline bool isDictionary() const
+    {
+        return queryExpr()->isDictionary();
+    }
 
     /* setters */
     inline void inherit(attribute & other)
@@ -643,7 +647,7 @@ public:
     int checkRecordTypes(IHqlExpression *left, IHqlExpression *right, attribute &atr, unsigned maxFields = (unsigned)-1);
     bool checkRecordCreateTransform(HqlExprArray & assigns, IHqlExpression *leftExpr, IHqlExpression *leftSelect, IHqlExpression *rightExpr, IHqlExpression *rightSelect, attribute &atr);
     IHqlExpression * checkEnsureRecordsMatch(IHqlExpression * left, IHqlExpression * right, attribute & errpos, bool rightIsRow);
-    void checkRecordIsValid(attribute &atr, IHqlExpression *record);
+    void checkRecordIsValid(const attribute &atr, IHqlExpression *record);
     void checkValidRecordMode(IHqlExpression * dataset, attribute & atr, attribute & modeatr);
     void checkValidCsvRecord(const attribute & errpos, IHqlExpression * record);
     void checkValidPipeRecord(const attribute & errpos, IHqlExpression * record, IHqlExpression * attrs, IHqlExpression * expr);
@@ -919,6 +923,7 @@ protected:
 
     IHqlExpression * getActiveCounter(attribute & errpos);
     void pushRecord(IHqlExpression *);
+    IHqlExpression *endRecordDef();
     IHqlExpression *popRecord();
     IHqlExpression *queryTopScope();
     ITypeInfo * getPromotedECLType(HqlExprArray & args, ITypeInfo * otherType, bool allowVariableLength);
@@ -952,12 +957,11 @@ protected:
     IHqlExpression *queryCurrentTransformRecord();
     IHqlExpression* queryFieldMap(IHqlExpression* expr);
     IHqlExpression* bindFieldMap(IHqlExpression*, IHqlExpression*);
-    void applyPayloadAttribute(const attribute & errpos, IHqlExpression * record, SharedHqlExpr & extra);
     void extractRecordFromExtra(SharedHqlExpr & record, SharedHqlExpr & extra);
     void transferOptions(attribute & filenameAttr, attribute & optionsAttr);
     IHqlExpression * extractTransformFromExtra(SharedHqlExpr & extra);
     void expandPayload(HqlExprArray & fields, IHqlExpression * payload, IHqlSimpleScope * scope, ITypeInfo * & lastFieldType, const attribute & errpos);
-    void modifyIndexPayloadRecord(SharedHqlExpr & record, SharedHqlExpr & payload, SharedHqlExpr & extra, const attribute & errpos);
+    void modifyIndexPayloadRecord(SharedHqlExpr & record, SharedHqlExpr & payload, const attribute & errpos);
 
     bool haveAssignedToChildren(IHqlExpression * select);
     void checkPattern(attribute & pattern, bool isCompound);

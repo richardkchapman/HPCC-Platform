@@ -458,14 +458,27 @@ static IHqlExpression * mapIfBlock(HqlMapTransformer & mapper, IHqlExpression * 
 static IHqlExpression * createPhysicalIndexRecord(HqlMapTransformer & mapper, IHqlExpression * tableExpr, IHqlExpression * record, bool isMainRecord, bool allowTranslate)
 {
     HqlExprArray physicalFields;
-    unsigned max = record->numChildren() - (isMainRecord ? 1 : 0);
+    unsigned max = record->numChildren();
+    __int64 payload = 0;
+    if (isMainRecord)
+    {
+        max -= 1;
+        payload = numPayloadFields(record);
+        assertex(payload);  // The filepos is always there at least
+    }
+
     for (unsigned idx=0; idx < max; idx++)
     {
         IHqlExpression * cur = record->queryChild(idx);
         IHqlExpression * newField = NULL;
 
         if (cur->isAttribute())
-            physicalFields.append(*LINK(cur));
+        {
+            if (isMainRecord && cur->queryName()==_payload_Atom)
+                physicalFields.append(*createAttribute(_payload_Atom, createConstant(payload-1)));
+            else
+                physicalFields.append(*LINK(cur));
+        }
         else if (cur->getOperator() == no_ifblock)
             physicalFields.append(*mapIfBlock(mapper, cur));
         else if (cur->getOperator() == no_record)
@@ -540,16 +553,10 @@ IHqlExpression * HqlCppTranslator::convertToPhysicalIndex(IHqlExpression * table
     HqlMapTransformer mapper;
     IHqlExpression * diskRecord = createPhysicalIndexRecord(mapper, tableExpr, record, true, true);
 
-    __int64 payload = numPayloadFields(tableExpr);
-    assertex(payload);
     HqlExprArray args;
     unwindChildren(args, tableExpr);
     args.replace(*diskRecord, 1);
-    removeProperty(args, _payload_Atom);
-    args.append(*createAttribute(_payload_Atom, createConstant(payload-1)));
     args.append(*createAttribute(_original_Atom, LINK(tableExpr)));
-
-    //remove the preload attribute and replace with correct value
     IHqlExpression * newDataset = createDataset(tableExpr->getOperator(), args);
 
     HqlExprArray assigns;

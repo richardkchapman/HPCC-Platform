@@ -551,6 +551,16 @@ IHqlExpression* HqlGram::popRecord()
     return &activeRecords.pop();
 }                                       
 
+IHqlExpression* HqlGram::endRecordDef()
+{
+    IHqlExpression * record = popRecord();
+    record->Link();     // logically link should be in startrecord, but can only link after finished updating
+    popSelfScope();
+    OwnedHqlExpr newRecord = record->closeExpr();
+    if (newRecord->hasProperty(packedAtom))
+        newRecord.setown(getPackedRecord(newRecord));
+    return newRecord.getClear();
+}
 
 void HqlGram::beginFunctionCall(attribute & function)
 {
@@ -938,7 +948,7 @@ IHqlExpression * HqlGram::processIndexBuild(attribute & indexAttr, attribute * r
             OwnedHqlExpr payload = payloadAttr->getExpr();
             checkIndexRecordType(record, 0, false, *recordAttr);
             checkIndexRecordType(payload, payload->numChildren(), false, *payloadAttr);
-            modifyIndexPayloadRecord(record, payload, flags, indexAttr);
+            modifyIndexPayloadRecord(record, payload, indexAttr);
         }
         else
         {
@@ -7724,10 +7734,12 @@ void HqlGram::expandPayload(HqlExprArray & fields, IHqlExpression * payload, IHq
     }
 }
 
-void HqlGram::modifyIndexPayloadRecord(SharedHqlExpr & record, SharedHqlExpr & payload, SharedHqlExpr & extra, const attribute & errpos)
+void HqlGram::modifyIndexPayloadRecord(SharedHqlExpr & record, SharedHqlExpr & payload, const attribute & errpos)
 {
+    checkRecordIsValid(errpos, record.get());
     IHqlSimpleScope * scope = record->querySimpleScope();
 
+    // Move all the attributes to the front of the record
     HqlExprArray fields;
     ForEachChild(i3, record)
     {
@@ -7773,8 +7785,8 @@ void HqlGram::modifyIndexPayloadRecord(SharedHqlExpr & record, SharedHqlExpr & p
         fields.append(*createField(implicitFieldName, makeIntType(8, false), createConstant(I64C(0)), createAttribute(_implicitFpos_Atom)));
         payloadCount++;
     }
-
-    extra.setown(createComma(extra.getClear(), createAttribute(_payload_Atom, createConstant((__int64)payloadCount))));
+    if (payloadCount)
+        fields.add(*createAttribute(_payload_Atom, createConstant((__int64)payloadCount)), 0);  // Attributes go at front of list
     record.setown(createRecord(fields));
 }
 
@@ -7819,32 +7831,6 @@ IHqlExpression * HqlGram::extractTransformFromExtra(SharedHqlExpr & extra)
     }
     return ret;
 }
-            
-
-void HqlGram::applyPayloadAttribute(const attribute & errpos, IHqlExpression * record, SharedHqlExpr & extra)
-{
-    IHqlExpression * payload = queryPropertyInList(payloadAtom, extra);
-    if (payload)
-    {
-        HqlExprArray fields;
-        unwindChildren(fields, record);
-        IHqlExpression * search = payload->queryChild(0);
-        if (search->getOperator() == no_select)
-            search = search->queryChild(1);
-        unsigned match = fields.find(*search);
-        if (match != NotFound)
-        {
-            HqlExprArray args;
-            extra->unwindList(args, no_comma);
-            args.zap(*payload);
-            args.append(*createAttribute(_payload_Atom, createConstant((__int64)fields.ordinality()-match)));
-            extra.setown(createComma(args));
-        }
-        else
-            reportError(ERR_TYPEMISMATCH_RECORD, errpos, "The argument to the payload isn't found in the index record");
-    }
-}
-
 
 void HqlGram::checkBoolean(attribute &atr)
 {
@@ -8230,7 +8216,7 @@ static bool isZeroSize(IHqlExpression * expr)
 }
 
 
-void HqlGram::checkRecordIsValid(attribute &atr, IHqlExpression *record)
+void HqlGram::checkRecordIsValid(const attribute &atr, IHqlExpression *record)
 {
     if (isZeroSize(record))
         reportError(ERR_ZEROSIZE_RECORD, atr, "Record must not be zero length");

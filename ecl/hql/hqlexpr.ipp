@@ -139,6 +139,7 @@ public:
     virtual bool isBoolean();
     virtual bool isConstant();
     virtual bool isDataset();
+    virtual bool isDictionary();
     virtual bool isDatarow();
     virtual bool isScope();
     virtual bool isMacro();
@@ -1383,9 +1384,7 @@ public:
     CHqlDictionary(node_operator op, ITypeInfo *_type, HqlExprArray &_ownedOperands);
     ~CHqlDictionary();
 
-//    virtual StringBuffer &printAliases(StringBuffer &s, unsigned, bool &) { return s; }
-    //virtual void sethash();     // needed while it has a name....
-
+    virtual IHqlExpression *clone(HqlExprArray &newkids);
 };
 
 
