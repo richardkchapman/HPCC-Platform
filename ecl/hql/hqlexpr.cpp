@@ -10813,9 +10813,7 @@ IHqlExpression *createDataset(node_operator op, HqlExprArray & parms)
                 HqlExprArray sortExprs;
                 if (queryProperty(sort_KeyedAtom, parms))
                 {
-                    IHqlExpression * payloadAttr = queryProperty(_payload_Atom, parms);
-                    unsigned payloadCount = payloadAttr ? (unsigned)getIntValue(payloadAttr->queryChild(0), 1) : 1;
-                    unsigned payloadIndex = firstPayloadField(record, payloadCount);
+                    unsigned payloadIndex = firstPayloadField(record);
                     unwindRecordAsSelects(sortExprs, record, cachedActiveTableExpr, payloadIndex);
                 }
                 else
@@ -14478,9 +14476,9 @@ IHqlExpression * queryRecord(ITypeInfo * type)
 }
 
 //NB: An ifblock is counted as a single payload field.
-unsigned numPayloadFields(IHqlExpression * index)
+unsigned numPayloadFields(IHqlExpression * record)
 {
-    IHqlExpression * payloadAttr = index->queryProperty(_payload_Atom);
+    IHqlExpression * payloadAttr = record->queryRecord()->queryProperty(_payload_Atom);
     if (payloadAttr)
         return (unsigned)getIntValue(payloadAttr->queryChild(0));
     return 1;
@@ -14488,16 +14486,13 @@ unsigned numPayloadFields(IHqlExpression * index)
 
 unsigned numKeyedFields(IHqlExpression * index)
 {
-    return getFlatFieldCount(index->queryRecord())-numPayloadFields(index);
+    return getFlatFieldCount(index->queryRecord())-numPayloadFields(index->queryRecord());
 }
 
-unsigned firstPayloadField(IHqlExpression * index)
+unsigned firstPayloadField(IHqlExpression * record)
 {
-    return firstPayloadField(index->queryRecord(), numPayloadFields(index));
-}
-
-unsigned firstPayloadField(IHqlExpression * record, unsigned cnt)
-{
+    record = record->queryRecord();
+    unsigned cnt = numPayloadFields(record);
     unsigned max = record->numChildren();
     if (cnt == 0)
         return max;

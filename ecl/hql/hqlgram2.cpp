@@ -6514,9 +6514,6 @@ IHqlExpression * HqlGram::createBuildIndexFromIndex(attribute & indexAttr, attri
             }
         }
     }
-    IHqlExpression * payload = index->queryProperty(_payload_Atom);
-    if (payload)
-        args.append(*LINK(payload));
     if (distribution)
         args.append(*distribution.getClear());
 
@@ -7897,7 +7894,6 @@ void HqlGram::checkDedup(IHqlExpression *ds, IHqlExpression *flags, attribute &a
 void HqlGram::checkDistributer(attribute & err, HqlExprArray & args)
 {
     IHqlExpression * input = &args.item(0);
-    IHqlExpression * inputPayload = queryProperty(_payload_Atom, args);
     ForEachItemIn(idx, args)
     {
         IHqlExpression & cur = args.item(idx);
@@ -7906,7 +7902,7 @@ void HqlGram::checkDistributer(attribute & err, HqlExprArray & args)
             
             IHqlExpression * index = cur.queryChild(0);
             unsigned numKeyedFields = firstPayloadField(index);
-            unsigned inputKeyedFields = firstPayloadField(input->queryRecord(), inputPayload ? (unsigned)getIntValue(inputPayload->queryChild(0)) : 1);
+            unsigned inputKeyedFields = firstPayloadField(input);
             if (numKeyedFields != inputKeyedFields)
                 reportError(ERR_DISTRIBUTED_MISSING, err, "Index and DISTRIBUTE(index) have different numbers of keyed fields");
             checkRecordTypes(args.item(0).queryRecord(), cur.queryChild(0)->queryRecord(), err, numKeyedFields);
