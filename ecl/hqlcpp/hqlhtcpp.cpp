@@ -9277,8 +9277,21 @@ void HqlCppTranslator::buildFormatCrcFunction(BuildCtx & ctx, const char * name,
     OwnedHqlExpr exprToCrc = getSerializedForm(dataset->queryRecord());
     unsigned payloadSize = 1;
     if (payload)
+    {
         payloadSize = (unsigned)getIntValue(payload->queryChild(0)) + payloadDelta;
-
+        HqlExprArray args;
+        unwindChildren(args, exprToCrc);
+        ForEachItemIn(idx, args)
+        {
+            IHqlExpression &cur = args.item(idx);
+            if (cur.isAttribute() && cur.queryName()==_payload_Atom)
+            {
+                args.remove(idx);
+                break;
+            }
+        }
+        exprToCrc.setown(exprToCrc->clone(args));
+    }
     exprToCrc.setown(createComma(exprToCrc.getClear(), getSizetConstant(payloadSize)));
 
     traceExpression("crc:", exprToCrc);

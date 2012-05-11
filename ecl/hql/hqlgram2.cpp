@@ -10014,7 +10014,6 @@ static void getTokenText(StringBuffer & msg, int token)
     case PARTITION: msg.append("PARTITION"); break;
     case PARTITION_ATTR: msg.append("PARTITION"); break;
     case TOK_PATTERN: msg.append("PATTERN"); break;
-    case PAYLOAD: msg.append("PAYLOAD"); break;
     case PENALTY: msg.append("PENALTY"); break;
     case PERSIST: msg.append("PERSIST"); break;
     case PHYSICALFILENAME: msg.append("PHYSICALFILENAME"); break;

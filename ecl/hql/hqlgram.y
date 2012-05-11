@@ -333,7 +333,6 @@ static void eclsyntaxerror(HqlGram * parser, const char * s, short yystate, int 
   PARTITION
   PARTITION_ATTR
   TOK_PATTERN
-  PAYLOAD
   PENALTY
   PERSIST
   PHYSICALFILENAME

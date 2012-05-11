@@ -465,6 +465,7 @@ static IHqlExpression * createPhysicalIndexRecord(HqlMapTransformer & mapper, IH
         max -= 1;
         payload = numPayloadFields(record);
         assertex(payload);  // The filepos is always there at least
+        physicalFields.append(*createAttribute(_payload_Atom, createConstant(payload-1)));
     }
 
     for (unsigned idx=0; idx < max; idx++)
@@ -474,12 +475,7 @@ static IHqlExpression * createPhysicalIndexRecord(HqlMapTransformer & mapper, IH
 
         if (cur->isAttribute())
         {
-            if (cur->queryName()==_payload_Atom)
-            {
-                assertex(isMainRecord);
-                physicalFields.append(*createAttribute(_payload_Atom, createConstant(payload-1)));
-            }
-            else
+            if (cur->queryName()!=_payload_Atom)
                 physicalFields.append(*LINK(cur));
         }
         else if (cur->getOperator() == no_ifblock)
