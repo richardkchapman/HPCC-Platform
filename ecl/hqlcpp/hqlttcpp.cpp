@@ -1759,7 +1759,7 @@ static IHqlExpression * normalizeIndexBuild(IHqlExpression * expr, bool sortInde
                     HqlExprArray joinCondition;
                     IHqlExpression * indexRecord = index->queryChild(1);
                     assertex(indexRecord->numChildren() == buildRecord->numChildren());
-                    unsigned numFields = firstPayloadField(index);
+                    unsigned numFields = firstPayloadField(indexRecord);
                     OwnedHqlExpr seq = createSelectorSequence();
                     OwnedHqlExpr left = createSelector(no_left, dataset, seq);
                     OwnedHqlExpr right = createSelector(no_right, index, seq);

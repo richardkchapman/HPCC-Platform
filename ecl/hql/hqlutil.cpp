@@ -5438,14 +5438,12 @@ void gatherIndexBuildSortOrder(HqlExprArray & sorts, IHqlExpression * expr, bool
     LinkedHqlExpr dataset = expr->queryChild(0);
     IHqlExpression * normalizedDs = dataset->queryNormalizedSelector();
     IHqlExpression * buildRecord = dataset->queryRecord();
-    unsigned payloadCount = numPayloadFields(expr);
-
-    //Option to not sort by fields that aren't part of the sorted key.
-    unsigned indexFirstPayload = firstPayloadField(buildRecord, payloadCount);
+    unsigned indexFirstPayload = firstPayloadField(buildRecord);
     unsigned max;
     bool sortPayload = sortIndexPayload ? !expr->hasProperty(sort_KeyedAtom) : expr->hasProperty(sort_AllAtom);
     if (sortPayload)
     {
+        //Option to not sort by fields that aren't part of the sorted key.
         max = buildRecord->numChildren();
         //If the last field is an implicit fpos, then they will all have the same value, so no point sorting.
         if (queryLastField(buildRecord)->hasProperty(_implicitFpos_Atom))

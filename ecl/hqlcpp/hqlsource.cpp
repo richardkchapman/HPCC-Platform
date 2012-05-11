@@ -474,8 +474,11 @@ static IHqlExpression * createPhysicalIndexRecord(HqlMapTransformer & mapper, IH
 
         if (cur->isAttribute())
         {
-            if (isMainRecord && cur->queryName()==_payload_Atom)
+            if (cur->queryName()==_payload_Atom)
+            {
+                assertex(isMainRecord);
                 physicalFields.append(*createAttribute(_payload_Atom, createConstant(payload-1)));
+            }
             else
                 physicalFields.append(*LINK(cur));
         }
