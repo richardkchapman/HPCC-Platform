@@ -57,6 +57,7 @@ static IHqlExpression * cacheReferenceAttr;
 static IHqlExpression * cacheSerializedFormAttr;
 static IHqlExpression * cacheStreamedAttr;
 static IHqlExpression * cacheUnadornedAttr;
+static IHqlExpression * cacheUnpayloadedAttr;
 static IHqlExpression * matchxxxPseudoFile;
 static IHqlExpression * cachedQuotedNullExpr;
 static IHqlExpression * cachedGlobalSequenceNumber;
@@ -86,6 +87,7 @@ MODULE_INIT(INIT_PRIORITY_STANDARD)
     cacheSerializedFormAttr = createAttribute(_attrSerializedForm_Atom);
     cacheStreamedAttr = createAttribute(streamedAtom);
     cacheUnadornedAttr = createAttribute(_attrUnadorned_Atom);
+    cacheUnpayloadedAttr = createAttribute(_attrUnpayloaded_Atom);
     matchxxxPseudoFile = createDataset(no_pseudods, createRecord()->closeExpr(), createAttribute(matchxxxPseudoFileAtom));
     cachedQuotedNullExpr = createValue(no_nullptr, makeBoolType());
     cachedOmittedValueExpr = createValue(no_omitted, makeAnyType());
@@ -205,6 +207,11 @@ IHqlExpression * querySerializedFormAttr()
 IHqlExpression * queryUnadornedAttr()
 {
     return cacheUnadornedAttr;
+}
+
+IHqlExpression * queryUnpayloadedAttr()
+{
+    return cacheUnpayloadedAttr;
 }
 
 

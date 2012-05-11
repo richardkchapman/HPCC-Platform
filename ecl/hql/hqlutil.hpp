@@ -563,6 +563,7 @@ extern HQL_API IHqlExpression * querySerializedFormAttr();
 extern HQL_API IHqlExpression * queryAlignedAttr();
 extern HQL_API IHqlExpression * queryLinkCountedAttr();
 extern HQL_API IHqlExpression * queryUnadornedAttr();
+extern HQL_API IHqlExpression * queryUnpayloadedAttr();
 extern HQL_API IHqlExpression * queryMatchxxxPseudoFile();
 extern HQL_API IHqlExpression * queryQuotedNullExpr();
 
