@@ -1744,10 +1744,11 @@ MetaInstance::MetaInstance(HqlCppTranslator & translator, IHqlExpression * _reco
 
 void MetaInstance::setMeta(HqlCppTranslator & translator, IHqlExpression * _record, bool _isGrouped)
 {
-    record = _record;
+    record.set(_record);
     grouped = _isGrouped;
     assertex(!record || record->getOperator() == no_record);
-
+    if (record)
+        record.setown(getUnpayloadedExpr(record.getClear()));
     searchKey.setown(::getMetaUniqueKey(record, grouped));
 
     StringBuffer s,recordBase;

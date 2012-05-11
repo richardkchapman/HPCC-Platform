@@ -44,6 +44,7 @@ _ATOM _attrRecordCount_Atom;
 _ATOM _attrSerializedForm_Atom;
 _ATOM _attrSize_Atom;
 _ATOM _attrUnadorned_Atom;
+_ATOM _attrUnpayloaded_Atom;
 _ATOM aveAtom;
 _ATOM backupAtom;
 _ATOM bcdAtom;
@@ -422,6 +423,7 @@ MODULE_INIT(INIT_PRIORITY_HQLATOM)
     MAKESYSATOM(attrSerializedForm)->setAttrId(EAserializedForm);
     MAKESYSATOM(attrSize)->setAttrId(EAsize);
     MAKESYSATOM(attrUnadorned)->setAttrId(EAunadorned);
+    MAKESYSATOM(attrUnpayloaded)->setAttrId(EAunpayloaded);
     MAKEATOM(ave);
     MAKEATOM(backup);
     MAKEATOM(bcd);
