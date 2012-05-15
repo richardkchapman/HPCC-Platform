@@ -224,7 +224,7 @@ enum _node_operator {
         no_comma,
         no_count,
         no_countgroup,
-    no_unused82,
+        no_selectmap,
         no_exists,
         no_within,
         no_notwithin,
@@ -353,7 +353,7 @@ enum _node_operator {
     no_unused23,
     no_unused24,
         no_dataset_from_transform,
-    no_unused2,
+        no_inlinedictionary,
         no_unknown,
     no_unused3,
     no_unused4,
@@ -1062,6 +1062,7 @@ interface IHqlExpression : public IInterface
     virtual bool isBoolean() = 0;
     virtual bool isDataset() = 0;
     virtual bool isDatarow() = 0;
+    virtual bool isDictionary() = 0;
     virtual bool isScope() = 0;
     virtual bool isType() = 0;
     virtual bool isAction() = 0;
@@ -1246,6 +1247,9 @@ extern HQL_API IHqlExpression *createDataset(node_operator op, IHqlExpression *d
 extern HQL_API IHqlExpression *createDataset(node_operator op, IHqlExpression *dataset, IHqlExpression *elist);
 extern HQL_API IHqlExpression *createDataset(node_operator op, HqlExprArray & parms);       // inScope should only be set internally.
 extern HQL_API IHqlExpression *createDatasetF(node_operator op, ...);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, IHqlExpression *initializer, IHqlExpression *recordDef);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, IHqlExpression *dictionary);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms);
 extern HQL_API IHqlExpression *createNewDataset(IHqlExpression *name, IHqlExpression *recorddef, IHqlExpression *mode, IHqlExpression *parent, IHqlExpression *joinCondition, IHqlExpression * options = NULL);
 extern HQL_API IHqlExpression *createRow(node_operator op, IHqlExpression *Dataset, IHqlExpression *element = NULL);
 extern HQL_API IHqlExpression *createRow(node_operator op, HqlExprArray & args);
@@ -1518,7 +1522,6 @@ extern HQL_API bool isChildRelationOf(IHqlExpression * child, IHqlExpression * o
 extern HQL_API IHqlExpression * queryRecord(ITypeInfo * type);
 extern HQL_API unsigned numPayloadFields(IHqlExpression * index);
 extern HQL_API unsigned firstPayloadField(IHqlExpression * index);
-extern HQL_API unsigned firstPayloadField(IHqlExpression * record, unsigned numPayloadFields);
 extern HQL_API unsigned numKeyedFields(IHqlExpression * index);
 extern HQL_API bool isSortDistribution(IHqlExpression * distribution);
 extern HQL_API bool isChooseNAllLimit(IHqlExpression * limit);

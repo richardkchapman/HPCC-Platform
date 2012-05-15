@@ -57,6 +57,7 @@ static IHqlExpression * cacheReferenceAttr;
 static IHqlExpression * cacheSerializedFormAttr;
 static IHqlExpression * cacheStreamedAttr;
 static IHqlExpression * cacheUnadornedAttr;
+static IHqlExpression * cacheUnpayloadedAttr;
 static IHqlExpression * matchxxxPseudoFile;
 static IHqlExpression * cachedQuotedNullExpr;
 static IHqlExpression * cachedGlobalSequenceNumber;
@@ -86,6 +87,7 @@ MODULE_INIT(INIT_PRIORITY_STANDARD)
     cacheSerializedFormAttr = createAttribute(_attrSerializedForm_Atom);
     cacheStreamedAttr = createAttribute(streamedAtom);
     cacheUnadornedAttr = createAttribute(_attrUnadorned_Atom);
+    cacheUnpayloadedAttr = createAttribute(_attrUnpayloaded_Atom);
     matchxxxPseudoFile = createDataset(no_pseudods, createRecord()->closeExpr(), createAttribute(matchxxxPseudoFileAtom));
     cachedQuotedNullExpr = createValue(no_nullptr, makeBoolType());
     cachedOmittedValueExpr = createValue(no_omitted, makeAnyType());
@@ -205,6 +207,11 @@ IHqlExpression * querySerializedFormAttr()
 IHqlExpression * queryUnadornedAttr()
 {
     return cacheUnadornedAttr;
+}
+
+IHqlExpression * queryUnpayloadedAttr()
+{
+    return cacheUnpayloadedAttr;
 }
 
 
@@ -1163,6 +1170,9 @@ IHqlExpression * createIf(IHqlExpression * cond, IHqlExpression * left, IHqlExpr
     if (left->isDatarow() || right->isDatarow())
         return createRow(no_if, cond, createComma(left, right));
 
+    if (left->isDictionary() || right->isDictionary())
+        return createDictionary(no_if, cond, createComma(left, right));
+
     ITypeInfo * type = ::getPromotedECLType(left->queryType(), right->queryType());
     return createValue(no_if, type, cond, left, right);
 }
@@ -1813,7 +1823,6 @@ IHqlExpression * queryChildActivity(IHqlExpression * expr, unsigned index)
     return queryRealChild(expr, firstActivityIndex + index);
 }
 
-
 unsigned getFlatFieldCount(IHqlExpression * expr)
 {
     switch (expr->getOperator())
@@ -1838,6 +1847,19 @@ unsigned getFlatFieldCount(IHqlExpression * expr)
     }
 }
 
+unsigned getRawFieldCount(IHqlExpression * expr)
+{
+    // This is a bit of a hack.
+    unsigned count = 0;
+    IHqlExpression *record = expr->queryRecord();
+    ForEachChild(i, record)
+    {
+        IHqlExpression * cur = record->queryChild(i);
+        if (!(cur->getOperator()==no_attr && cur->queryName()==_payload_Atom))
+            count++;
+    }
+    return count;
+}
 
 unsigned isEmptyRecord(IHqlExpression * record)
 {
@@ -5232,7 +5254,7 @@ IHqlExpression * convertTempRowToCreateRow(IErrorReceiver * errors, ECLlocation 
     return expr->cloneAllAnnotations(ret);
 }
 
-IHqlExpression * convertTempTableToInlineTable(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr)
+static IHqlExpression * convertTempTableToInline(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr, bool isDictionary)
 {
     IHqlExpression * oldValues = expr->queryChild(0);
     IHqlExpression * record = expr->queryChild(1);
@@ -5269,10 +5291,19 @@ IHqlExpression * convertTempTableToInlineTable(IErrorReceiver * errors, ECLlocat
     HqlExprArray children;
     children.append(*createValue(no_transformlist, makeNullType(), transforms));
     children.append(*LINK(record));
-    OwnedHqlExpr ret = createDataset(no_inlinetable, children);
+    OwnedHqlExpr ret = isDictionary ? createDictionary(no_inlinedictionary, children) : createDataset(no_inlinetable, children);
     return expr->cloneAllAnnotations(ret);
 }
 
+IHqlExpression * convertTempTableToInlineTable(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr)
+{
+    return convertTempTableToInline(errors, location, expr, false);
+}
+
+IHqlExpression * convertTempTableToInlineDictionary(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr)
+{
+    return convertTempTableToInline(errors, location, expr, true);
+}
 
 bool areTypesComparable(ITypeInfo * leftType, ITypeInfo * rightType)
 {
@@ -5394,7 +5425,7 @@ void replaceArray(HqlExprArray & tgt, const HqlExprArray & src)
 
 //--------------------------------------------------------------
 
-static void gatherSortOrder(HqlExprArray & sorts, IHqlExpression * ds, IHqlExpression * record, unsigned maxfield = NotFound)
+static void gatherSortOrder(HqlExprArray & sorts, IHqlExpression * ds, IHqlExpression * record, unsigned maxfield = NotFound, unsigned numPayloadFields = 0)
 {
     unsigned max = record->numChildren();
     if (max > maxfield) max = maxfield;
@@ -5410,7 +5441,13 @@ static void gatherSortOrder(HqlExprArray & sorts, IHqlExpression * ds, IHqlExpre
             gatherSortOrder(sorts, ds, cur->queryChild(1));
             break;
         case no_field:
-            sorts.append(*createSelectExpr(LINK(ds), LINK(cur)));
+            OwnedHqlExpr sort = createSelectExpr(LINK(ds), LINK(cur));
+            ITypeInfo *sortType = sort->queryType();
+            if (sort->isDataset())
+                sort.setown(createValue(no_typetransfer, makeDataType(UNKNOWN_LENGTH), sort.getClear()));
+            else if ((idx < numPayloadFields) && isUnicodeType(sortType))
+                sort.setown(createValue(no_typetransfer, makeDataType(sortType->getSize()), sort.getClear()));
+            sorts.append(*sort.getClear());
             break;
         }
     }
@@ -5425,14 +5462,12 @@ void gatherIndexBuildSortOrder(HqlExprArray & sorts, IHqlExpression * expr, bool
     LinkedHqlExpr dataset = expr->queryChild(0);
     IHqlExpression * normalizedDs = dataset->queryNormalizedSelector();
     IHqlExpression * buildRecord = dataset->queryRecord();
-    unsigned payloadCount = numPayloadFields(expr);
-
-    //Option to not sort by fields that aren't part of the sorted key.
-    unsigned indexFirstPayload = firstPayloadField(buildRecord, payloadCount);
+    unsigned indexFirstPayload = firstPayloadField(buildRecord);
     unsigned max;
     bool sortPayload = sortIndexPayload ? !expr->hasProperty(sort_KeyedAtom) : expr->hasProperty(sort_AllAtom);
     if (sortPayload)
     {
+        //Option to not sort by fields that aren't part of the sorted key.
         max = buildRecord->numChildren();
         //If the last field is an implicit fpos, then they will all have the same value, so no point sorting.
         if (queryLastField(buildRecord)->hasProperty(_implicitFpos_Atom))
@@ -5441,19 +5476,7 @@ void gatherIndexBuildSortOrder(HqlExprArray & sorts, IHqlExpression * expr, bool
     else
         max = indexFirstPayload;
 
-    gatherSortOrder(sorts, normalizedDs, buildRecord, max);
-    ForEachItemIn(i0, sorts)
-    {
-        IHqlExpression & cur = sorts.item(i0);
-        if (cur.isDataset())
-        {
-            sorts.replace(*createValue(no_typetransfer, makeDataType(UNKNOWN_LENGTH), LINK(&cur)), i0);
-        }
-        else if ((i0 < indexFirstPayload) && isUnicodeType(cur.queryType()))
-        {
-            sorts.replace(*createValue(no_typetransfer, makeDataType(cur.queryType()->getSize()), LINK(&cur)), i0);
-        }
-    }
+    gatherSortOrder(sorts, normalizedDs, buildRecord, max, indexFirstPayload);
 }
 
 //------------------------- Library processing -------------------------------------

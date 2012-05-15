@@ -82,6 +82,8 @@ extern HQL_API bool hasActiveTopDataset(IHqlExpression * expr);
 
 extern HQL_API unsigned getFieldCount(IHqlExpression * expr);
 extern HQL_API unsigned getFlatFieldCount(IHqlExpression * expr);
+extern HQL_API unsigned getRawFieldCount(IHqlExpression * expr);
+
 extern HQL_API unsigned isEmptyRecord(IHqlExpression * record);
 extern HQL_API bool isTrivialSelectN(IHqlExpression * expr);
 extern HQL_API IHqlExpression * queryConvertChoosenNSort(IHqlExpression * expr, unsigned __int64 topNlimit);
@@ -440,6 +442,7 @@ extern HQL_API bool isNullList(IHqlExpression * expr);
 
 extern HQL_API IHqlExpression * convertTempRowToCreateRow(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr);
 extern HQL_API IHqlExpression * convertTempTableToInlineTable(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr);
+extern HQL_API IHqlExpression * convertTempTableToInlineDictionary(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr);
 extern HQL_API bool areTypesComparable(ITypeInfo * leftType, ITypeInfo * rightType);
 extern HQL_API bool arraysMatch(const HqlExprArray & left, const HqlExprArray & right);
 extern HQL_API IHqlExpression * ensureTransformType(IHqlExpression * transform, node_operator op);
@@ -562,6 +565,7 @@ extern HQL_API IHqlExpression * querySerializedFormAttr();
 extern HQL_API IHqlExpression * queryAlignedAttr();
 extern HQL_API IHqlExpression * queryLinkCountedAttr();
 extern HQL_API IHqlExpression * queryUnadornedAttr();
+extern HQL_API IHqlExpression * queryUnpayloadedAttr();
 extern HQL_API IHqlExpression * queryMatchxxxPseudoFile();
 extern HQL_API IHqlExpression * queryQuotedNullExpr();
 

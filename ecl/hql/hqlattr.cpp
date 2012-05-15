@@ -264,6 +264,7 @@ unsigned getOperatorMetaFlags(node_operator op)
     case no_newtransform:
 
 //Rows
+    case no_selectmap:
     case no_selectnth:
     case no_matchrow:
     case no_matchattr:      // and scalar
@@ -271,6 +272,9 @@ unsigned getOperatorMetaFlags(node_operator op)
     case no_createrow:
     case no_newrow:
     case no_temprow:
+
+//Dictionaries
+    case no_inlinedictionary:
 
 //Datasets [see also selection operators]
     case no_rollup:
@@ -606,13 +610,13 @@ unsigned getOperatorMetaFlags(node_operator op)
     case no_persist_check:
     case no_dataset_from_transform:
 
-    case no_unused2: case no_unused3: case no_unused4: case no_unused5: case no_unused6:
+    case no_unused3: case no_unused4: case no_unused5: case no_unused6:
     case no_unused13: case no_unused14: case no_unused15: case no_unused18: case no_unused19:
     case no_unused20: case no_unused21: case no_unused22: case no_unused23: case no_unused24: case no_unused25: case no_unused26: case no_unused27: case no_unused28: case no_unused29:
     case no_unused30: case no_unused31: case no_unused32: case no_unused33: case no_unused34: case no_unused35: case no_unused36: case no_unused37: case no_unused38:
     case no_unused40: case no_unused41: case no_unused42: case no_unused43: case no_unused44: case no_unused45: case no_unused46: case no_unused47: case no_unused48: case no_unused49:
     case no_unused50: case no_unused52:
-    case no_unused80: case no_unused82: case no_unused83:
+    case no_unused80: case no_unused83:
     case no_is_null:
     case no_position:
     case no_current_time:
@@ -1353,8 +1357,29 @@ IHqlExpression * HqlUnadornedNormalizer::createTransformed(IHqlExpression * expr
             transformChildren(expr, children);      // could just unwind
             return createParameter(expr->queryName(), UnadornedParameterIndex, newType.getClear(), children);
         }
-    }
+    case no_record:
+        {
+            HqlExprArray children;
+            bool same = true;
+            ForEachChild(idx, expr)
+            {
+                IHqlExpression * cur = expr->queryChild(idx);
+                if (cur->isAttribute() && cur->queryName()==_payload_Atom)
+                    same = false;
+                else
+                {
+                    OwnedHqlExpr transformed = transform(cur);
+                    if (transformed != cur)
+                        same = false;
+                    children.append(*transformed.getClear());
+                }
+            }
 
+            if (same)
+                return LINK(expr);
+            return expr->clone(children);
+        }
+    }
     return HqlCachedAttributeTransformer::createTransformed(expr);
 }
 
@@ -1364,6 +1389,52 @@ static IHqlExpression * evaluateAttrUnadorned(IHqlExpression * expr)
     //NB: Also has the side-effect of adding any missing attributes
     OwnedHqlExpr dummy = normalizer.transform(expr);
     return meta.queryExistingAttribute(expr, _attrUnadorned_Atom);
+}
+
+class HqlUnpayloadedNormalizer : public HqlCachedAttributeTransformer
+{
+public:
+    HqlUnpayloadedNormalizer();
+
+    virtual IHqlExpression * createTransformed(IHqlExpression * expr);
+};
+
+static HqlTransformerInfo hqlUnpayloadedInfo("HqlUnpayloadedNormalizer");
+HqlUnpayloadedNormalizer::HqlUnpayloadedNormalizer() : HqlCachedAttributeTransformer(hqlUnpayloadedInfo, _attrUnpayloaded_Atom, queryUnpayloadedAttr())
+{
+}
+
+IHqlExpression * HqlUnpayloadedNormalizer::createTransformed(IHqlExpression * expr)
+{
+    node_operator op = expr->getOperator();
+    switch (op)
+    {
+    case no_record:
+        {
+            HqlExprArray children;
+            bool same = true;
+            ForEachChild(idx, expr)
+            {
+                IHqlExpression * cur = expr->queryChild(idx);
+                if (cur->isAttribute() && cur->queryName()==_payload_Atom)
+                    same = false;
+                else
+                    children.append(*transform(cur));
+            }
+
+            if (same)
+                return LINK(expr);
+            return expr->clone(children);
+        }
+    }
+    return HqlCachedAttributeTransformer::createTransformed(expr);
+}
+
+static IHqlExpression * evaluateAttrUnpayloaded(IHqlExpression * expr)
+{
+    HqlUnpayloadedNormalizer normalizer;
+    OwnedHqlExpr dummy = normalizer.transform(expr);
+    return meta.queryExistingAttribute(expr, _attrUnpayloaded_Atom);
 }
 
 //---------------------------------------------------------------------------------
@@ -3112,6 +3183,8 @@ IHqlExpression * CHqlExpression::queryAttribute(_ATOM propName)
         return evaluateAttrAligned(this);
     case EAunadorned:
         return evaluateAttrUnadorned(this);
+    case EAunpayloaded:
+        return evaluateAttrUnpayloaded(this);
     }
     return NULL;
 }
@@ -3268,6 +3341,16 @@ IHqlExpression * getUnadornedExpr(IHqlExpression * expr)
     IHqlExpression * unadorned = attr->queryChild(0);
     if (!unadorned) unadorned = expr;
     return LINK(unadorned);
+}
+
+IHqlExpression * getUnpayloadedExpr(IHqlExpression * expr)
+{
+    if (!expr)
+        return NULL;
+    IHqlExpression * attr = expr->queryAttribute(_attrUnpayloaded_Atom);
+    IHqlExpression * unpayloaded = attr->queryChild(0);
+    if (!unpayloaded) unpayloaded = expr;
+    return LINK(unpayloaded);
 }
 
 //---------------------------------------------------------------------------------

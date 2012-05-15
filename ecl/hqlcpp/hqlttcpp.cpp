@@ -1754,7 +1754,7 @@ static IHqlExpression * normalizeIndexBuild(IHqlExpression * expr, bool sortInde
                     HqlExprArray joinCondition;
                     IHqlExpression * indexRecord = index->queryChild(1);
                     assertex(indexRecord->numChildren() == buildRecord->numChildren());
-                    unsigned numFields = firstPayloadField(index);
+                    unsigned numFields = firstPayloadField(indexRecord);
                     OwnedHqlExpr seq = createSelectorSequence();
                     OwnedHqlExpr left = createSelector(no_left, dataset, seq);
                     OwnedHqlExpr right = createSelector(no_right, index, seq);
@@ -1872,6 +1872,13 @@ static IHqlExpression * normalizeIndexBuild(IHqlExpression * expr, bool sortInde
         buildArgs.append(*cloneInheritedAnnotations(expr, dedup));
         unwindChildren(buildArgs, expr, 1);
         removeProperty(buildArgs, dedupAtom);
+        return expr->clone(buildArgs);
+    }
+    if (!expr->hasProperty(_payload_Atom) && buildRecord->hasProperty(_payload_Atom))
+    {
+        HqlExprArray  buildArgs;
+        unwindChildren(buildArgs, expr);
+        buildArgs.append(*LINK(buildRecord->queryProperty(_payload_Atom)));
         return expr->clone(buildArgs);
     }
 
