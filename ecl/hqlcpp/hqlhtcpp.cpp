@@ -9640,12 +9640,18 @@ ABoundActivity * HqlCppTranslator::doBuildActivityOutputIndex(BuildCtx & ctx, IH
     buildClusterHelper(instance->classctx, expr);
 
     // virtual unsigned getKeyedSize()
+    IHqlExpression * payloadAttr = expr->queryProperty(_payload_Atom);
+    unsigned payloadFields;
+    if (payloadAttr)
+        payloadFields = getIntValue(payloadAttr->queryChild(0));
+    else
+        payloadFields = 1;
     HqlExprArray fields;
     unwindChildren(fields, record);
     removeProperties(fields);
-    fields.popn(numPayloadFields(record));
+    fields.popn(payloadFields);
     OwnedHqlExpr keyedRecord = createRecord(fields); // must be fixed length => no maxlength
-    if (record->hasProperty(_payload_Atom))
+    if (payloadAttr)
         instance->classctx.addQuoted(s.clear().append("virtual unsigned getKeyedSize() { return ").append(getFixedRecordSize(keyedRecord)).append("; }"));
     else
         instance->classctx.addQuoted(s.clear().append("virtual unsigned getKeyedSize() { return (unsigned) -1; }"));

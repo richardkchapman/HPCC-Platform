@@ -6683,7 +6683,7 @@ IHqlExpression * HqlGram::checkIndexRecord(IHqlExpression * record, const attrib
             reportError(ERR_INDEX_COMPONENTS, errpos, "Record for index should have at least one component and a fileposition");
         else
         {
-            IHqlExpression * lastField = record->queryChild(numFields-1);
+            IHqlExpression * lastField = queryLastField(record);
             ITypeInfo * fileposType = lastField->queryType();
             if (!isIntegralType(fileposType))
                 reportError(ERR_INDEX_FILEPOS_EXPECTED_LAST, errpos, "Expected last field to be an integral fileposition field");
