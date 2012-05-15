@@ -9583,6 +9583,7 @@ ABoundActivity * HqlCppTranslator::doBuildActivityOutputIndex(BuildCtx & ctx, IH
     IHqlExpression * filename = queryRealChild(expr, 1);
     IHqlExpression * record = dataset->queryRecord();
     IHqlDataset * baseTable = dataset->queryDataset()->queryRootTable();
+    OwnedHqlExpr unpayloaded = getUnpayloadedExpr(dataset);
 
     Owned<ABoundActivity> boundDataset = buildCachedActivity(ctx, dataset);
     Owned<ActivityInstance> instance = new ActivityInstance(*this, ctx, TAKindexwrite, expr, "IndexWrite");
@@ -9650,10 +9651,10 @@ ABoundActivity * HqlCppTranslator::doBuildActivityOutputIndex(BuildCtx & ctx, IH
         instance->classctx.addQuoted(s.clear().append("virtual unsigned getKeyedSize() { return (unsigned) -1; }"));
 
     //virtual const char * queryRecordECL() = 0;
-    buildRecordEcl(instance->createctx, dataset, "queryRecordECL");
+    buildRecordEcl(instance->createctx, unpayloaded, "queryRecordECL");
 
     doBuildSequenceFunc(instance->classctx, querySequence(expr), false);
-    Owned<IWUResult> result = createDatasetResultSchema(querySequence(expr), queryResultName(expr), dataset->queryRecord(), false, true);
+    Owned<IWUResult> result = createDatasetResultSchema(querySequence(expr), queryResultName(expr), unpayloaded->queryRecord(), false, true);
 
     if (expr->hasProperty(setAtom))
     {

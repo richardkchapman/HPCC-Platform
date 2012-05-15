@@ -1070,7 +1070,7 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
         }
         case no_record:
         {
-            bool fieldsInline = (recordIndex == 0) && (expr->numChildren() <= 3) && !isNamedSymbol;
+            bool fieldsInline = (recordIndex == 0) && (getRawFieldCount(expr) <=  3) && !isNamedSymbol;
             if (fieldsInline)
                 s.append('{');
             else
