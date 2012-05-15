@@ -1744,10 +1744,11 @@ MetaInstance::MetaInstance(HqlCppTranslator & translator, IHqlExpression * _reco
 
 void MetaInstance::setMeta(HqlCppTranslator & translator, IHqlExpression * _record, bool _isGrouped)
 {
-    record = _record;
+    record.set(_record);
     grouped = _isGrouped;
     assertex(!record || record->getOperator() == no_record);
-
+    if (record)
+        record.setown(getUnpayloadedExpr(record.getClear()));
     searchKey.setown(::getMetaUniqueKey(record, grouped));
 
     StringBuffer s,recordBase;
@@ -9273,12 +9274,25 @@ void HqlCppTranslator::buildRecordEcl(BuildCtx & subctx, IHqlExpression * datase
 
 void HqlCppTranslator::buildFormatCrcFunction(BuildCtx & ctx, const char * name, IHqlExpression * dataset, IHqlExpression * expr, unsigned payloadDelta)
 {
-    IHqlExpression * payload = expr ? expr->queryProperty(_payload_Atom) : NULL;
+    IHqlExpression * payload = dataset->queryRecord()->queryProperty(_payload_Atom);
     OwnedHqlExpr exprToCrc = getSerializedForm(dataset->queryRecord());
     unsigned payloadSize = 1;
     if (payload)
+    {
         payloadSize = (unsigned)getIntValue(payload->queryChild(0)) + payloadDelta;
-
+        HqlExprArray args;
+        unwindChildren(args, exprToCrc);
+        ForEachItemIn(idx, args)
+        {
+            IHqlExpression &cur = args.item(idx);
+            if (cur.isAttribute() && cur.queryName()==_payload_Atom)
+            {
+                args.remove(idx);
+                break;
+            }
+        }
+        exprToCrc.setown(exprToCrc->clone(args));
+    }
     exprToCrc.setown(createComma(exprToCrc.getClear(), getSizetConstant(payloadSize)));
 
     traceExpression("crc:", exprToCrc);
@@ -9569,6 +9583,7 @@ ABoundActivity * HqlCppTranslator::doBuildActivityOutputIndex(BuildCtx & ctx, IH
     IHqlExpression * filename = queryRealChild(expr, 1);
     IHqlExpression * record = dataset->queryRecord();
     IHqlDataset * baseTable = dataset->queryDataset()->queryRootTable();
+    OwnedHqlExpr unpayloaded = getUnpayloadedExpr(dataset);
 
     Owned<ABoundActivity> boundDataset = buildCachedActivity(ctx, dataset);
     Owned<ActivityInstance> instance = new ActivityInstance(*this, ctx, TAKindexwrite, expr, "IndexWrite");
@@ -9625,21 +9640,27 @@ ABoundActivity * HqlCppTranslator::doBuildActivityOutputIndex(BuildCtx & ctx, IH
     buildClusterHelper(instance->classctx, expr);
 
     // virtual unsigned getKeyedSize()
+    IHqlExpression * payloadAttr = expr->queryProperty(_payload_Atom);
+    unsigned payloadFields;
+    if (payloadAttr)
+        payloadFields = getIntValue(payloadAttr->queryChild(0));
+    else
+        payloadFields = 1;
     HqlExprArray fields;
     unwindChildren(fields, record);
     removeProperties(fields);
-    fields.popn(numPayloadFields(expr));
+    fields.popn(payloadFields);
     OwnedHqlExpr keyedRecord = createRecord(fields); // must be fixed length => no maxlength
-    if (expr->hasProperty(_payload_Atom))
+    if (payloadAttr)
         instance->classctx.addQuoted(s.clear().append("virtual unsigned getKeyedSize() { return ").append(getFixedRecordSize(keyedRecord)).append("; }"));
     else
         instance->classctx.addQuoted(s.clear().append("virtual unsigned getKeyedSize() { return (unsigned) -1; }"));
 
     //virtual const char * queryRecordECL() = 0;
-    buildRecordEcl(instance->createctx, dataset, "queryRecordECL");
+    buildRecordEcl(instance->createctx, unpayloaded, "queryRecordECL");
 
     doBuildSequenceFunc(instance->classctx, querySequence(expr), false);
-    Owned<IWUResult> result = createDatasetResultSchema(querySequence(expr), queryResultName(expr), dataset->queryRecord(), false, true);
+    Owned<IWUResult> result = createDatasetResultSchema(querySequence(expr), queryResultName(expr), unpayloaded->queryRecord(), false, true);
 
     if (expr->hasProperty(setAtom))
     {

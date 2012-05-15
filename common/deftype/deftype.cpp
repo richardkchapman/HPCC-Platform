@@ -1332,6 +1332,25 @@ bool CRowTypeInfo::assignableFrom(ITypeInfo *t2)
 
 //===========================================================================
 
+StringBuffer & CDictionaryTypeInfo::getECLType(StringBuffer & out)
+{
+    ITypeInfo * recordType = ::queryRecordType(this);
+    out.append(queryTypeName());
+    if (recordType)
+    {
+        out.append(" of ");
+        recordType->getECLType(out);
+    }
+    return out;
+}
+
+void CDictionaryTypeInfo::serialize(MemoryBuffer &tgt)
+{
+    CBasedTypeInfo::serializeSkipChild(tgt);
+}
+
+//===========================================================================
+
 bool CTableTypeInfo::assignableFrom(ITypeInfo *t2)
 {
     if (getTypeCode()==t2->getTypeCode())
@@ -1980,6 +1999,12 @@ extern DEFTYPE_API ITypeInfo *makeTableType(ITypeInfo *basetype, IInterface * di
 {
     assertex(!basetype || basetype->getTypeCode() == type_row);
     return commonUpType(new CTableTypeInfo(basetype, distributeinfo, globalsortinfo, localsortinfo));
+}
+
+extern DEFTYPE_API ITypeInfo *makeDictionaryType(ITypeInfo *basetype)
+{
+    assertex(!basetype || basetype->getTypeCode() == type_row);
+    return commonUpType(new CDictionaryTypeInfo(basetype));
 }
 
 extern DEFTYPE_API ITypeInfo *makeGroupedTableType(ITypeInfo *basetype, IInterface *groupinfo, IInterface *sortinfo)
@@ -3210,6 +3235,7 @@ inline ITypeInfo * queryChildType(ITypeInfo * t, type_t search)
         switch (code)
         {
         case type_set:
+        case type_dictionary:
         case type_groupedtable:
         case type_row:
         case type_table:

@@ -40,7 +40,7 @@ class MetaInstance
 {
 public:
     //Shouldn't really need to pass translator, but it provides a place to have a per-query unique id. Anything else seems even messier.
-    MetaInstance()  { record = NULL; grouped = false; }
+    MetaInstance()  { grouped = false; }
     MetaInstance(HqlCppTranslator & translator, IHqlExpression * _record, bool _isGrouped);
     bool isGrouped() const { return grouped; }
     IHqlExpression * queryRecord() const { return record; }
@@ -55,7 +55,7 @@ public:
     StringAttr       instanceObject;
 private:
     HqlExprAttr      searchKey;
-    IHqlExpression * record;
+    HqlExprAttr      record;
     bool grouped;
 };
 

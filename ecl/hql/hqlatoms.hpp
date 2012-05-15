@@ -47,6 +47,7 @@ extern HQL_API _ATOM _attrRecordCount_Atom;
 extern HQL_API _ATOM _attrSerializedForm_Atom;
 extern HQL_API _ATOM _attrSize_Atom;
 extern HQL_API _ATOM _attrUnadorned_Atom;
+extern HQL_API _ATOM _attrUnpayloaded_Atom;
 extern HQL_API _ATOM aveAtom;
 extern HQL_API _ATOM backupAtom;
 extern HQL_API _ATOM bcdAtom;
@@ -389,6 +390,7 @@ enum
     EAsize,
     EAaligned,
     EAunadorned,
+    EAunpayloaded,
     EAmax
 };
 

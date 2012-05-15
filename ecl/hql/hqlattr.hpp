@@ -46,6 +46,7 @@ extern HQL_API IHqlExpression * getSerializedForm(IHqlExpression * expr);
 extern HQL_API ITypeInfo * getSerializedForm(ITypeInfo * type);
 extern HQL_API IHqlExpression * getPackedRecord(IHqlExpression * expr);
 extern HQL_API IHqlExpression * getUnadornedExpr(IHqlExpression * expr);
+extern HQL_API IHqlExpression * getUnpayloadedExpr(IHqlExpression * expr);
 
 extern HQL_API IHqlExpression * queryUID(IHqlExpression * expr);
 extern HQL_API IHqlExpression * querySelf(IHqlExpression * record);
