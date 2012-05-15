@@ -1823,7 +1823,6 @@ IHqlExpression * queryChildActivity(IHqlExpression * expr, unsigned index)
     return queryRealChild(expr, firstActivityIndex + index);
 }
 
-
 unsigned getFlatFieldCount(IHqlExpression * expr)
 {
     switch (expr->getOperator())
@@ -1848,6 +1847,29 @@ unsigned getFlatFieldCount(IHqlExpression * expr)
     }
 }
 
+unsigned getRawFieldCount(IHqlExpression * expr)
+{
+    unsigned count = 0;
+    IHqlExpression *record = expr->queryRecord();
+    ForEachChild(i, record)
+    {
+        IHqlExpression * cur = record->queryChild(i);
+        switch (cur->getOperator())
+        {
+        case no_record:
+        case no_ifblock:
+        case no_field:
+            count++;
+            break;
+        case no_attr:
+        case no_attr_link:
+        case no_attr_expr:
+            break;
+        default:
+            throwUnexpected();
+        }
+    }
+}
 
 unsigned isEmptyRecord(IHqlExpression * record)
 {

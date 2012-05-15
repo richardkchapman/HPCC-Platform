@@ -1367,7 +1367,12 @@ IHqlExpression * HqlUnadornedNormalizer::createTransformed(IHqlExpression * expr
                 if (cur->isAttribute() && cur->queryName()==_payload_Atom)
                     same = false;
                 else
-                    children.append(*transform(cur));
+                {
+                    OwnedHqlExpr transformed = transform(cur);
+                    if (transformed != cur)
+                        same = false;
+                    children.append(*transformed.getClear());
+                }
             }
 
             if (same)
@@ -1392,7 +1397,6 @@ public:
     HqlUnpayloadedNormalizer();
 
     virtual IHqlExpression * createTransformed(IHqlExpression * expr);
-    virtual ITypeInfo * transformType(ITypeInfo * type);
 };
 
 static HqlTransformerInfo hqlUnpayloadedInfo("HqlUnpayloadedNormalizer");
@@ -1400,17 +1404,8 @@ HqlUnpayloadedNormalizer::HqlUnpayloadedNormalizer() : HqlCachedAttributeTransfo
 {
 }
 
-ITypeInfo * HqlUnpayloadedNormalizer::transformType(ITypeInfo * type)
-{
-    return HqlCachedAttributeTransformer::transformType(queryUnqualifiedType(type));
-}
-
 IHqlExpression * HqlUnpayloadedNormalizer::createTransformed(IHqlExpression * expr)
 {
-    IHqlExpression * body = expr->queryBody(false);
-    if (expr != body)
-        return transform(body);
-
     node_operator op = expr->getOperator();
     switch (op)
     {
