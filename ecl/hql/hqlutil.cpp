@@ -1849,26 +1849,16 @@ unsigned getFlatFieldCount(IHqlExpression * expr)
 
 unsigned getRawFieldCount(IHqlExpression * expr)
 {
+    // This is a bit of a hack.
     unsigned count = 0;
     IHqlExpression *record = expr->queryRecord();
     ForEachChild(i, record)
     {
         IHqlExpression * cur = record->queryChild(i);
-        switch (cur->getOperator())
-        {
-        case no_record:
-        case no_ifblock:
-        case no_field:
+        if (!(cur->getOperator()==no_attr && cur->queryName()==_payload_Atom))
             count++;
-            break;
-        case no_attr:
-        case no_attr_link:
-        case no_attr_expr:
-            break;
-        default:
-            throwUnexpected();
-        }
     }
+    return count;
 }
 
 unsigned isEmptyRecord(IHqlExpression * record)
@@ -5435,7 +5425,7 @@ void replaceArray(HqlExprArray & tgt, const HqlExprArray & src)
 
 //--------------------------------------------------------------
 
-static void gatherSortOrder(HqlExprArray & sorts, IHqlExpression * ds, IHqlExpression * record, unsigned maxfield = NotFound)
+static void gatherSortOrder(HqlExprArray & sorts, IHqlExpression * ds, IHqlExpression * record, unsigned maxfield = NotFound, unsigned numPayloadFields = 0)
 {
     unsigned max = record->numChildren();
     if (max > maxfield) max = maxfield;
@@ -5451,7 +5441,13 @@ static void gatherSortOrder(HqlExprArray & sorts, IHqlExpression * ds, IHqlExpre
             gatherSortOrder(sorts, ds, cur->queryChild(1));
             break;
         case no_field:
-            sorts.append(*createSelectExpr(LINK(ds), LINK(cur)));
+            OwnedHqlExpr sort = createSelectExpr(LINK(ds), LINK(cur));
+            ITypeInfo *sortType = sort->queryType();
+            if (sort->isDataset())
+                sort.setown(createValue(no_typetransfer, makeDataType(UNKNOWN_LENGTH), sort.getClear()));
+            else if ((idx < numPayloadFields) && isUnicodeType(sortType))
+                sort.setown(createValue(no_typetransfer, makeDataType(sortType->getSize()), sort.getClear()));
+            sorts.append(*sort.getClear());
             break;
         }
     }
@@ -5480,19 +5476,7 @@ void gatherIndexBuildSortOrder(HqlExprArray & sorts, IHqlExpression * expr, bool
     else
         max = indexFirstPayload;
 
-    gatherSortOrder(sorts, normalizedDs, buildRecord, max);
-    ForEachItemIn(i0, sorts)
-    {
-        IHqlExpression & cur = sorts.item(i0);
-        if (cur.isDataset())
-        {
-            sorts.replace(*createValue(no_typetransfer, makeDataType(UNKNOWN_LENGTH), LINK(&cur)), i0);
-        }
-        else if ((i0 < indexFirstPayload) && isUnicodeType(cur.queryType()))
-        {
-            sorts.replace(*createValue(no_typetransfer, makeDataType(cur.queryType()->getSize()), LINK(&cur)), i0);
-        }
-    }
+    gatherSortOrder(sorts, normalizedDs, buildRecord, max, indexFirstPayload);
 }
 
 //------------------------- Library processing -------------------------------------

@@ -1874,6 +1874,13 @@ static IHqlExpression * normalizeIndexBuild(IHqlExpression * expr, bool sortInde
         removeProperty(buildArgs, dedupAtom);
         return expr->clone(buildArgs);
     }
+    if (!expr->hasProperty(_payload_Atom) && buildRecord->hasProperty(_payload_Atom))
+    {
+        HqlExprArray  buildArgs;
+        unwindChildren(buildArgs, expr);
+        buildArgs.append(*LINK(buildRecord->queryProperty(_payload_Atom)));
+        return expr->clone(buildArgs);
+    }
 
     return NULL;
 }
