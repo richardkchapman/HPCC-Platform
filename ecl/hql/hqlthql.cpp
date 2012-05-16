@@ -864,7 +864,7 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
     }
     else
     {
-        if (expr->isDataset())
+        if (expr->isDataset() || expr->isDictionary())
         {
             if (!isNamedSymbol && expandProcessed && no != no_field && no != no_rows && !isTargetSelector(expr))
             {
@@ -875,7 +875,10 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
                     
                     StringBuffer temp;
                     scope.append(NULL);
-                    temp.appendf("dataset%p ", expr);
+                    if (expr->isDataset())
+                        temp.appendf("dataset%p ", expr);
+                    else
+                        temp.appendf("dictionary%p ", expr);
 #ifdef SHOW_NORMALIZED
                     if (expandProcessed)
                         temp.appendf("[N%p] ", expr->queryNormalizedSelector());
@@ -890,7 +893,10 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
                     insideNewTransform = wasInsideNewTransform;
                     expr->setTransformExtra(expr);
                 }   
-                s.appendf("dataset%p", expr);
+                if (expr->isDataset())
+                    s.appendf("dataset%p", expr);
+                else
+                    s.appendf("dictionary%p", expr);
                 if (paren)
                     s.append(')');
                 return;
@@ -1203,6 +1209,7 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
         }
         case no_index:
         case no_selectnth:
+        case no_selectmap:
         case no_pat_index:
         {
             toECL(child0, s, child0->getPrecedence() < 0, inType);
@@ -2680,8 +2687,9 @@ StringBuffer &HqltHql::getFieldTypeString(IHqlExpression * e, StringBuffer &s)
         type = type->queryChildType();
         //fall through
     case type_table:
+    case type_dictionary:
         {
-            s.append("DATASET(");
+            s.append(type->getTypeCode()==type_dictionary ? "DICTIONARY(" : "DATASET(");
             getTypeString(type->queryChildType()->queryChildType(), s);
             ForEachChild(i, e)
             {

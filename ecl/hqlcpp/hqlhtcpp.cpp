@@ -2938,6 +2938,7 @@ static bool anyXmlGeneratedForPass(IHqlExpression * expr, unsigned pass)
                 return anyXmlGeneratedForPass(queryRecord(type), pass);
             case type_set:
                 return (pass==1);
+            case type_dictionary:
             case type_table:
             case type_groupedtable:
                 return (pass == 1);
@@ -3044,6 +3045,7 @@ void HqlCppTranslator::doBuildFunctionReturn(BuildCtx & ctx, ITypeInfo * type, I
     case type_data:
     case type_unicode:
     case type_utf8:
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
     case type_row:
@@ -3610,6 +3612,7 @@ unsigned HqlCppTranslator::buildRtlField(StringBuffer * instanceName, IHqlExpres
         case type_set:
             extractXmlName(xpathName, &xpathItem, NULL, field, "Item", false);
             break;
+        case type_dictionary:
         case type_table:
         case type_groupedtable:
             extractXmlName(xpathName, &xpathItem, NULL, field, "Row", false);
@@ -3904,6 +3907,7 @@ unsigned HqlCppTranslator::buildRtlType(StringBuffer & instanceName, ITypeInfo *
                 fieldType |= RFTMlinkcounted;
             break;
         }
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
         {
@@ -4210,6 +4214,7 @@ public:
                             }
                             break;
                         }
+                    case type_dictionary:
                     case type_table:
                     case type_groupedtable:
                         {
@@ -4528,6 +4533,7 @@ IHqlExpression * HqlCppTranslator::convertBetweenCountAndSize(const CHqlBoundExp
     OwnedHqlExpr record;
     switch (type->getTypeCode())
     {
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
         record.set(bound.expr->queryRecord());
@@ -4664,6 +4670,7 @@ void HqlCppTranslator::buildGetResultInfo(BuildCtx & ctx, IHqlExpression * expr,
     case type_swapint:  func = getResultIntAtom; break;
     case type_boolean:  func = getResultBoolAtom; break;
     case type_data:     func = getResultDataAtom; break;
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
     case type_set:
@@ -4671,7 +4678,7 @@ void HqlCppTranslator::buildGetResultInfo(BuildCtx & ctx, IHqlExpression * expr,
         {
             OwnedHqlExpr record;
             bool ensureSerialized = true;
-            if (ttc == type_table || ttc == type_groupedtable)
+            if (ttc != type_set)
             {
                 overrideType.set(type);
                 record.set(::queryRecord(type));
@@ -4950,6 +4957,7 @@ void HqlCppTranslator::buildSetResultInfo(BuildCtx & ctx, IHqlExpression * origi
             schemaType.setown(makeSetType(elementType));
         }
         break;
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
         {
@@ -6256,6 +6264,9 @@ ABoundActivity * HqlCppTranslator::buildActivity(BuildCtx & ctx, IHqlExpression 
             case no_selectnth:
                 result = doBuildActivitySelectNth(ctx, expr);
                 break;
+            case no_selectmap:
+                UNIMPLEMENTED;
+                break;
             case no_join:
             case no_selfjoin:
                 result = doBuildActivityJoin(ctx, expr);
@@ -6983,6 +6994,7 @@ void HqlCppTranslator::ensureSerialized(const CHqlBoundTarget & variable, BuildC
             serializeName = serializeUtf8XAtom;
             deserializeName = deserializeUtf8XAtom;
             break;
+        case type_dictionary:
         case type_table:
         case type_groupedtable:
             {
@@ -6992,29 +7004,29 @@ void HqlCppTranslator::ensureSerialized(const CHqlBoundTarget & variable, BuildC
                     deserializeArgs.append(*createRowSerializer(deserializectx, record, deserializerAtom));
 
                     serializeArgs.append(*createRowSerializer(serializectx, record, serializerAtom));
-                    if (tc == type_table)
-                    {
-                        serializeName = serializeRowsetXAtom;
-                        deserializeName = deserializeRowsetXAtom;
-                    }
-                    else
+                    if (tc == type_groupedtable)
                     {
                         serializeName = serializeGroupedRowsetXAtom;
                         deserializeName = deserializeGroupedRowsetXAtom;
+                    }
+                    else
+                    {
+                        serializeName = serializeRowsetXAtom;
+                        deserializeName = deserializeRowsetXAtom;
                     }
                 }
                 else
                 {
                     assertex(!recordRequiresSerialization(record));
-                    if (tc == type_table)
-                    {
-                        serializeName = serializeDatasetXAtom;
-                        deserializeName = deserializeDatasetXAtom;
-                    }
-                    else
+                    if (tc == type_groupedtable)
                     {
                         serializeName = serializeGroupedDatasetXAtom;
                         deserializeName = deserializeGroupedDatasetXAtom;
+                    }
+                    else
+                    {
+                        serializeName = serializeDatasetXAtom;
+                        deserializeName = deserializeDatasetXAtom;
                     }
                 }
                 serializedType.set(type);
@@ -7255,6 +7267,7 @@ void HqlCppTranslator::doBuildStmtSetResult(BuildCtx & ctx, IHqlExpression * exp
             buildSetResultInfo(subctx, expr, normalized, setType, (persist != NULL), true);
             break;
         }
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
         switch (value->getOperator())
@@ -7421,6 +7434,7 @@ void HqlCppTranslator::doBuildExprSizeof(BuildCtx & ctx, IHqlExpression * expr, 
             unsigned size = UNKNOWN_LENGTH;
             switch (type->getTypeCode())
             {
+            case type_dictionary:
             case type_table:
             case type_groupedtable:
             case type_record:
@@ -7458,6 +7472,7 @@ void HqlCppTranslator::doBuildExprSizeof(BuildCtx & ctx, IHqlExpression * expr, 
             unsigned size = UNKNOWN_LENGTH;
             switch (type->getTypeCode())
             {
+            case type_dictionary:
             case type_table:
             case type_groupedtable:
             case type_record:
@@ -7536,6 +7551,7 @@ void HqlCppTranslator::doBuildExprSizeof(BuildCtx & ctx, IHqlExpression * expr, 
 
             switch (type->getTypeCode())
             {
+            case type_dictionary:
             case type_table:
             case type_groupedtable:
             case type_record:
@@ -7596,6 +7612,7 @@ void HqlCppTranslator::doBuildExprRowDiff(BuildCtx & ctx, const CHqlBoundTarget 
                     return;
                 }
                 break;
+            case type_dictionary:
             case type_table:
             case type_groupedtable:
                 UNIMPLEMENTED;
@@ -10143,6 +10160,7 @@ void HqlCppTranslator::addSchemaField(IHqlExpression *field, MemoryBuffer &schem
     case type_bitfield:
         schemaType.set(schemaType->queryPromotedType());
         //fall through;
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
     case type_row:
@@ -10514,6 +10532,7 @@ void HqlCppTranslator::buildXmlSerialize(BuildCtx & subctx, IHqlExpression * exp
                 case type_set:
                     buildXmlSerializeSet(subctx, expr, value);
                     break;
+                case type_dictionary:
                 case type_table:
                 case type_groupedtable:
                     buildXmlSerializeDataset(subctx, expr, value, assigns);

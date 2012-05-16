@@ -1177,6 +1177,9 @@ IHqlExpression * createIf(IHqlExpression * cond, IHqlExpression * left, IHqlExpr
     if (left->isDatarow() || right->isDatarow())
         return createRow(no_if, cond, createComma(left, right));
 
+    if (left->isDictionary() || right->isDictionary())
+        return createDictionary(no_if, cond, createComma(left, right));
+
     ITypeInfo * type = ::getPromotedECLType(left->queryType(), right->queryType());
     return createValue(no_if, type, cond, left, right);
 }
@@ -5287,7 +5290,7 @@ IHqlExpression * convertTempRowToCreateRow(IErrorReceiver * errors, ECLlocation 
     return expr->cloneAllAnnotations(ret);
 }
 
-IHqlExpression * convertTempTableToInlineTable(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr)
+static IHqlExpression * convertTempTableToInline(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr, bool isDictionary)
 {
     IHqlExpression * oldValues = expr->queryChild(0);
     IHqlExpression * record = expr->queryChild(1);
@@ -5324,10 +5327,19 @@ IHqlExpression * convertTempTableToInlineTable(IErrorReceiver * errors, ECLlocat
     HqlExprArray children;
     children.append(*createValue(no_transformlist, makeNullType(), transforms));
     children.append(*LINK(record));
-    OwnedHqlExpr ret = createDataset(no_inlinetable, children);
+    OwnedHqlExpr ret = isDictionary ? createDictionary(no_inlinedictionary, children) : createDataset(no_inlinetable, children);
     return expr->cloneAllAnnotations(ret);
 }
 
+IHqlExpression * convertTempTableToInlineTable(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr)
+{
+    return convertTempTableToInline(errors, location, expr, false);
+}
+
+IHqlExpression * convertTempTableToInlineDictionary(IErrorReceiver * errors, ECLlocation & location, IHqlExpression * expr)
+{
+    return convertTempTableToInline(errors, location, expr, true);
+}
 
 bool areTypesComparable(ITypeInfo * leftType, ITypeInfo * rightType)
 {
@@ -6944,6 +6956,7 @@ void EclXmlSchemaBuilder::build(IHqlExpression * record) const
                         builder.addSetField(name, childName, *type);
                         break;
                     }
+                case type_dictionary:
                 case type_table:
                 case type_groupedtable:
                     {

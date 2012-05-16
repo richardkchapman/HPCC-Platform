@@ -2028,6 +2028,7 @@ void HqlCppTranslator::doBuildDataset(BuildCtx & ctx, IHqlExpression * expr, CHq
             break;
         }
     case no_inlinetable:
+    case no_inlinedictionary:
         if (doBuildDatasetInlineTable(ctx, expr, tgt, format))
             return;
         break;
@@ -2171,6 +2172,7 @@ void HqlCppTranslator::buildDatasetAssign(BuildCtx & ctx, const CHqlBoundTarget 
             ctx.addAssign(target.expr, bound.expr);
             return;
         }
+    case no_inlinedictionary:
     case no_inlinetable:
         {
             //This will typically generate a loop.  If few items then it is more efficient to expand the assigns/clones out.
@@ -2756,6 +2758,7 @@ void HqlCppTranslator::buildDatasetAssign(BuildCtx & ctx, IHqlCppDatasetBuilder 
         buildDatasetAssignTempTable(subctx, target, expr);
         //MORE: Create rows and assign each one in turn.  Could possibly be done with a different dataset selector
         return;
+    case no_inlinedictionary:
     case no_inlinetable:
         buildDatasetAssignInlineTable(subctx, target, expr);
         return;
@@ -4179,6 +4182,7 @@ IReferenceSelector * HqlCppTranslator::buildDatasetIndex(BuildCtx & ctx, IHqlExp
             specialCase = !isMultiLevelDatasetSelector(expr, false);
             break;
         case no_if:
+        case no_inlinedictionary:
         case no_inlinetable:
         case no_join:
             //Always creates a temporary, so don't use an iterator
@@ -4326,6 +4330,7 @@ void HqlCppTranslator::doBuildExprGetGraphResult(BuildCtx & ctx, IHqlExpression 
     {
     case type_row:
         throwUnexpected();
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
         buildTempExpr(ctx, call, tgt);

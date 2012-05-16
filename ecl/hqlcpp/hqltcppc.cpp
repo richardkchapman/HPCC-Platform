@@ -2999,6 +2999,7 @@ CMemberInfo * ColumnToOffsetMap::createColumn(CContainerInfo * container, IHqlEx
         }
     case type_groupedtable:
     case type_table:
+    case type_dictionary:
         {
             IHqlExpression * count = NULL;
             IHqlExpression * size = NULL;
