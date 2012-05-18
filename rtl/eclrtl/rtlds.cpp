@@ -332,7 +332,6 @@ RtlLinkedDatasetBuilder::~RtlLinkedDatasetBuilder()
 
 void RtlLinkedDatasetBuilder::append(const void * source)
 {
-    flush();
     if (count < choosenLimit)
     {
         ensure(count+1);
@@ -343,7 +342,6 @@ void RtlLinkedDatasetBuilder::append(const void * source)
 
 void RtlLinkedDatasetBuilder::appendRows(size32_t num, byte * * rows)
 {
-    flush();
     if (num && (count < choosenLimit))
     {
         unsigned numToAdd = (count + num < choosenLimit) ? num : choosenLimit - count;
@@ -356,7 +354,6 @@ void RtlLinkedDatasetBuilder::appendRows(size32_t num, byte * * rows)
 
 void RtlLinkedDatasetBuilder::appendOwn(const void * row)
 {
-    //flush() must have been called before this... otherwise the order will be messed up
     assertex(!builder.exists());
     if (count < choosenLimit)
     {
@@ -371,7 +368,6 @@ void RtlLinkedDatasetBuilder::appendOwn(const void * row)
 
 byte * RtlLinkedDatasetBuilder::createRow()
 {
-    flush();
     if (count >= choosenLimit)
         return NULL;
     return builder.getSelf();
@@ -395,7 +391,6 @@ public:
 
 void RtlLinkedDatasetBuilder::cloneRow(size32_t len, const void * row)
 {
-    flush();
     if (count >= choosenLimit)
         return;
 
@@ -415,7 +410,6 @@ void RtlLinkedDatasetBuilder::cloneRow(size32_t len, const void * row)
 
 void RtlLinkedDatasetBuilder::deserializeRow(IOutputRowDeserializer & deserializer, IRowDeserializerSource & in)
 {
-    flush();
     builder.ensureRow();
     size32_t rowSize = deserializer.deserialize(builder, in);
     finalizeRow(rowSize);
@@ -451,8 +445,6 @@ inline void doSerializeRowset(IRowSerializerTarget & out, IOutputRowSerializer *
 
 void RtlLinkedDatasetBuilder::deserialize(IOutputRowDeserializer & deserializer, IRowDeserializerSource & in, bool isGrouped)
 {
-    flush();
-
     offset_t marker = in.beginNested();
     doDeserializeRowset(*this, deserializer, in, marker, isGrouped);
 }
@@ -460,16 +452,10 @@ void RtlLinkedDatasetBuilder::deserialize(IOutputRowDeserializer & deserializer,
 
 void RtlLinkedDatasetBuilder::finalizeRows()
 {
-    flush();
     if (count != max)
         resize(count);
 }
 
-
-void RtlLinkedDatasetBuilder::flush()
-{
-//  builder.clear();
-}
 
 void RtlLinkedDatasetBuilder::finalizeRow(size32_t rowSize)
 {

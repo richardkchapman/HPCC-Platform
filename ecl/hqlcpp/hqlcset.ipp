@@ -275,6 +275,19 @@ protected:
     LinkedHqlExpr choosenLimit;
 };
 
+class LinkedDictionaryBuilder : public DatasetBuilderBase
+{
+public:
+    LinkedDictionaryBuilder(HqlCppTranslator & _translator, IHqlExpression * _record);
+
+    virtual void buildDeclare(BuildCtx & ctx);
+    virtual void buildFinish(BuildCtx & ctx, const CHqlBoundTarget & target);
+    virtual void buildFinish(BuildCtx & ctx, CHqlBoundExpr & bound);
+    virtual bool buildLinkRow(BuildCtx & ctx, BoundRow * sourceRow);
+    virtual bool buildAppendRows(BuildCtx & ctx, IHqlExpression * expr);
+    virtual void finishRow(BuildCtx & ctx, BoundRow * selfCursor);
+};
+
 //---------------------------------------------------------------------------
 
 class SetBuilder : public CInterface, implements IHqlCppSetBuilder

@@ -1087,6 +1087,7 @@ public:
     IHqlCppDatasetBuilder * createChoosenDatasetBuilder(IHqlExpression * record, IHqlExpression * maxCount);
     IHqlCppDatasetBuilder * createLimitedDatasetBuilder(IHqlExpression * record, IHqlExpression * maxCount);
     IHqlCppDatasetBuilder * createLinkedDatasetBuilder(IHqlExpression * record, IHqlExpression * choosenLimit = NULL);
+    IHqlCppDatasetBuilder * createLinkedDictionaryBuilder(IHqlExpression * record);
     IReferenceSelector * createSelfSelect(BuildCtx & ctx, IReferenceSelector * target, IHqlExpression * expr, IHqlExpression * rootSelector);
     IReferenceSelector * createReferenceSelector(BoundRow * cursor, IHqlExpression * path);
     IReferenceSelector * createReferenceSelector(BoundRow * cursor);

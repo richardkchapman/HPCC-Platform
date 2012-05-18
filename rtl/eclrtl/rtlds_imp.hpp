@@ -382,9 +382,6 @@ public:
     inline byte * row() const { return builder.row(); }
 
 protected:
-    void flush();
-
-protected:
     IEngineRowAllocator * rowAllocator;
     RtlDynamicRowBuilder builder;
     byte * * rowset;

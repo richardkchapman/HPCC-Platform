@@ -2403,14 +2403,18 @@ void HqlCppTranslator::buildDatasetAssign(BuildCtx & ctx, const CHqlBoundTarget 
     Owned<IHqlCppDatasetBuilder> builder;
     if (targetOutOfLine)
     {
-        IHqlExpression * choosenLimit = NULL;
-        if ((op == no_choosen) && !isChooseNAllLimit(expr->queryChild(1)) && !queryRealChild(expr, 2))
+        if (expr->isDictionary())
+            builder.setown(createLinkedDictionaryBuilder(record));
+        else
         {
-            choosenLimit = expr->queryChild(1);
-            expr = expr->queryChild(0);
+            IHqlExpression * choosenLimit = NULL;
+            if ((op == no_choosen) && !isChooseNAllLimit(expr->queryChild(1)) && !queryRealChild(expr, 2))
+            {
+                choosenLimit = expr->queryChild(1);
+                expr = expr->queryChild(0);
+            }
+            builder.setown(createLinkedDatasetBuilder(record, choosenLimit));
         }
-
-        builder.setown(createLinkedDatasetBuilder(record, choosenLimit));
     }
     else
         builder.setown(createBlockedDatasetBuilder(record));
