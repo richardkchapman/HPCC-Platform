@@ -544,6 +544,85 @@ void rtlSerializeGroupedRowset(IRowSerializerTarget & out, IOutputRowSerializer 
 
 //---------------------------------------------------------------------------
 
+RtlLinkedDictionaryBuilder::RtlLinkedDictionaryBuilder(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo)
+  //: builder(_rowAllocator, false)
+{
+    hash  = _hashInfo->queryHash();
+    compare  = _hashInfo->queryCompare();
+    initialSize = _hashInfo->initialSize();
+    rowAllocator = LINK(_rowAllocator);
+    table = NULL;
+    usedCount = 0;
+    usedLimit = 0;
+    tableSize = 0;
+}
+
+RtlLinkedDictionaryBuilder::~RtlLinkedDictionaryBuilder()
+{
+//    builder.clear();
+    if (table)
+        rowAllocator->releaseRowset(tableSize, table);
+    ::Release(rowAllocator);
+}
+
+void RtlLinkedDictionaryBuilder::append(const void * source)
+{
+    if (source)
+    {
+        appendOwn(rowAllocator->linkRow(source));
+    }
+}
+
+void RtlLinkedDictionaryBuilder::appendOwn(const void * source)
+{
+    if (source)
+    {
+        checkSpace();
+        unsigned rowidx = hash->hash(source) % tableSize;
+        loop
+        {
+            const void *entry = table[rowidx];
+            if (entry && compare->docompare(source, entry)==0)
+            {
+                rowAllocator->releaseRow(entry);
+                usedCount--;
+                entry = NULL;
+            }
+            if (!entry)
+            {
+                table[rowidx] = (byte *) source;
+                usedCount++;
+                break;
+            }
+            rowidx++;
+            if (rowidx==tableSize)
+                rowidx = 0;
+        }
+    }
+}
+
+void RtlLinkedDictionaryBuilder::checkSpace()
+{
+    if (!table)
+    {
+        table = rowAllocator->reallocRows(NULL, tableSize, initialSize);
+        usedLimit = (tableSize * 3) / 4;
+    }
+    else if (usedCount > usedLimit)
+    {
+        UNIMPLEMENTED; // time to rehash
+    }
+}
+
+void RtlLinkedDictionaryBuilder::appendRows(size32_t num, byte * * rows)
+{
+    // MORE - if we know that the source is already a hashtable, we can optimize the add to an empty table...
+    for (unsigned i=0; i < num; i++)
+        append(rows[i]);
+}
+
+//---------------------------------------------------------------------------
+
 //These definitions should be shared with thorcommon, but to do that
 //they would need to be moved to an rtlds.ipp header, which thorcommon then included.
 
