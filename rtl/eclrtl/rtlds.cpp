@@ -433,11 +433,15 @@ inline void doSerializeRowset(IRowSerializerTarget & out, IOutputRowSerializer *
 {
     for (unsigned i=0; i < count; i++)
     {
-        serializer->serialize(out, rows[i]);
-        if (isGrouped)
+        byte *row = rows[i];
+        if (row)   // When serializing a dictionary, there may be nulls in the rowset. These can be skipped (we rehash on deserialize)
         {
-            byte eogPending = (i+1 < count) && (rows[i+1] == NULL);
-            out.put(1, &eogPending);
+            serializer->serialize(out, rows[i]);
+            if (isGrouped)
+            {
+                byte eogPending = (i+1 < count) && (rows[i+1] == NULL);
+                out.put(1, &eogPending);
+            }
         }
     }
 }
@@ -544,12 +548,23 @@ void rtlSerializeGroupedRowset(IRowSerializerTarget & out, IOutputRowSerializer 
 
 //---------------------------------------------------------------------------
 
+RtlLinkedDictionaryBuilder::RtlLinkedDictionaryBuilder(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo, unsigned _initialSize)
+  //: builder(_rowAllocator, false)
+{
+    init(_rowAllocator, _hashInfo, _initialSize);
+}
+
 RtlLinkedDictionaryBuilder::RtlLinkedDictionaryBuilder(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo)
   //: builder(_rowAllocator, false)
 {
+    init(_rowAllocator, _hashInfo, 8);
+}
+
+void RtlLinkedDictionaryBuilder::init(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo, unsigned _initialSize)
+{
     hash  = _hashInfo->queryHash();
     compare  = _hashInfo->queryCompare();
-    initialSize = _hashInfo->initialSize();
+    initialSize = _initialSize;
     rowAllocator = LINK(_rowAllocator);
     table = NULL;
     usedCount = 0;
@@ -606,6 +621,8 @@ void RtlLinkedDictionaryBuilder::checkSpace()
     if (!table)
     {
         table = rowAllocator->reallocRows(NULL, tableSize, initialSize);
+        tableSize = initialSize;
+        memset(table, 0, tableSize*sizeof(void*));
         usedLimit = (tableSize * 3) / 4;
     }
     else if (usedCount > usedLimit)

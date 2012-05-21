@@ -5283,6 +5283,32 @@ void HqlCppTranslator::buildHashOfExprsClass(BuildCtx & ctx, const char * name, 
     buildHashClass(ctx, name, hash, dataset);
 }
 
+
+void HqlCppTranslator::buildDictionaryHashClass(BuildCtx &ctx, IHqlExpression *record, IHqlExpression *dictionary, StringBuffer &lookupHelperName)
+{
+    BuildCtx declareCtx(*code, declareAtom);
+    appendUniqueId(lookupHelperName.append("lu"), getConsistentUID(record));
+    OwnedHqlExpr attr = createAttribute(lookupAtom, LINK(record));
+    HqlExprAssociation * match = declareCtx.queryMatchExpr(attr);
+    if (!match)
+    {
+        BuildCtx classctx(declareCtx);
+        beginNestedClass(classctx, lookupHelperName, "IHThorHashLookupInfo");
+
+        HqlExprArray recordFields;
+        ForEachChild(idx, record)
+        {
+            recordFields.append(*createSelectExpr(LINK(dictionary->queryNormalizedSelector()), LINK(record->queryChild(idx))));
+        }
+        OwnedHqlExpr keyedFields = createValueSafe(no_sortlist, makeSortListType(NULL), recordFields);
+        DatasetReference dictRef(dictionary, no_none, NULL);
+        buildHashOfExprsClass(classctx, "Hash", keyedFields, dictRef, false);
+        buildCompareMember(classctx, "Compare", keyedFields, dictRef);
+        endNestedClass();
+    }
+}
+
+
 //---------------------------------------------------------------------------
 
 IHqlExpression * queryImplementationInterface(IHqlExpression * moduleFunc)

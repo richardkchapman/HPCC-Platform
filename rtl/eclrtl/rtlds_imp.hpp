@@ -392,6 +392,7 @@ protected:
 class ECLRTL_API RtlLinkedDictionaryBuilder
 {
 public:
+    RtlLinkedDictionaryBuilder(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo, unsigned _initialTableSize);
     RtlLinkedDictionaryBuilder(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo);
     ~RtlLinkedDictionaryBuilder();
 
@@ -421,6 +422,7 @@ public:
 */
 protected:
     void checkSpace();
+    void init(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo, unsigned _initialTableSize);
 
 protected:
     IEngineRowAllocator *rowAllocator;

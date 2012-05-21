@@ -9490,10 +9490,10 @@ IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
     switch (op)
     {
     case no_null:
+        type.setown(makeDictionaryType(makeRowType(createRecordType(&parms.item(0)))));
+        break;
     case no_inlinedictionary:
-        {
-            type.setown(makeDictionaryType(makeRowType(createRecordType(&parms.item(1)))));
-        }
+        type.setown(makeDictionaryType(makeRowType(createRecordType(&parms.item(1)))));
         break;
     case no_addfiles:
         type.set(parms.item(0).queryType());  // It's an error if they don't all match, caught elsewhere (?)

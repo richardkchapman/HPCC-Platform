@@ -557,7 +557,7 @@ IReferenceSelector * HqlCppTranslator::buildActiveRow(BuildCtx & ctx, IHqlExpres
     case no_activerow:
         return buildActiveRow(ctx, expr->queryChild(0));
     default:
-        if (!expr->isDataset())
+        if (!expr->isDataset() && !expr->isDictionary())
             return buildNewRow(ctx, expr);
         break;
     }
@@ -2404,7 +2404,9 @@ void HqlCppTranslator::buildDatasetAssign(BuildCtx & ctx, const CHqlBoundTarget 
     if (targetOutOfLine)
     {
         if (expr->isDictionary())
+        {
             builder.setown(createLinkedDictionaryBuilder(record));
+        }
         else
         {
             IHqlExpression * choosenLimit = NULL;

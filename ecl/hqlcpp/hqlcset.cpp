@@ -1721,8 +1721,11 @@ void LinkedDictionaryBuilder::buildDeclare(BuildCtx & ctx)
     OwnedHqlExpr curActivityId = translator.getCurrentActivityId(ctx);
     translator.ensureRowAllocator(allocatorName, ctx, record, curActivityId);
 
+    StringBuffer lookupHelperName;
+    translator.buildDictionaryHashClass(ctx, record, createDictionary(no_null, record), lookupHelperName);
+
     decl.append("RtlLinkedDictionaryBuilder ").append(instanceName).append("(");
-    decl.append(allocatorName);
+    decl.append(allocatorName).append(", &").append(lookupHelperName);
     decl.append(");");
 
     ctx.addQuoted(decl);
