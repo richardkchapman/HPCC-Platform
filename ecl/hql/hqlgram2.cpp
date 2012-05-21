@@ -7754,6 +7754,39 @@ void HqlGram::expandPayload(HqlExprArray & fields, IHqlExpression * payload, IHq
     }
 }
 
+void HqlGram::mergeDictionaryPayload(SharedHqlExpr & record, SharedHqlExpr & payload, const attribute & errpos)
+{
+    checkRecordIsValid(errpos, record.get());
+    IHqlSimpleScope * scope = record->querySimpleScope();
+
+    // Move all the attributes to the front of the record
+    HqlExprArray fields;
+    ForEachChild(i3, record)
+    {
+        IHqlExpression * cur = record->queryChild(i3);
+        if (cur->isAttribute())
+            fields.append(*LINK(cur));
+    }
+    ForEachChild(i1, record)
+    {
+        IHqlExpression * cur = record->queryChild(i1);
+        if (!cur->isAttribute())
+            fields.append(*LINK(cur));
+    }
+
+    unsigned payloadCount = 0;
+    ITypeInfo * lastFieldType = NULL;
+    if (payload)
+    {
+        unsigned oldFields = fields.ordinality();
+        expandPayload(fields, payload,  scope, lastFieldType, errpos);
+        payloadCount = fields.ordinality() - oldFields;
+    }
+    fields.add(*createAttribute(_payload_Atom, createConstant((__int64) payloadCount)), 0);
+    record.setown(createRecord(fields));
+}
+
+
 void HqlGram::modifyIndexPayloadRecord(SharedHqlExpr & record, SharedHqlExpr & payload, SharedHqlExpr & extra, const attribute & errpos)
 {
     checkRecordIsValid(errpos, record.get());

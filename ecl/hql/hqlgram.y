@@ -3770,7 +3770,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $3.getExpr();
                             OwnedHqlExpr payload = $4.getExpr();
-                            parser->modifyIndexPayloadRecord(record, payload, record, $1);
+                            parser->mergeDictionaryPayload(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
@@ -3787,7 +3787,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $4.getExpr();
                             OwnedHqlExpr payload = $5.getExpr();
-                            parser->modifyIndexPayloadRecord(record, payload, record, $1);
+                            parser->mergeDictionaryPayload(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
@@ -3804,7 +3804,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $4.getExpr();
                             OwnedHqlExpr payload = $5.getExpr();
-                            parser->modifyIndexPayloadRecord(record, payload, record, $1);
+                            parser->mergeDictionaryPayload(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
@@ -3821,7 +3821,7 @@ recordDef
                         {
                             OwnedHqlExpr record = $5.getExpr();
                             OwnedHqlExpr payload = $6.getExpr();
-                            parser->modifyIndexPayloadRecord(record, payload, record, $1);
+                            parser->mergeDictionaryPayload(record, payload, $1);
                             $$.setExpr(record.getClear());
                             $$.setPosition($1);
                         }
