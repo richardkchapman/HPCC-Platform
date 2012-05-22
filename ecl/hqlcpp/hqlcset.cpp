@@ -1722,7 +1722,8 @@ void LinkedDictionaryBuilder::buildDeclare(BuildCtx & ctx)
     translator.ensureRowAllocator(allocatorName, ctx, record, curActivityId);
 
     StringBuffer lookupHelperName;
-    translator.buildDictionaryHashClass(ctx, record, createDictionary(no_null, record), lookupHelperName);
+    OwnedHqlExpr dict = createDictionary(no_null, record.getLink()); // MORE - is the actual dict not available?
+    translator.buildDictionaryHashClass(ctx, record, dict, lookupHelperName);
 
     decl.append("RtlLinkedDictionaryBuilder ").append(instanceName).append("(");
     decl.append(allocatorName).append(", &").append(lookupHelperName);

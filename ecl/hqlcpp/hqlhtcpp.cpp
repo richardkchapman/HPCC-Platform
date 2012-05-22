@@ -5286,25 +5286,31 @@ void HqlCppTranslator::buildHashOfExprsClass(BuildCtx & ctx, const char * name, 
 
 void HqlCppTranslator::buildDictionaryHashClass(BuildCtx &ctx, IHqlExpression *record, IHqlExpression *dictionary, StringBuffer &lookupHelperName)
 {
-    BuildCtx declareCtx(*code, declareAtom);
+    BuildCtx declarectx(*code, declareAtom);
     appendUniqueId(lookupHelperName.append("lu"), getConsistentUID(record));
     OwnedHqlExpr attr = createAttribute(lookupAtom, LINK(record));
-    HqlExprAssociation * match = declareCtx.queryMatchExpr(attr);
+    HqlExprAssociation * match = declarectx.queryMatchExpr(attr);
     if (!match)
     {
-        BuildCtx classctx(declareCtx);
+        BuildCtx classctx(declarectx);
         beginNestedClass(classctx, lookupHelperName, "IHThorHashLookupInfo");
-
-        HqlExprArray recordFields;
-        ForEachChild(idx, record)
+        HqlExprArray keyedFields;
+        IHqlExpression * payload = record ? record->queryProperty(_payload_Atom) : NULL;
+        unsigned payloadSize = payload ? getIntValue(payload->queryChild(0)) : 0;
+        unsigned max = record->numChildren() - payloadSize;
+        for (unsigned idx = 0; idx < max; idx++)
         {
-            recordFields.append(*createSelectExpr(LINK(dictionary->queryNormalizedSelector()), LINK(record->queryChild(idx))));
+            IHqlExpression *child = record->queryChild(idx);
+            if (!child->isAttribute())
+                keyedFields.append(*createSelectExpr(LINK(dictionary->queryNormalizedSelector()), LINK(child)));
         }
-        OwnedHqlExpr keyedFields = createValueSafe(no_sortlist, makeSortListType(NULL), recordFields);
+        OwnedHqlExpr keyedList = createValueSafe(no_sortlist, makeSortListType(NULL), keyedFields);
         DatasetReference dictRef(dictionary, no_none, NULL);
-        buildHashOfExprsClass(classctx, "Hash", keyedFields, dictRef, false);
-        buildCompareMember(classctx, "Compare", keyedFields, dictRef);
+        buildHashOfExprsClass(classctx, "Hash", keyedList, dictRef, false);
+        buildCompareMember(classctx, "Compare", keyedList, dictRef);
         endNestedClass();
+        OwnedHqlExpr temp = createVariable(lookupHelperName, makeVoidType());
+        declarectx.associateExpr(attr, temp);
     }
 }
 

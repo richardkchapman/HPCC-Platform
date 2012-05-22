@@ -2881,6 +2881,7 @@ static bool addExplicitType(IHqlExpression * expr)
     {
     case type_transform:
         return true;
+    case type_dictionary:
     case type_row:
     case type_table:
     case type_groupedtable:

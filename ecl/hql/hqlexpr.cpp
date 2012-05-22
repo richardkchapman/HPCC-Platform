@@ -72,7 +72,7 @@
 //#define PARANOID
 //#define SEARCH_NAME1   "vL6R"
 //#define SEARCH_NAME2   "v19"
-//#define SEARCH_IEXPR 0x03289048
+//#define SEARCH_IEXPR 0x0681cb0
 //#define CHECK_SELSEQ_CONSISTENCY
 //#define GATHER_COMMON_STATS
 #define VERIFY_EXPR_INTEGRITY
@@ -3059,8 +3059,8 @@ void CHqlExpression::initFlagsBeforeOperands()
 {
 #ifdef _DEBUG
 #ifdef SEARCH_IEXPR
-    if ((unsigned)(IHqlExpression *)this == SEARCH_IEXPR)
-        op = op;
+    if ((memsize_t)(IHqlExpression *)this == SEARCH_IEXPR)
+        DBGLOG("initFlags");
 #endif
 #endif
 
@@ -3609,6 +3609,7 @@ switch (op)
                 }
                 break;
             }
+        case type_dictionary:
         case type_groupedtable:
         case type_table:
             {
@@ -4294,8 +4295,8 @@ void CHqlExpression::Link(void) const
 #endif
 #ifdef _DEBUG
 #ifdef SEARCH_IEXPR
-    if ((unsigned)(IHqlExpression *)this == SEARCH_IEXPR)
-        op = op;
+    if ((memsize_t)(IHqlExpression *)this == SEARCH_IEXPR)
+        DBGLOG("Link");
 #endif
 #endif
     CInterface::Link(); 
@@ -4310,8 +4311,8 @@ bool CHqlExpression::Release(void) const
 #endif
 #ifdef _DEBUG
 #ifdef SEARCH_IEXPR
-    if ((unsigned)(IHqlExpression *)this == SEARCH_IEXPR)
-        op = op;
+    if ((memsize_t)(IHqlExpression *)this == SEARCH_IEXPR)
+        DBGLOG("Release");
 #endif
 #endif
     return CInterface::Release(); 
@@ -4877,6 +4878,7 @@ void CHqlExpression::cacheTablesUsed()
                         switch (type->getTypeCode())
                         {
                         case type_void:
+                        case type_dictionary:
                         case type_table:
                         case type_groupedtable:
                         case type_row:
@@ -9495,6 +9497,9 @@ IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
     case no_inlinedictionary:
         type.setown(makeDictionaryType(makeRowType(createRecordType(&parms.item(1)))));
         break;
+    case no_select:
+        type.set(parms.item(1).queryType());
+        break;
     case no_addfiles:
         type.set(parms.item(0).queryType());  // It's an error if they don't all match, caught elsewhere (?)
         break;
@@ -9579,6 +9584,8 @@ IHqlExpression * createTypedValue(node_operator op, ITypeInfo * type, HqlExprArr
     case type_groupedtable:
     case type_table:
         return createDataset(op, args);
+    case type_dictionary:
+        return createDictionary(op, args);
     case type_row:
         return createRow(op, args);
     default:
@@ -11674,6 +11681,8 @@ extern IHqlExpression *createWrapper(node_operator op, IHqlExpression * e)
         case type_table:
         case type_groupedtable:
             return createDataset(op, e, NULL);
+        case type_dictionary:
+            return createDictionary(op, e, NULL);
         }
     }
     return createValue(op, LINK(type), e);
@@ -11688,6 +11697,8 @@ IHqlExpression *createWrapper(node_operator op, ITypeInfo * type, HqlExprArray &
         {
         case type_row:
             return createRow(op, args);
+        case type_dictionary:
+            return createDictionary(op, args);
         case type_table:
         case type_groupedtable:
             return createDataset(op, args);
@@ -11801,6 +11812,8 @@ extern IHqlExpression * createSelectExpr(IHqlExpression * _lhs, IHqlExpression *
     type_t t = rhs->queryType()->getTypeCode();
     if (t == type_table || t == type_groupedtable)
         return createDataset(no_select, LINK(normalLhs), createComma(rhs, LINK(newAttr)));
+    if (t == type_dictionary)
+        return createDictionary(no_select, LINK(normalLhs), createComma(rhs, LINK(newAttr)));
     if (t == type_row)
         return createRow(no_select, LINK(normalLhs), createComma(rhs, LINK(newAttr)));
 
@@ -11816,6 +11829,8 @@ static IHqlExpression * doCreateSelectExpr(HqlExprArray & args)
     type_t t = rhs->queryType()->getTypeCode();
     if (t == type_table || t == type_groupedtable)
         return createDataset(no_select, args);
+    if (t == type_dictionary)
+        return createDictionary(no_select, args);
     if (t == type_row)
         return createRow(no_select, args);
 
@@ -12307,6 +12322,13 @@ extern HQL_API IHqlExpression * createNullExpr(ITypeInfo * type)
             IHqlExpression * attr = queryProperty(type, _linkCounted_Atom);
             return createDataset(no_null, LINK(record), LINK(attr));
         }
+    case type_dictionary:
+        {
+            ITypeInfo * recordType = queryRecordType(type);
+            IHqlExpression * record = queryExpression(recordType);
+            IHqlExpression * attr = queryProperty(type, _linkCounted_Atom);
+            return createDictionary(no_null, LINK(record), LINK(attr));
+        }
     case type_row:
 #if 0
         {
@@ -12359,6 +12381,8 @@ extern HQL_API IHqlExpression * createPureVirtual(ITypeInfo * type)
             return createDataset(no_purevirtual, LINK(queryOriginalRecord(type)));
         case type_groupedtable:
             return createDataset(no_purevirtual, LINK(queryOriginalRecord(type)), createAttribute(groupedAtom));
+        case type_dictionary:
+            return createDictionary(no_purevirtual, LINK(queryOriginalRecord(type)), createAttribute(groupedAtom));
         case type_row:
         case type_record:
             return createRow(no_purevirtual, LINK(queryOriginalRecord(type)));
@@ -15367,6 +15391,9 @@ IHqlExpression * createTypeTransfer(IHqlExpression * expr, ITypeInfo * _newType)
     case type_table:
     case type_groupedtable:
         return createDataset(no_typetransfer, LINK(queryOriginalRecord(newType)), expr);
+        break;
+    case type_dictionary:
+        return createDictionary(no_typetransfer, LINK(queryOriginalRecord(newType)), expr);
         break;
     default:
         return createValue(no_typetransfer, newType.getClear(), expr);

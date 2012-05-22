@@ -3242,6 +3242,8 @@ IHqlExpression * createGetResultFromSetResult(IHqlExpression * setResult, ITypeI
         return createDataset(no_getresult, LINK(queryOriginalRecord(valueType)), createComma(LINK(seqAttr), LINK(aliasAttr)));
     case type_groupedtable:
         return createDataset(no_getresult, LINK(queryOriginalRecord(valueType)), createComma(LINK(seqAttr), createAttribute(groupedAtom), LINK(aliasAttr)));
+    case type_dictionary:
+        return createDictionary(no_getresult, LINK(queryOriginalRecord(valueType)), createComma(LINK(seqAttr), createAttribute(groupedAtom), LINK(aliasAttr)));
     case type_row:
     case type_record:
          return createRow(no_getresult, LINK(queryOriginalRecord(valueType)), createComma(LINK(seqAttr), LINK(aliasAttr)));
@@ -5369,6 +5371,7 @@ bool areTypesComparable(ITypeInfo * leftType, ITypeInfo * rightType)
     case type_array:
         return areTypesComparable(leftType->queryChildType(), rightType->queryChildType());
     case type_row:
+    case type_dictionary:
     case type_table:
     case type_groupedtable:
         return recordTypesMatch(leftType, rightType);
@@ -7293,6 +7296,7 @@ bool ConstantRowCreator::processElement(IHqlExpression * expr, IHqlExpression * 
                 if (rhsOp == no_createrow)
                     return createConstantRow(out, rhs->queryChild(0));
                 return false;
+            case type_dictionary:
             case type_table:
             case type_groupedtable:
                 if (!expr->hasProperty(countAtom) && !expr->hasProperty(sizeofAtom))

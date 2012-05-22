@@ -2403,7 +2403,7 @@ void HqlCppTranslator::buildDatasetAssign(BuildCtx & ctx, const CHqlBoundTarget 
     Owned<IHqlCppDatasetBuilder> builder;
     if (targetOutOfLine)
     {
-        if (expr->isDictionary())
+        if (target.queryType()->getTypeCode() == type_dictionary)
         {
             builder.setown(createLinkedDictionaryBuilder(record));
         }
