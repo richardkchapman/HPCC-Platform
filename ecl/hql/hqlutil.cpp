@@ -1882,9 +1882,12 @@ unsigned isEmptyRecord(IHqlExpression * record)
 
 bool isTrivialSelectN(IHqlExpression * expr)
 {
-    IHqlExpression * index = expr->queryChild(1);
-    if (index->queryValue() && (index->queryValue()->getIntValue() == 1))
-        return hasSingleRow(expr->queryChild(0));
+    if (expr->getOperator() == no_index || expr->getOperator() == no_index)
+    {
+        IHqlExpression * index = expr->queryChild(1);
+        if (index->queryValue() && (index->queryValue()->getIntValue() == 1))
+            return hasSingleRow(expr->queryChild(0));
+    }
     return false;
 }
 

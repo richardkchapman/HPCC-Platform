@@ -76,6 +76,16 @@ public:
     virtual void buildIterateClass(BuildCtx & ctx, StringBuffer & cursorName, BuildCtx * initctx);
 };
 
+class InlineLinkedDictionaryCursor : public InlineLinkedDatasetCursor
+{
+public:
+    InlineLinkedDictionaryCursor(HqlCppTranslator & _translator, IHqlExpression * _ds, CHqlBoundExpr & _boundDs);
+
+    virtual BoundRow * buildIterateLoop(BuildCtx & ctx, bool needToBreak) { throwUnexpected(); }
+    virtual BoundRow * buildSelect(BuildCtx & ctx, IHqlExpression * indexExpr);
+    virtual void buildIterateClass(BuildCtx & ctx, StringBuffer & cursorName, BuildCtx * initctx) { throwUnexpected(); }
+};
+
 class MultiLevelDatasetCursor : public BaseDatasetCursor
 {
 public:

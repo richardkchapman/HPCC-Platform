@@ -691,6 +691,33 @@ BoundRow * InlineLinkedDatasetCursor::buildSelect(BuildCtx & ctx, IHqlExpression
 }
 
 //---------------------------------------------------------------------------
+
+InlineLinkedDictionaryCursor::InlineLinkedDictionaryCursor(HqlCppTranslator & _translator, IHqlExpression * _ds, CHqlBoundExpr & _boundDs)
+  : InlineLinkedDatasetCursor(_translator, _ds, _boundDs)
+{
+}
+
+BoundRow * InlineLinkedDictionaryCursor::buildSelect(BuildCtx & ctx, IHqlExpression * indexExpr)
+{
+    OwnedHqlExpr index = foldHqlExpression(indexExpr->queryChild(1));
+
+    StringBuffer s, rowName;
+    OwnedHqlExpr row = createRow(ctx, "row", rowName);
+
+    CHqlBoundExpr boundIndex;
+    BuildCtx subctx(ctx);
+    translator.buildExpr(ctx, index, boundIndex);
+
+    OwnedHqlExpr address = getPointer(boundDs.expr);
+    OwnedHqlExpr indexedValue = createValue(no_selectmap, row->getType(), LINK(address), LINK(boundIndex.expr));
+    subctx.addAssign(row, indexedValue);
+
+    //MORE: Should mark as linked if it is.
+    BoundRow * cursor = translator.bindRow(ctx, indexExpr, row);
+    return cursor;
+}
+
+//---------------------------------------------------------------------------
 MultiLevelDatasetCursor::MultiLevelDatasetCursor(HqlCppTranslator & _translator, IHqlExpression * _ds)
 : BaseDatasetCursor(_translator, _ds, NULL)
 {
@@ -1299,7 +1326,10 @@ IHqlCppDatasetCursor * HqlCppTranslator::createDatasetSelector(BuildCtx & ctx, I
     buildDataset(ctx, expr, bound, FormatNatural);
     if (bound.expr->isDatarow() || !isArrayRowset(bound.expr->queryType()))
         return new InlineBlockDatasetCursor(*this, expr, bound);
-    return new InlineLinkedDatasetCursor(*this, expr, bound);
+    else if (bound.expr->isDictionary())
+        return new InlineLinkedDictionaryCursor(*this, expr, bound);
+    else
+        return new InlineLinkedDatasetCursor(*this, expr, bound);
 }
 
 

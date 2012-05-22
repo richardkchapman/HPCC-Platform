@@ -836,6 +836,8 @@ public:
     IHqlExpression * ensureIteratedRowIsLive(BuildCtx & initctx, BuildCtx & searchctx, BuildCtx & iterctx, BoundRow * row, IHqlExpression * dataset, IHqlExpression * rowExpr);
     BoundRow * buildOptimizeSelectFirstRow(BuildCtx & ctx, IHqlExpression * expr);
 
+    IReferenceSelector * buildDatasetSelectMap(BuildCtx & ctx, IHqlExpression * expr);
+
 // Helper functions
 
     void ThrowStringException(int code,const char *format, ...) __attribute__((format(printf, 3, 4)));            // override the global function to try and add more context information

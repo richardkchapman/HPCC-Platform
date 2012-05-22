@@ -403,18 +403,18 @@ public:
     inline size32_t getcount() { return tableSize; }
     inline byte * * linkrows() { return rtlLinkRowset(table); }
 
-/*
-    Not clear which if any of these we will want...
-    byte * createRow();
+    byte * createRow()         { return builder.getSelf(); }
+    void finalizeRow(size32_t len);
+    inline RtlDynamicRowBuilder & rowBuilder() { return builder; }
+    /*
+        Not clear which if any of these we will want...
     void cloneRow(size32_t len, const void * ptr);
     void deserialize(IOutputRowDeserializer & deserializer, IRowDeserializerSource & in, bool isGrouped);
     void deserializeRow(IOutputRowDeserializer & deserializer, IRowDeserializerSource & in);
     void expand(size32_t required);
     void resize(size32_t required);
     void finalizeRows();
-    void finalizeRow(size32_t len);
 
-    inline RtlDynamicRowBuilder & rowBuilder() { return builder; }
     inline void ensure(size32_t required) { if (required > max) expand(required); }
     inline byte * * queryrows() { finalizeRows(); return rowset; }
 
@@ -428,7 +428,7 @@ protected:
     IEngineRowAllocator *rowAllocator;
     IHash *hash;
     ICompare *compare;
-    //    RtlDynamicRowBuilder builder;
+    RtlDynamicRowBuilder builder;
     byte * * table;
     size32_t usedCount;
     size32_t usedLimit;

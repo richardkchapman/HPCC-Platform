@@ -391,6 +391,8 @@ IReferenceSelector * HqlCppTranslator::buildNewRow(BuildCtx & ctx, IHqlExpressio
     case no_index:
     case no_selectnth:
         return buildDatasetIndex(ctx, expr);
+    case no_selectmap:
+        return buildDatasetSelectMap(ctx, expr);
     case no_left:
     case no_right:
     case no_self:
@@ -4208,6 +4210,42 @@ IReferenceSelector * HqlCppTranslator::buildDatasetIndex(BuildCtx & ctx, IHqlExp
     }
     //MORE: Is this a good idea???
     else if (!canProcessInline(&ctx, expr))
+    {
+        CHqlBoundExpr bound;
+        OwnedHqlExpr dsExpr = expr->isDatarow() ? createDatasetFromRow(LINK(expr)) : LINK(expr);
+        buildDataset(ctx, dsExpr, bound, FormatNatural);
+        convertBoundDatasetToFirstRow(expr, bound);
+        row = bindRow(ctx, expr, bound.expr);
+    }
+
+    if (!row)
+    {
+        Owned<IHqlCppDatasetCursor> cursor = createDatasetSelector(ctx, dataset);
+        row = cursor->buildSelect(ctx, expr);
+
+        if (!row)
+        {
+            CHqlBoundExpr boundCleared;
+            buildDefaultRow(ctx, dataset, boundCleared);
+            OwnedHqlExpr defaultRowPtr = getPointer(boundCleared.expr);
+            row = bindRow(ctx, expr, defaultRowPtr);
+        }
+    }
+    return createReferenceSelector(row);
+}
+
+IReferenceSelector * HqlCppTranslator::buildDatasetSelectMap(BuildCtx & ctx, IHqlExpression * expr)
+{
+    HqlExprAssociation * match = ctx.queryAssociation(expr, AssocRow, NULL);
+    if (match)
+        return createReferenceSelector(static_cast<BoundRow *>(match));
+
+    OwnedHqlExpr dataset = normalizeAnyDatasetAliases(expr->queryChild(0));
+    // Create a row to pass to the lookup function
+
+
+    BoundRow * row = NULL;
+    if (!canProcessInline(&ctx, expr))
     {
         CHqlBoundExpr bound;
         OwnedHqlExpr dsExpr = expr->isDatarow() ? createDatasetFromRow(LINK(expr)) : LINK(expr);

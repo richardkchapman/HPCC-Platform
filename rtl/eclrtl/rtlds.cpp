@@ -549,13 +549,13 @@ void rtlSerializeGroupedRowset(IRowSerializerTarget & out, IOutputRowSerializer 
 //---------------------------------------------------------------------------
 
 RtlLinkedDictionaryBuilder::RtlLinkedDictionaryBuilder(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo, unsigned _initialSize)
-  //: builder(_rowAllocator, false)
+  : builder(_rowAllocator, false)
 {
     init(_rowAllocator, _hashInfo, _initialSize);
 }
 
 RtlLinkedDictionaryBuilder::RtlLinkedDictionaryBuilder(IEngineRowAllocator * _rowAllocator, IHThorHashLookupInfo *_hashInfo)
-  //: builder(_rowAllocator, false)
+  : builder(_rowAllocator, false)
 {
     init(_rowAllocator, _hashInfo, 8);
 }
@@ -620,14 +620,28 @@ void RtlLinkedDictionaryBuilder::checkSpace()
 {
     if (!table)
     {
-        table = rowAllocator->reallocRows(NULL, tableSize, initialSize);
+        table = rowAllocator->createRowset(initialSize);
         tableSize = initialSize;
-        memset(table, 0, tableSize*sizeof(void*));
+        memset(table, 0, tableSize*sizeof(byte *));
         usedLimit = (tableSize * 3) / 4;
+        usedCount = 0;
     }
     else if (usedCount > usedLimit)
     {
-        UNIMPLEMENTED; // time to rehash
+        // Rehash
+        byte * * oldTable = table;
+        unsigned oldSize = tableSize;
+        tableSize = tableSize*2;
+        table = rowAllocator->createRowset(tableSize);
+        memset(table, 0, tableSize * sizeof(byte *));
+        usedLimit = (tableSize * 3) / 4;
+        usedCount = 0;
+        unsigned i;
+        for (i = 0; i < oldSize; i++)
+        {
+            append(oldTable[i]);
+        }
+        rowAllocator->releaseRowset(oldSize, oldTable);
     }
 }
 
@@ -636,6 +650,13 @@ void RtlLinkedDictionaryBuilder::appendRows(size32_t num, byte * * rows)
     // MORE - if we know that the source is already a hashtable, we can optimize the add to an empty table...
     for (unsigned i=0; i < num; i++)
         append(rows[i]);
+}
+
+void RtlLinkedDictionaryBuilder::finalizeRow(size32_t rowSize)
+{
+    assertex(builder.exists());
+    const void * next = builder.finalizeRowClear(rowSize);
+    appendOwn(next);
 }
 
 //---------------------------------------------------------------------------
