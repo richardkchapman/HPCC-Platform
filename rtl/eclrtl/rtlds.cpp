@@ -639,9 +639,9 @@ void RtlLinkedDictionaryBuilder::checkSpace()
         unsigned i;
         for (i = 0; i < oldSize; i++)
         {
-            append(oldTable[i]);
+            append(oldTable[i]);  // we link the rows here...
         }
-        rowAllocator->releaseRowset(oldSize, oldTable);
+        rowAllocator->releaseRowset(oldSize, oldTable);   // ... because this will release them
     }
 }
 
