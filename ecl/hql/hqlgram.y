@@ -775,6 +775,12 @@ explicitDictionaryType
                             $$.setType(makeDictionaryType(makeRowType(recordType)));
                             $$.setPosition($1);
                         }
+    | _LINKCOUNTED_ explicitDictionaryType
+                        {
+                            Owned<ITypeInfo> dsType = $2.getType();
+                            $$.setType(setLinkCountedAttr(dsType, true));
+                            $$.setPosition($1);
+                        }
     ;
 
 
@@ -838,6 +844,7 @@ paramType
                             parser->setTemplateAttribute();
                         }
     | explicitDatasetType
+    | explicitDictionaryType
     | ROW               {
                             IHqlExpression* record = queryNullRecord();
                             $$.setType(makeRowType(record->getType()));
@@ -1208,6 +1215,7 @@ knownId
 knownFunction1
     : DATAROW_FUNCTION
     | DATASET_FUNCTION
+    | DICTIONARY_FUNCTION
     | VALUE_FUNCTION
     | ACTION_FUNCTION
     | PATTERN_FUNCTION
@@ -6793,7 +6801,8 @@ dataRow
                         }
     | dictionary '[' expressionList ']'
                         {
-                            $$.setExpr(createRow(no_selectmap, $1.getExpr(), $3.getExpr()));
+                            OwnedHqlExpr row = createValue(no_rowvalue, makeNullType(), $3.getExpr());
+                            $$.setExpr(createSelectMapRow(parser->errorHandler, $3.pos, $1.getExpr(), row.getClear()));
                         }
     | dataSet '[' NOBOUNDCHECK expression ']'
                         {   
@@ -10552,6 +10561,7 @@ actualValue
                             $$.setExpr(parser->bindFieldMap(expr,map));
                         }
     | dataRow
+    | dictionary
     | TOK_PATTERN pattern
                         {   $$.setExpr($2.getExpr()); }
     | TOKEN pattern     {   $$.setExpr($2.getExpr()); }

@@ -703,24 +703,27 @@ InlineLinkedDictionaryCursor::InlineLinkedDictionaryCursor(HqlCppTranslator & _t
 {
 }
 
-BoundRow * InlineLinkedDictionaryCursor::buildSelectMap(BuildCtx & ctx, IHqlExpression * indexExpr)
+BoundRow * InlineLinkedDictionaryCursor::buildSelectMap(BuildCtx & ctx, IHqlExpression * mapExpr)
 {
-    OwnedHqlExpr index = foldHqlExpression(indexExpr->queryChild(1));
+    Owned<BoundRow> tempRow = translator.declareLinkedRow(ctx, mapExpr, false);
+    IHqlExpression *record = ds->queryRecord();
 
-    StringBuffer s, rowName;
-    OwnedHqlExpr row = createRow(ctx, "row", rowName);
+    StringBuffer lookupHelperName;
+    OwnedHqlExpr dict = createDictionary(no_null, LINK(record));
+    translator.buildDictionaryHashClass(ctx, record, dict, lookupHelperName);
 
-    CHqlBoundExpr boundIndex;
-    BuildCtx subctx(ctx);
-    translator.buildExpr(ctx, index, boundIndex);
+    CHqlBoundTarget target;
+    target.expr.set(tempRow->queryBound());
 
-    OwnedHqlExpr address = getPointer(boundDs.expr);
-    OwnedHqlExpr indexedValue = createValue(no_selectmap, row->getType(), LINK(address), LINK(boundIndex.expr));
-    subctx.addAssign(row, indexedValue);
+    HqlExprArray args;
+    args.append(*createQuoted(lookupHelperName, makeBoolType()));
+    args.append(*LINK(mapExpr->queryChild(0)));
+    args.append(*LINK(mapExpr->queryChild(1)));
+    Owned<ITypeInfo> resultType = makeReferenceModifier(makeAttributeModifier(makeRowType(record->getType()), getLinkCountedAttr()));
+    OwnedHqlExpr call = translator.bindFunctionCall(dictionaryLookupAtom, args, resultType); // MORE - wrong atom
+    translator.buildExprAssign(ctx, target, call);
 
-    //MORE: Should mark as linked if it is.
-    BoundRow * cursor = translator.bindRow(ctx, indexExpr, row);
-    return cursor;
+    return tempRow.getClear();
 }
 
 //---------------------------------------------------------------------------
