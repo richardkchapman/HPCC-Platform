@@ -659,7 +659,7 @@ void RtlLinkedDictionaryBuilder::finalizeRow(size32_t rowSize)
     appendOwn(next);
 }
 
-extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source)
+extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source, byte *defaultRow)
 {
     IHash *hash  = hashInfo.queryHash();
     ICompare *compare  = hashInfo.queryCompare();
@@ -668,7 +668,7 @@ extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size
     {
         const void *entry = table[rowidx];
         if (!entry)
-            return NULL; // MORE! SHould return a blank row
+            return (byte *) rtlLinkRow(defaultRow);
         if (compare->docompare(source, entry)==0)
             return (byte *) rtlLinkRow(entry);
         rowidx++;

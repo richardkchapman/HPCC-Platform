@@ -711,7 +711,6 @@ BoundRow * InlineLinkedDictionaryCursor::buildSelectMap(BuildCtx & ctx, IHqlExpr
     StringBuffer lookupHelperName;
     OwnedHqlExpr dict = createDictionary(no_null, LINK(record));
     translator.buildDictionaryHashClass(ctx, record, dict, lookupHelperName);
-
     CHqlBoundTarget target;
     target.expr.set(tempRow->queryBound());
 
@@ -719,8 +718,9 @@ BoundRow * InlineLinkedDictionaryCursor::buildSelectMap(BuildCtx & ctx, IHqlExpr
     args.append(*createQuoted(lookupHelperName, makeBoolType()));
     args.append(*LINK(mapExpr->queryChild(0)));
     args.append(*LINK(mapExpr->queryChild(1)));
+    args.append(*::createRow(no_null, LINK(record)));
     Owned<ITypeInfo> resultType = makeReferenceModifier(makeAttributeModifier(makeRowType(record->getType()), getLinkCountedAttr()));
-    OwnedHqlExpr call = translator.bindFunctionCall(dictionaryLookupAtom, args, resultType); // MORE - wrong atom
+    OwnedHqlExpr call = translator.bindFunctionCall(dictionaryLookupAtom, args, resultType);
     translator.buildExprAssign(ctx, target, call);
 
     return tempRow.getClear();

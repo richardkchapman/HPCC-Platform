@@ -850,6 +850,11 @@ paramType
                             $$.setType(makeRowType(record->getType()));
                             $$.setPosition($1);
                         }
+    | _LINKCOUNTED_ ROW {
+                            IHqlExpression* record = queryNullRecord();
+                            $$.setType(setLinkCountedAttr(makeRowType(record->getType()), true));
+                            $$.setPosition($1);
+                        }
     | abstractModule
                         {
                             OwnedHqlExpr scope = $1.getExpr();
@@ -3732,6 +3737,7 @@ funcRetType
     | propType
     | setType
     | explicitDatasetType
+    | explicitDictionaryType
     | transformType
  // A plain record would be better, but that then causes a s/r error in knownOrUnknownId because scope
     | ROW '(' recordDef ')'     
