@@ -5804,7 +5804,8 @@ void HqlCppTranslator::doBuildCall(BuildCtx & ctx, const CHqlBoundTarget * tgt, 
             {
                 if (hasLinkCountedModifier(argType))
                 {
-                    buildTempExpr(ctx, castParam, bound, FormatLinkedDataset);
+                    doBuildAliasValue(ctx, castParam, bound);
+//                    buildTempExpr(ctx, castParam, bound, FormatLinkedDataset);
                 }
                 else
                 {
