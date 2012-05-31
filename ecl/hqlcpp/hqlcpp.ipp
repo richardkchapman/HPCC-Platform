@@ -1149,6 +1149,7 @@ public:
     void doBuildAssignIn(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignInCreateSet(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignInStored(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
+    void doBuildAssignInDict(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignIndex(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignList(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignLoopCounter(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);

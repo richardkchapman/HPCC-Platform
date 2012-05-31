@@ -2316,6 +2316,10 @@ void HqlCppTranslator::buildExprAssign(BuildCtx & ctx, const CHqlBoundTarget & t
     case no_index:
         doBuildAssignIndex(ctx, target, expr);
         break;
+    case no_indict:
+    case no_notindict:
+        doBuildAssignInDict(ctx, target, expr);
+        break;
     case no_in:
     case no_notin:
         {
@@ -3035,6 +3039,10 @@ void HqlCppTranslator::buildExpr(BuildCtx & ctx, IHqlExpression * expr, CHqlBoun
         return;
     case no_substring:
         doBuildExprSubString(ctx, expr, tgt);
+        return;
+    case no_indict:
+    case no_notindict:
+        UNIMPLEMENTED;
         return;
     case no_in:
     case no_notin:
@@ -5118,6 +5126,15 @@ void HqlCppTranslator::doBuildAssignIn(BuildCtx & ctx, const CHqlBoundTarget & t
         doBuildAssignInStored(ctx, target, expr);
         break;
     }
+}
+
+
+//---------------------------------------------------------------------------
+
+
+void HqlCppTranslator::doBuildAssignInDict(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr)
+{
+    UNIMPLEMENTED;
 }
 
 

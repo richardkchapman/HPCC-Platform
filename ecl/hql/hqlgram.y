@@ -5073,7 +5073,7 @@ compareExpr
                             parser->normalizeExpression($4, type_dictionary, false);
                             IHqlExpression *dict = $4.getExpr();
                             IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_notin, expr, dict, $4));
+                            $$.setExpr(parser->createINDict(no_notindict, expr, dict, $4));
                             $$.setPosition($3);
                         }
     | dataRow NOT TOK_IN dictionary
@@ -5083,7 +5083,7 @@ compareExpr
                             parser->normalizeExpression($4, type_dictionary, false);
                             IHqlExpression *dict = $4.getExpr();
                             IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_notin, expr, dict, $4));
+                            $$.setExpr(parser->createINDict(no_notindict, expr, dict, $4));
                             $$.setPosition($3);
                         }
     | expr TOK_IN dictionary
@@ -5093,7 +5093,7 @@ compareExpr
                             parser->normalizeExpression($3, type_dictionary, false);
                             IHqlExpression *dict = $3.getExpr();
                             IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_in, expr, dict, $3));
+                            $$.setExpr(parser->createINDict(no_indict, expr, dict, $3));
                             $$.setPosition($2);
                         }
     | dataRow TOK_IN dictionary
@@ -5103,7 +5103,7 @@ compareExpr
                             parser->normalizeExpression($3, type_dictionary, false);
                             IHqlExpression *dict = $3.getExpr();
                             IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_in, expr, dict, $3));
+                            $$.setExpr(parser->createINDict(no_indict, expr, dict, $3));
                             $$.setPosition($2);
                         }
     | dataSet EQ dataSet    

@@ -960,6 +960,8 @@ const char *getOpString(node_operator op)
     case no_xor: return " XOR ";
     case no_notin: return " NOT IN ";
     case no_in: return " IN ";
+    case no_notindict: return " NOT IN ";
+    case no_indict: return " IN ";
     case no_notbetween: return " NOT BETWEEN ";
     case no_between: return " BETWEEN ";
     case no_comma: return ",";
@@ -1435,7 +1437,7 @@ const char *getOpString(node_operator op)
     case no_childquery: return "no_childquery";
     case no_inlinedictionary: return "DICTIONARY";
 
-    case no_unused4: case no_unused5: case no_unused6:
+    case no_unused6:
     case no_unused13: case no_unused14: case no_unused15: case no_unused18: case no_unused19:
     case no_unused20: case no_unused21: case no_unused22: case no_unused23: case no_unused24: case no_unused25: case no_unused26: case no_unused27: case no_unused28: case no_unused29:
     case no_unused30: case no_unused31: case no_unused32: case no_unused33: case no_unused34: case no_unused35: case no_unused36: case no_unused37: case no_unused38:
@@ -1481,6 +1483,8 @@ node_operator getInverseOp(node_operator op)
     case no_ge: return no_lt;
     case no_notin: return no_in;
     case no_in: return no_notin;
+    case no_notindict: return no_indict;
+    case no_indict: return no_notindict;
     case no_notbetween: return no_between;
     case no_between: return no_notbetween;
 //  case no_notwithin: return no_within;
@@ -1637,6 +1641,8 @@ int getPrecedence(node_operator op)
     case no_notbetween:
     case no_in:
     case no_notin:
+    case no_indict:
+    case no_notindict:
     case no_comma:
     case no_compound:
     case no_eq:
