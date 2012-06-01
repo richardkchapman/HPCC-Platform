@@ -175,6 +175,7 @@ interface IHqlCppDatasetCursor : public IInterface
     virtual void buildIterateClass(BuildCtx & ctx, SharedHqlExpr & iter, SharedHqlExpr & row) = 0;
     virtual BoundRow * buildSelectNth(BuildCtx & ctx, IHqlExpression * indexExpr) = 0;
     virtual BoundRow * buildSelectMap(BuildCtx & ctx, IHqlExpression * indexExpr) = 0;
+    virtual void buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr) = 0;
     virtual void buildIterateMembers(BuildCtx & declarectx, BuildCtx & initctx) = 0;
 };
 

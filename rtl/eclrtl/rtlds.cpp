@@ -659,6 +659,21 @@ void RtlLinkedDictionaryBuilder::finalizeRow(size32_t rowSize)
     appendOwn(next);
 }
 
+void RtlLinkedDictionaryBuilder::cloneRow(size32_t len, const void * row)
+{
+    byte * self = builder.ensureCapacity(len, NULL);
+    memcpy(self, row, len);
+
+    IOutputMetaData * meta = rowAllocator->queryOutputMeta();
+    if (meta->getMetaFlags() & MDFneedserialize)
+    {
+        RtlChildRowLinkerWalker walker;
+        meta->walkIndirectMembers(self, walker);
+    }
+
+    finalizeRow(len);
+}
+
 extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source, byte *defaultRow)
 {
     IHash *hash  = hashInfo.queryHash();
@@ -675,6 +690,28 @@ extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size
         if (rowidx==tableSize)
             rowidx = 0;
     }
+}
+
+extern ECLRTL_API bool rtlDictionaryLookupExists(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source)
+{
+    IHash *hash  = hashInfo.queryHash();
+    ICompare *compare  = hashInfo.queryCompare();
+    unsigned rowidx = hash->hash(source) % tableSize;
+    loop
+    {
+        const void *entry = table[rowidx];
+        if (!entry)
+            return false;
+        if (compare->docompare(source, entry)==0)
+            return true;
+        rowidx++;
+        if (rowidx==tableSize)
+            rowidx = 0;
+    }
+}
+extern ECLRTL_API bool rtlDictionaryLookupNotExists(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source)
+{
+    return !rtlDictionaryLookupExists(hashInfo, tableSize, table, source);
 }
 
 //---------------------------------------------------------------------------

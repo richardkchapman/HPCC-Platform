@@ -797,7 +797,9 @@ const char * cppSystemText[]  = {
     "   serializerEndNested(unsigned4 pos) : omethod,entrypoint='endNested';",
 
     // Dictionary support
-    " _linkcounted_ row(dummyRecord) dictionaryLookup(boolean meta, _linkcounted_ dictionary dict, row key, _linkcounted_ row defaultrow) : include,entrypoint='rtlDictionaryLookup';",
+    "   _linkcounted_ row(dummyRecord) dictionaryLookup(boolean meta, _linkcounted_ dictionary dict, row key, _linkcounted_ row defaultrow) : include,entrypoint='rtlDictionaryLookup';",
+    "    boolean dictionaryLookupExists(boolean meta, _linkcounted_ dictionary dict, row key) : include,entrypoint='rtlDictionaryLookupExists';",
+    "    boolean dictionaryLookupNotExists(boolean meta, _linkcounted_ dictionary dict, row key) : include,entrypoint='rtlDictionaryLookupNotExists';",
 
     "   END;",
     NULL };

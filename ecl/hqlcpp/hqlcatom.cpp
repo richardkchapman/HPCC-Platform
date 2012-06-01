@@ -240,6 +240,8 @@ _ATOM destroyRegexAtom;
 _ATOM destroyWRegexAtom;
 _ATOM destructMetaMemberAtom;
 _ATOM dictionaryLookupAtom;
+_ATOM dictionaryLookupExistsAtom;
+_ATOM dictionaryLookupNotExistsAtom;
 _ATOM doNotifyAtom;
 _ATOM doNotifyTargetAtom;
 _ATOM ebcdic2asciiAtom;
@@ -946,6 +948,8 @@ MODULE_INIT(INIT_PRIORITY_HQLATOM-1)
     MAKEATOM(destroyWRegex);
     MAKEATOM(destructMetaMember);
     MAKEATOM(dictionaryLookup);
+    MAKEATOM(dictionaryLookupExists);
+    MAKEATOM(dictionaryLookupNotExists);
     MAKEATOM(doNotify);
     MAKEATOM(doNotifyTarget);
     MAKEATOM(ebcdic2ascii);

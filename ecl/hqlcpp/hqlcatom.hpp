@@ -240,6 +240,8 @@ extern _ATOM destroyRegexAtom;
 extern _ATOM destroyWRegexAtom;
 extern _ATOM destructMetaMemberAtom;
 extern _ATOM dictionaryLookupAtom;
+extern _ATOM dictionaryLookupExistsAtom;
+extern _ATOM dictionaryLookupNotExistsAtom;
 extern _ATOM doNotifyAtom;
 extern _ATOM doNotifyTargetAtom;
 extern _ATOM ebcdic2asciiAtom;

@@ -9497,9 +9497,6 @@ IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
 
     switch (op)
     {
-    case no_null:
-        type.setown(makeDictionaryType(makeRowType(createRecordType(&parms.item(0)))));
-        break;
     case no_inlinedictionary:
         type.setown(makeDictionaryType(makeRowType(createRecordType(&parms.item(1)))));
         break;
@@ -9531,6 +9528,27 @@ IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
         //following is wrong, but they get removed pretty quickly so I don't really care
         type.set(parms.item(0).queryType());
         break;
+    case no_null:
+    case no_fail:
+    case no_anon:
+    {
+        IHqlExpression * record = &parms.item(0);
+        IHqlExpression * metadata = queryProperty(_metadata_Atom, parms);
+        bool linkCounted = (queryProperty(_linkCounted_Atom, parms) || recordRequiresSerialization(record));
+        if (!metadata)
+        {
+            ITypeInfo * recordType = createRecordType(record);
+            assertex(recordType->getTypeCode() == type_record);
+            ITypeInfo * rowType = makeRowType(recordType);
+            type.setown(makeDictionaryType(rowType));
+        }
+        else
+            type.setown(getTypeFromMeta(record, metadata, 0));
+
+        if (linkCounted)
+            type.setown(setLinkCountedAttr(type, true));
+        break;
+    }
     case no_nofold:
     case no_nohoist:
     case no_thor:

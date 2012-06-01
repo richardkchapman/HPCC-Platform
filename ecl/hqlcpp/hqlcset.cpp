@@ -130,7 +130,13 @@ void BaseDatasetCursor::buildIterateMembers(BuildCtx & declarectx, BuildCtx & in
 
 BoundRow * BaseDatasetCursor::buildSelectMap(BuildCtx & ctx, IHqlExpression * indexExpr)
 {
-    // Should only be seen for dictionaries
+    // Should only be seen for dictionaries, for now
+    throwUnexpected();
+}
+
+void BaseDatasetCursor::buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr)
+{
+    // Should only be seen for dictionaries, for now
     throwUnexpected();
 }
 
@@ -724,6 +730,36 @@ BoundRow * InlineLinkedDictionaryCursor::buildSelectMap(BuildCtx & ctx, IHqlExpr
     translator.buildExprAssign(ctx, target, call);
 
     return tempRow.getClear();
+}
+
+void InlineLinkedDictionaryCursor::buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr)
+{
+    IHqlExpression *record = ds->queryRecord();
+
+    StringBuffer lookupHelperName;
+    OwnedHqlExpr dict = createDictionary(no_null, LINK(record));
+    translator.buildDictionaryHashClass(ctx, record, dict, lookupHelperName);
+
+    HqlExprArray args;
+    args.append(*createQuoted(lookupHelperName, makeBoolType()));
+    args.append(*LINK(inExpr->queryChild(1)));
+    args.append(*LINK(inExpr->queryChild(0)));
+    node_operator op = inExpr->getOperator();
+    _ATOM funcname;
+    switch (op)
+    {
+    case no_indict:
+        funcname = dictionaryLookupExistsAtom;
+        break;
+    case no_notindict:
+        funcname = dictionaryLookupNotExistsAtom;
+        break;
+    default:
+        throwUnexpected();
+        break;
+    }
+    OwnedHqlExpr call = translator.bindFunctionCall(funcname, args, makeBoolType());
+    translator.buildExprAssign(ctx, target, call);
 }
 
 //---------------------------------------------------------------------------
@@ -1750,6 +1786,7 @@ void LinkedDatasetBuilder::buildDeclare(BuildCtx & ctx)
 
 LinkedDictionaryBuilder::LinkedDictionaryBuilder(HqlCppTranslator & _translator, IHqlExpression * _record) : LinkedDatasetBuilderBase(_translator, _record)
 {
+    dataset.setown(createDictionary(no_anon, LINK(record), createComma(getSelfAttr(), getLinkCountedAttr())));
 }
 
 void LinkedDictionaryBuilder::buildDeclare(BuildCtx & ctx)

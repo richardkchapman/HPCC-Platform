@@ -5134,7 +5134,9 @@ void HqlCppTranslator::doBuildAssignIn(BuildCtx & ctx, const CHqlBoundTarget & t
 
 void HqlCppTranslator::doBuildAssignInDict(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr)
 {
-    UNIMPLEMENTED;
+    IHqlExpression *dict = expr->queryChild(1);
+    Owned<IHqlCppDatasetCursor> cursor = createDatasetSelector(ctx, dict);
+    cursor->buildInDataset(ctx, target, expr);
 }
 
 

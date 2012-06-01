@@ -5072,8 +5072,8 @@ compareExpr
                             parser->normalizeExpression($4);
                             parser->normalizeExpression($4, type_dictionary, false);
                             IHqlExpression *dict = $4.getExpr();
-                            IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_notindict, expr, dict, $4));
+                            OwnedHqlExpr row = createValue(no_rowvalue, makeNullType(), $1.getExpr());
+                            $$.setExpr(createINDictExpr(parser->errorHandler, $4.pos, no_notindict, row, dict));
                             $$.setPosition($3);
                         }
     | dataRow NOT TOK_IN dictionary
@@ -5082,8 +5082,8 @@ compareExpr
                             parser->normalizeExpression($4);
                             parser->normalizeExpression($4, type_dictionary, false);
                             IHqlExpression *dict = $4.getExpr();
-                            IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_notindict, expr, dict, $4));
+                            IHqlExpression *row = $1.getExpr();
+                            $$.setExpr(createINDictExpr(parser->errorHandler, $4.pos, no_notindict, row, dict));
                             $$.setPosition($3);
                         }
     | expr TOK_IN dictionary
@@ -5092,8 +5092,8 @@ compareExpr
                             parser->normalizeExpression($3);
                             parser->normalizeExpression($3, type_dictionary, false);
                             IHqlExpression *dict = $3.getExpr();
-                            IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_indict, expr, dict, $3));
+                            OwnedHqlExpr row = createValue(no_rowvalue, makeNullType(), $1.getExpr());
+                            $$.setExpr(createINDictExpr(parser->errorHandler, $3.pos, no_indict, row, dict));
                             $$.setPosition($2);
                         }
     | dataRow TOK_IN dictionary
@@ -5102,8 +5102,8 @@ compareExpr
                             parser->normalizeExpression($3);
                             parser->normalizeExpression($3, type_dictionary, false);
                             IHqlExpression *dict = $3.getExpr();
-                            IHqlExpression *expr = $1.getExpr();
-                            $$.setExpr(parser->createINDict(no_indict, expr, dict, $3));
+                            IHqlExpression *row = $1.getExpr();
+                            $$.setExpr(createINDictExpr(parser->errorHandler, $3.pos, no_indict, row, dict));
                             $$.setPosition($2);
                         }
     | dataSet EQ dataSet    
