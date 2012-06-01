@@ -175,7 +175,7 @@ interface IHqlCppDatasetCursor : public IInterface
     virtual void buildIterateClass(BuildCtx & ctx, SharedHqlExpr & iter, SharedHqlExpr & row) = 0;
     virtual BoundRow * buildSelectNth(BuildCtx & ctx, IHqlExpression * indexExpr) = 0;
     virtual BoundRow * buildSelectMap(BuildCtx & ctx, IHqlExpression * indexExpr) = 0;
-    virtual void buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr) = 0;
+    virtual void buildInDataset(BuildCtx & ctx, IHqlExpression * inExpr, CHqlBoundExpr & tgt) = 0;
     virtual void buildIterateMembers(BuildCtx & declarectx, BuildCtx & initctx) = 0;
 };
 
@@ -1150,7 +1150,6 @@ public:
     void doBuildAssignIn(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignInCreateSet(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignInStored(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
-    void doBuildAssignInDict(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignIndex(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignList(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
     void doBuildAssignLoopCounter(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr);
@@ -1268,6 +1267,7 @@ public:
     void doBuildExprIdToBlob(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprIf(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprIndex(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
+    void doBuildExprInDict(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprIsValid(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprList(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprConstList(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);

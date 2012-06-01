@@ -134,7 +134,7 @@ BoundRow * BaseDatasetCursor::buildSelectMap(BuildCtx & ctx, IHqlExpression * in
     throwUnexpected();
 }
 
-void BaseDatasetCursor::buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr)
+void BaseDatasetCursor::buildInDataset(BuildCtx & ctx, IHqlExpression * inExpr, CHqlBoundExpr & tgt)
 {
     // Should only be seen for dictionaries, for now
     throwUnexpected();
@@ -732,7 +732,7 @@ BoundRow * InlineLinkedDictionaryCursor::buildSelectMap(BuildCtx & ctx, IHqlExpr
     return tempRow.getClear();
 }
 
-void InlineLinkedDictionaryCursor::buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr)
+void InlineLinkedDictionaryCursor::buildInDataset(BuildCtx & ctx, IHqlExpression * inExpr, CHqlBoundExpr & tgt)
 {
     IHqlExpression *record = ds->queryRecord();
 
@@ -745,7 +745,7 @@ void InlineLinkedDictionaryCursor::buildInDataset(BuildCtx & ctx, const CHqlBoun
     args.append(*LINK(inExpr->queryChild(1)));
     args.append(*LINK(inExpr->queryChild(0)));
     OwnedHqlExpr call = translator.bindFunctionCall(dictionaryLookupExistsAtom, args, makeBoolType());
-    translator.buildExprAssign(ctx, target, call);
+    translator.buildExpr(ctx, call, tgt);
 }
 
 //---------------------------------------------------------------------------

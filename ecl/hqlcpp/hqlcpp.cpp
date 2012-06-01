@@ -2316,9 +2316,6 @@ void HqlCppTranslator::buildExprAssign(BuildCtx & ctx, const CHqlBoundTarget & t
     case no_index:
         doBuildAssignIndex(ctx, target, expr);
         break;
-    case no_indict:
-        doBuildAssignInDict(ctx, target, expr);
-        break;
     case no_in:
     case no_notin:
         {
@@ -3058,6 +3055,8 @@ void HqlCppTranslator::buildExpr(BuildCtx & ctx, IHqlExpression * expr, CHqlBoun
             return;
         }
     case no_indict:
+        doBuildExprInDict(ctx, expr, tgt);
+        return;
     case no_case:
     case no_choose:
     case no_concat:
@@ -5127,14 +5126,12 @@ void HqlCppTranslator::doBuildAssignIn(BuildCtx & ctx, const CHqlBoundTarget & t
 
 //---------------------------------------------------------------------------
 
-
-void HqlCppTranslator::doBuildAssignInDict(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr)
+void HqlCppTranslator::doBuildExprInDict(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt)
 {
     IHqlExpression *dict = expr->queryChild(1);
     Owned<IHqlCppDatasetCursor> cursor = createDatasetSelector(ctx, dict);
-    cursor->buildInDataset(ctx, target, expr);
+    cursor->buildInDataset(ctx, expr, tgt);
 }
-
 
 //---------------------------------------------------------------------------
 

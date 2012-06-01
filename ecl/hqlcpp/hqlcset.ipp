@@ -28,7 +28,7 @@ public:
     virtual void buildIterateClass(BuildCtx & ctx, SharedHqlExpr & iter, SharedHqlExpr & row);
     virtual BoundRow * buildSelectNth(BuildCtx & ctx, IHqlExpression * indexExpr);
     virtual BoundRow * buildSelectMap(BuildCtx & ctx, IHqlExpression * indexExpr);
-    virtual void buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr);
+    virtual void buildInDataset(BuildCtx & ctx, IHqlExpression * inExpr, CHqlBoundExpr & tgt);
     virtual void buildIterateMembers(BuildCtx & declarectx, BuildCtx & initctx);
 
 protected:
@@ -85,7 +85,7 @@ public:
 
     virtual BoundRow * buildIterateLoop(BuildCtx & ctx, bool needToBreak) { throwUnexpected(); }
     virtual BoundRow * buildSelectMap(BuildCtx & ctx, IHqlExpression * indexExpr);
-    virtual void buildInDataset(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * inExpr);
+    virtual void buildInDataset(BuildCtx & ctx, IHqlExpression * inExpr, CHqlBoundExpr & tgt);
     virtual void buildIterateClass(BuildCtx & ctx, StringBuffer & cursorName, BuildCtx * initctx) { throwUnexpected(); }
 };
 
