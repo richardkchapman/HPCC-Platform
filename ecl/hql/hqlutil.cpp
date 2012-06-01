@@ -5306,12 +5306,12 @@ IHqlExpression * createSelectMapRow(IErrorReceiver * errors, ECLlocation & locat
     return createRow(no_selectmap, dict, createRow(no_createrow, newTransform.getClear()));
 }
 
-IHqlExpression *createINDictExpr(IErrorReceiver * errors, ECLlocation & location, node_operator op, IHqlExpression *expr, IHqlExpression *dict)
+IHqlExpression *createINDictExpr(IErrorReceiver * errors, ECLlocation & location, IHqlExpression *expr, IHqlExpression *dict)
 {
     OwnedHqlExpr record = getDictionaryKeyRecord(dict->queryRecord());
     TempTableTransformer transformer(errors, location);
     OwnedHqlExpr newTransform = transformer.createTempTableTransform(expr, record);
-    return createBoolExpr(op, createRow(no_createrow, newTransform.getClear()), dict);
+    return createBoolExpr(no_indict, createRow(no_createrow, newTransform.getClear()), dict);
 }
 
 

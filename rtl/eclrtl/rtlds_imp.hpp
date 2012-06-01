@@ -438,7 +438,6 @@ protected:
 
 extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source, byte *defaultRow);
 extern ECLRTL_API bool rtlDictionaryLookupExists(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source);
-extern ECLRTL_API bool rtlDictionaryLookupNotExists(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source);
 
 extern ECLRTL_API void appendRowsToRowset(size32_t & targetCount, byte * * & targetRowset, IEngineRowAllocator * rowAllocator, size32_t count, byte * * rows);
 

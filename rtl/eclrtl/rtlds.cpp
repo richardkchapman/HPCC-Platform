@@ -709,10 +709,6 @@ extern ECLRTL_API bool rtlDictionaryLookupExists(IHThorHashLookupInfo &hashInfo,
             rowidx = 0;
     }
 }
-extern ECLRTL_API bool rtlDictionaryLookupNotExists(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source)
-{
-    return !rtlDictionaryLookupExists(hashInfo, tableSize, table, source);
-}
 
 //---------------------------------------------------------------------------
 

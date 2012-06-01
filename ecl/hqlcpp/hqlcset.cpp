@@ -744,21 +744,7 @@ void InlineLinkedDictionaryCursor::buildInDataset(BuildCtx & ctx, const CHqlBoun
     args.append(*createQuoted(lookupHelperName, makeBoolType()));
     args.append(*LINK(inExpr->queryChild(1)));
     args.append(*LINK(inExpr->queryChild(0)));
-    node_operator op = inExpr->getOperator();
-    _ATOM funcname;
-    switch (op)
-    {
-    case no_indict:
-        funcname = dictionaryLookupExistsAtom;
-        break;
-    case no_notindict:
-        funcname = dictionaryLookupNotExistsAtom;
-        break;
-    default:
-        throwUnexpected();
-        break;
-    }
-    OwnedHqlExpr call = translator.bindFunctionCall(funcname, args, makeBoolType());
+    OwnedHqlExpr call = translator.bindFunctionCall(dictionaryLookupExistsAtom, args, makeBoolType());
     translator.buildExprAssign(ctx, target, call);
 }
 

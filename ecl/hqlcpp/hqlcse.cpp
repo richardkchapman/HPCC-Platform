@@ -176,7 +176,6 @@ bool CseSpotterInfo::useInverseForAlias()
     case no_not:
     case no_ne:
     case no_notin:
-    case no_notindict:
     case no_notbetween:
         return inverse->worthAliasingOnOwn();
     }
@@ -187,7 +186,6 @@ bool CseSpotterInfo::useInverseForAlias()
     case no_not: return false;      //No otherwise we'll expand recursively!
     case no_ne:
     case no_notin:
-    case no_notindict:
     case no_notbetween:
         return !worthAliasingOnOwn();
     }
