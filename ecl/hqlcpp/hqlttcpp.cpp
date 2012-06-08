@@ -4352,6 +4352,9 @@ IHqlExpression * OptimizeActivityTransformer::optimizeCompare(IHqlExpression * l
     if (!looksLikeSimpleCount(lhs))
         return NULL;
 
+    if (lhs->isDictionary())
+        return NULL;
+
     // count(x) op count(y) - not clear if a choosen should be added to either, so assume neither for the moment,
     // (we definitely don't want it added to both, which happens without the second test.)
     if (looksLikeSimpleCount(rhs))
