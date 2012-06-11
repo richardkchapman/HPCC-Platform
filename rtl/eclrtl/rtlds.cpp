@@ -674,8 +674,20 @@ void RtlLinkedDictionaryBuilder::cloneRow(size32_t len, const void * row)
     finalizeRow(len);
 }
 
+extern ECLRTL_API unsigned __int64 rtlDictionaryCount(size32_t tableSize, byte **table)
+{
+    unsigned __int64 ret = 0;
+    for (size32_t i = 0; i < tableSize; i++)
+        if (table[i])
+            ret++;
+    return ret;
+}
+
 extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source, byte *defaultRow)
 {
+    if (!tableSize)
+        return (byte *) rtlLinkRow(defaultRow);
+
     IHash *hash  = hashInfo.queryHash();
     ICompare *compare  = hashInfo.queryCompare();
     unsigned rowidx = hash->hash(source) % tableSize;
@@ -694,6 +706,9 @@ extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size
 
 extern ECLRTL_API bool rtlDictionaryLookupExists(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source)
 {
+    if (!tableSize)
+        return false;
+
     IHash *hash  = hashInfo.queryHash();
     ICompare *compare  = hashInfo.queryCompare();
     unsigned rowidx = hash->hash(source) % tableSize;

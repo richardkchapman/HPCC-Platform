@@ -177,6 +177,7 @@ interface IHqlCppDatasetCursor : public IInterface
     virtual BoundRow * buildSelectMap(BuildCtx & ctx, IHqlExpression * indexExpr) = 0;
     virtual void buildInDataset(BuildCtx & ctx, IHqlExpression * inExpr, CHqlBoundExpr & tgt) = 0;
     virtual void buildIterateMembers(BuildCtx & declarectx, BuildCtx & initctx) = 0;
+    virtual void buildCountDict(BuildCtx & ctx, CHqlBoundExpr & tgt) = 0;
 };
 
 interface IHqlCppSetCursor : public IInterface
@@ -1251,6 +1252,7 @@ public:
     void doBuildExprCast(BuildCtx & ctx, ITypeInfo * type, CHqlBoundExpr & pure, CHqlBoundExpr & tgt);
     void doBuildExprCompare(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprCompareElement(BuildCtx & ctx, node_operator comp_op, IHqlExpression * lhs, IHqlExpression * rhs, CHqlBoundExpr & tgt);
+    void doBuildExprCountDict(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprCount(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprCounter(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt);
     void doBuildExprCppBody(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr * tgt);

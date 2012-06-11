@@ -965,7 +965,7 @@ const char *getOpString(node_operator op)
     case no_between: return " BETWEEN ";
     case no_comma: return ",";
     case no_compound: return ",";
-    case no_count: case no_countlist: return "COUNT";
+    case no_count: case no_countlist: case no_countdict: return "COUNT";
     case no_counter: return "COUNTER";
     case no_countgroup: return "COUNT";
     case no_distribution: return "DISTRIBUTION";
@@ -1436,7 +1436,7 @@ const char *getOpString(node_operator op)
     case no_childquery: return "no_childquery";
     case no_inlinedictionary: return "DICTIONARY";
 
-    case no_unused5: case no_unused6:
+    case no_unused6:
     case no_unused13: case no_unused14: case no_unused15: case no_unused18: case no_unused19:
     case no_unused20: case no_unused21: case no_unused22: case no_unused23: case no_unused24: case no_unused25: case no_unused26: case no_unused27: case no_unused28: case no_unused29:
     case no_unused30: case no_unused31: case no_unused32: case no_unused33: case no_unused34: case no_unused35: case no_unused36: case no_unused37: case no_unused38:
@@ -14495,7 +14495,7 @@ bool transformHasSkipAttr(IHqlExpression * transform)
 
 bool isPureInlineDataset(IHqlExpression * expr)
 {
-    assertex(expr->getOperator() == no_inlinetable);
+    assertex(expr->getOperator() == no_inlinetable || expr->getOperator() == no_inlinedictionary);
     IHqlExpression * values = expr->queryChild(0);
     ForEachChild(i, values)
         if (!values->queryChild(i)->isPure())

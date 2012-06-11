@@ -134,6 +134,12 @@ BoundRow * BaseDatasetCursor::buildSelectMap(BuildCtx & ctx, IHqlExpression * in
     throwUnexpected();
 }
 
+void BaseDatasetCursor::buildCountDict(BuildCtx & ctx, CHqlBoundExpr & tgt)
+{
+    // Should only be seen for dictionaries
+    throwUnexpected();
+}
+
 void BaseDatasetCursor::buildInDataset(BuildCtx & ctx, IHqlExpression * inExpr, CHqlBoundExpr & tgt)
 {
     // Should only be seen for dictionaries, for now
@@ -745,6 +751,14 @@ void InlineLinkedDictionaryCursor::buildInDataset(BuildCtx & ctx, IHqlExpression
     args.append(*LINK(inExpr->queryChild(1)));
     args.append(*LINK(inExpr->queryChild(0)));
     OwnedHqlExpr call = translator.bindFunctionCall(dictionaryLookupExistsAtom, args, makeBoolType());
+    translator.buildExpr(ctx, call, tgt);
+}
+
+void InlineLinkedDictionaryCursor::buildCountDict(BuildCtx & ctx, CHqlBoundExpr & tgt)
+{
+    HqlExprArray args;
+    args.append(*LINK(ds));
+    OwnedHqlExpr call = translator.bindFunctionCall(dictionaryCountAtom, args, makeBoolType());
     translator.buildExpr(ctx, call, tgt);
 }
 

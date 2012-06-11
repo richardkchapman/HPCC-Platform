@@ -5437,7 +5437,7 @@ primexpr1
                         }
     | COUNT '(' dictionary ')'
                         {
-                            $$.setExpr(createValue(no_count, LINK(parser->defaultIntegralType), $3.getExpr()));
+                            $$.setExpr(createValue(no_countdict, LINK(parser->defaultIntegralType), $3.getExpr()));
                         }
     | CHOOSE '(' expression ',' chooseList ')'
                         {

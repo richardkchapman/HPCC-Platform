@@ -2817,6 +2817,10 @@ void HqlCppTranslator::buildExpr(BuildCtx & ctx, IHqlExpression * expr, CHqlBoun
         if (!(expr->isPure() && ctx.getMatchExpr(expr, tgt)))
             doBuildExprExists(ctx, expr, tgt);
         return;
+    case no_countdict:
+        if (!(expr->isPure() && ctx.getMatchExpr(expr, tgt)))
+            doBuildExprCountDict(ctx, expr, tgt);
+        return;
     case no_existslist:
         doBuildAggregateList(ctx, NULL, expr, &tgt);
         return;
@@ -5132,6 +5136,14 @@ void HqlCppTranslator::doBuildExprInDict(BuildCtx & ctx, IHqlExpression * expr, 
     Owned<IHqlCppDatasetCursor> cursor = createDatasetSelector(ctx, dict);
     cursor->buildInDataset(ctx, expr, tgt);
 }
+
+void HqlCppTranslator::doBuildExprCountDict(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt)
+{
+    IHqlExpression *dict = expr->queryChild(0);
+    Owned<IHqlCppDatasetCursor> cursor = createDatasetSelector(ctx, dict);
+    cursor->buildCountDict(ctx, tgt); // not the same as buildCount - that is the size of the table, we want the number of populated entries
+}
+
 
 //---------------------------------------------------------------------------
 
