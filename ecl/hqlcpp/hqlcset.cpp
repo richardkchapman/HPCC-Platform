@@ -734,7 +734,7 @@ BoundRow * InlineLinkedDictionaryCursor::buildSelectMap(BuildCtx & ctx, IHqlExpr
     Owned<ITypeInfo> resultType = makeReferenceModifier(makeAttributeModifier(makeRowType(record->getType()), getLinkCountedAttr()));
     OwnedHqlExpr call = translator.bindFunctionCall(dictionaryLookupAtom, args, resultType);
     translator.buildExprAssign(ctx, target, call);
-
+    ctx.associate(*tempRow);
     return tempRow.getClear();
 }
 
