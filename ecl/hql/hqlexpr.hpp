@@ -359,7 +359,7 @@ enum _node_operator {
         no_indict,
         no_countdict,
         no_any,
-    no_unused27,
+        no_userdictionary,
     no_unused26,
     no_unused25,
     no_unused28,  

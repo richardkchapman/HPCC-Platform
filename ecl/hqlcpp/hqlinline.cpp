@@ -216,6 +216,8 @@ static unsigned calcInlineFlags(BuildCtx * ctx, IHqlExpression * expr)
         return 0;       // for the moment always do this out of line 
     case no_table:
         return 0;
+    case no_userdictionary:
+        return 0;
     case no_inlinedictionary:
         return RETassign;
     case no_owned_ds:
