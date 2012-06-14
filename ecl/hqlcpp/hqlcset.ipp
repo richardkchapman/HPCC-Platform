@@ -305,6 +305,8 @@ public:
     LinkedDictionaryBuilder(HqlCppTranslator & _translator, IHqlExpression * _record);
 
     virtual void buildDeclare(BuildCtx & ctx);
+protected:
+    LinkedHqlExpr dictRecord;
 };
 
 //---------------------------------------------------------------------------

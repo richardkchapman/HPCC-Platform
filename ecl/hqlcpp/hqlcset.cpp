@@ -1786,6 +1786,8 @@ void LinkedDatasetBuilder::buildDeclare(BuildCtx & ctx)
 
 LinkedDictionaryBuilder::LinkedDictionaryBuilder(HqlCppTranslator & _translator, IHqlExpression * _record) : LinkedDatasetBuilderBase(_translator, _record)
 {
+    dictRecord.set(record);
+    record.setown(removeProperty(record, _payload_Atom));
     dataset.setown(createDictionary(no_anon, LINK(record), createComma(getSelfAttr(), getLinkCountedAttr())));
 }
 
@@ -1794,11 +1796,11 @@ void LinkedDictionaryBuilder::buildDeclare(BuildCtx & ctx)
     StringBuffer decl, allocatorName;
 
     OwnedHqlExpr curActivityId = translator.getCurrentActivityId(ctx);
-    translator.ensureRowAllocator(allocatorName, ctx, record, curActivityId);
+    translator.ensureRowAllocator(allocatorName, ctx, dictRecord, curActivityId);
 
     StringBuffer lookupHelperName;
-    OwnedHqlExpr dict = createDictionary(no_null, record.getLink()); // MORE - is the actual dict not available?
-    translator.buildDictionaryHashClass(ctx, record, dict, lookupHelperName);
+    OwnedHqlExpr dict = createDictionary(no_null, dictRecord.getLink()); // MORE - is the actual dict not available?
+    translator.buildDictionaryHashClass(ctx, dictRecord, dict, lookupHelperName);
 
     decl.append("RtlLinkedDictionaryBuilder ").append(instanceName).append("(");
     decl.append(allocatorName).append(", &").append(lookupHelperName);

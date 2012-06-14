@@ -360,7 +360,7 @@ enum _node_operator {
         no_countdict,
         no_any,
         no_userdictionary,
-    no_unused26,
+        no_newuserdictionary,
     no_unused25,
     no_unused28,  
     no_unused29,
