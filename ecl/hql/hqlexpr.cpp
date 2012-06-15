@@ -14861,6 +14861,14 @@ bool recordTypesMatch(IHqlExpression * left, IHqlExpression * right)
 }
 
 
+bool recordTypesMatchIgnorePayload(IHqlExpression *left, IHqlExpression *right)
+{
+    OwnedHqlExpr simpleLeft = removeProperty(left->queryRecord(), _payload_Atom);
+    OwnedHqlExpr simpleRight = removeProperty(right->queryRecord(), _payload_Atom);
+    return recordTypesMatch(simpleLeft->queryType(), simpleRight->queryType());
+}
+
+
 IHqlExpression * queryTransformSingleAssign(IHqlExpression * transform)
 {
     if (transform->numChildren() != 1)

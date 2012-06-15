@@ -1557,6 +1557,7 @@ extern HQL_API IHqlExpression * extractChildren(IHqlExpression * value);
 extern HQL_API IHqlExpression * queryOnlyField(IHqlExpression * record);
 extern HQL_API bool recordTypesMatch(ITypeInfo * left, ITypeInfo * right);
 extern HQL_API bool recordTypesMatch(IHqlExpression * left, IHqlExpression * right);
+extern HQL_API bool recordTypesMatchIgnorePayload(IHqlExpression *left, IHqlExpression *right);
 extern HQL_API IHqlExpression * queryOriginalRecord(IHqlExpression * expr);
 extern HQL_API IHqlExpression * queryOriginalRecord(ITypeInfo * type);
 extern HQL_API IHqlExpression * queryOriginalTypeExpression(ITypeInfo * type);

@@ -578,7 +578,7 @@ void InlineLinkedDatasetCursor::buildIterateClass(BuildCtx & ctx, StringBuffer &
     ctx.addQuoted(decl);
 }
 
-BoundRow * InlineLinkedDatasetCursor::buildIterateLoop(BuildCtx & ctx, bool needToBreak)
+BoundRow * InlineLinkedDatasetCursor::doBuildIterateLoop(BuildCtx & ctx, bool needToBreak, bool checkForNull)
 {
     StringBuffer rowName;
     OwnedHqlExpr row = createRow(ctx, "row", rowName, false);
@@ -620,6 +620,8 @@ BoundRow * InlineLinkedDatasetCursor::buildIterateLoop(BuildCtx & ctx, bool need
 
     ctx.addLoop(test, NULL, false);
     ctx.addQuoted(s.clear().append(rowName).append(" = *").append(cursorName).append("++;"));
+    if (checkForNull)
+        ctx.addQuoted(s.clear().append("if (!").append(rowName).append(") continue;"));
     BoundRow * cursor = translator.bindTableCursor(ctx, ds, row);
 
     return cursor;
@@ -1677,7 +1679,7 @@ void LinkedDatasetBuilderBase::buildFinish(BuildCtx & ctx, CHqlBoundExpr & bound
 bool LinkedDatasetBuilderBase::buildLinkRow(BuildCtx & ctx, BoundRow * sourceRow)
 {
     IHqlExpression * sourceRecord = sourceRow->queryRecord();
-    if (recordTypesMatch(sourceRecord, record) && sourceRow->isBinary())
+    if (recordTypesMatchIgnorePayload(sourceRecord, record) && sourceRow->isBinary())
     {
         OwnedHqlExpr source = getPointer(sourceRow->queryBound());
         BuildCtx subctx(ctx);
@@ -1786,8 +1788,6 @@ void LinkedDatasetBuilder::buildDeclare(BuildCtx & ctx)
 
 LinkedDictionaryBuilder::LinkedDictionaryBuilder(HqlCppTranslator & _translator, IHqlExpression * _record) : LinkedDatasetBuilderBase(_translator, _record)
 {
-    dictRecord.set(record);
-    record.setown(removeProperty(record, _payload_Atom));
     dataset.setown(createDictionary(no_anon, LINK(record), createComma(getSelfAttr(), getLinkCountedAttr())));
 }
 
@@ -1796,11 +1796,11 @@ void LinkedDictionaryBuilder::buildDeclare(BuildCtx & ctx)
     StringBuffer decl, allocatorName;
 
     OwnedHqlExpr curActivityId = translator.getCurrentActivityId(ctx);
-    translator.ensureRowAllocator(allocatorName, ctx, dictRecord, curActivityId);
+    translator.ensureRowAllocator(allocatorName, ctx, record, curActivityId);
 
     StringBuffer lookupHelperName;
-    OwnedHqlExpr dict = createDictionary(no_null, dictRecord.getLink()); // MORE - is the actual dict not available?
-    translator.buildDictionaryHashClass(ctx, dictRecord, dict, lookupHelperName);
+    OwnedHqlExpr dict = createDictionary(no_null, record.getLink()); // MORE - is the actual dict not available?
+    translator.buildDictionaryHashClass(ctx, record, dict, lookupHelperName);
 
     decl.append("RtlLinkedDictionaryBuilder ").append(instanceName).append("(");
     decl.append(allocatorName).append(", &").append(lookupHelperName);

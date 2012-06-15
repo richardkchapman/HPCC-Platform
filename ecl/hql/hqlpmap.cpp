@@ -929,18 +929,10 @@ static bool isTrivialTransform(IHqlExpression * expr, IHqlExpression * selector)
     return true;
 }
 
-
 bool isNullProject(IHqlExpression * expr, bool canLoseFieldsFromEnd)
 {
     IHqlExpression * ds = expr->queryChild(0);
-    if (expr->getOperator()==no_newuserdictionary)
-    {
-        OwnedHqlExpr simpleRecord = removeProperty(expr->queryRecord(), _payload_Atom);
-        IHqlExpression *dsRecord = ds->queryRecord();
-        if (!recordTypesMatch(simpleRecord->queryType(), dsRecord->queryType()))
-            return false;
-    }
-    else if (!recordTypesMatch(expr, ds))
+    if (!recordTypesMatchIgnorePayload(expr, ds))
     {
         if (canLoseFieldsFromEnd)
         {
