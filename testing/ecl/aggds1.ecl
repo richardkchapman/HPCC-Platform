@@ -16,34 +16,45 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-//UseStandardFiles
 //nothor
-#option ('optimizeDiskSource',true)
-#option ('optimizeChildSource',true)
-#option ('optimizeIndexSource',true)
-#option ('optimizeThorCounts',false)
-#option ('countIndex',false)
 
-//Check fixed size disk count correctly checks canMatchAny()
-inlineDs := dataset([1,2],{integer value});
+IMPORT setup;
 
-//Simple disk aggregate
-output(table(sqNamesTable1, { sum(group, aage),exists(group),exists(group,aage>0),exists(group,aage>100),count(group,aage>20) })) : independent;
+#option ('optimizeDiskSource',true);
+#option ('optimizeChildSource',true);
+#option ('optimizeIndexSource',true);
+#option ('optimizeThorCounts',false);
+#option ('countIndex',false);
 
-//Filtered disk aggregate, which also requires a beenProcessed flag
-output(table(sqNamesTable2(surname != 'Halliday'), { max(group, aage) })): independent;
+alltests(STRING prefix) := FUNCTION
+  C := setup.files(prefix);
 
-//Special case count.
-output(table(sqNamesTable3(forename = 'Gavin'), { count(group) })): independent;
+  //Check fixed size disk count correctly checks canMatchAny()
+  inlineDs := dataset([1,2],{integer value});
 
-output(count(sqNamesTable4)): independent;
+  //Simple disk aggregate
+  return sequential(
+    output(table(C.sqNamesTable1, { sum(group, aage),exists(group),exists(group,aage>0),exists(group,aage>100),count(group,aage>20) }));
 
-//Special case count.
-output(table(sqNamesTable5, { count(group, (forename = 'Gavin')) })): independent;
+    //Filtered disk aggregate, which also requires a beenProcessed flag
+    output(table(C.sqNamesTable2(surname != 'Halliday'), { max(group, aage) }));
 
-output(table(inlineDs, { count(DG_FetchFile(inlineDs.value = 1)); })): independent;
+    //Special case count.
+    output(table(C.sqNamesTable3(forename = 'Gavin'), { count(group) }));
 
-//existance checks
-output(exists(sqNamesTable4)): independent;
-output(exists(sqNamesTable4(forename = 'Gavin'))): independent;
-output(exists(sqNamesTable4(forename = 'Joshua'))): independent;
+    output(count(C.sqNamesTable4));
+
+    //Special case count.
+    output(table(C.sqNamesTable5, { count(group, (forename = 'Gavin')) }));
+
+    output(table(inlineDs, { count(C.DG_FetchFile(inlineDs.value = 1)); }));
+
+    //existance checks
+    output(exists(C.sqNamesTable4));
+    output(exists(C.sqNamesTable4(forename = 'Gavin')));
+    output(exists(C.sqNamesTable4(forename = 'Joshua')));
+  );
+END;
+
+alltests('hthor');
+alltests('thor');

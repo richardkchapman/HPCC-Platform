@@ -19,8 +19,8 @@
 #option ('targetService', 'aaaLibrary3b')
 #option ('createServiceAlias', true)
 
-//Example of nested 
-namesRecord := 
+//Example of nested
+namesRecord :=
             RECORD
 string20        surname;
 string10        forename;

@@ -19,7 +19,7 @@
 #option ('targetService', 'aaaLibrary4')
 #option ('createServiceAlias', true)
 
-namesRecord := 
+namesRecord :=
             RECORD
 string20        surname;
 string10        forename;

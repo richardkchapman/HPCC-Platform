@@ -26,3 +26,31 @@
 <Dataset name='Result 9'>
  <Row><Result_9>false</Result_9></Row>
 </Dataset>
+<Dataset name='Result 10'>
+ <Row><_unnamed_sum_1>600</_unnamed_sum_1><_unnamed_exists_2>true</_unnamed_exists_2><_unnamed_exists_3>true</_unnamed_exists_3><_unnamed_exists_4>false</_unnamed_exists_4><_unnamed_cnt_5>9</_unnamed_cnt_5></Row>
+</Dataset>
+<Dataset name='Result 11'>
+ <Row><_unnamed_max_aage1>99</_unnamed_max_aage1></Row>
+</Dataset>
+<Dataset name='Result 12'>
+ <Row><_unnamed_cnt_1>1</_unnamed_cnt_1></Row>
+</Dataset>
+<Dataset name='Result 13'>
+ <Row><Result_13>10</Result_13></Row>
+</Dataset>
+<Dataset name='Result 14'>
+ <Row><_unnamed_cnt_1>1</_unnamed_cnt_1></Row>
+</Dataset>
+<Dataset name='Result 15'>
+ <Row><_unnamed_1>22</_unnamed_1></Row>
+ <Row><_unnamed_1>0</_unnamed_1></Row>
+</Dataset>
+<Dataset name='Result 16'>
+ <Row><Result_16>true</Result_16></Row>
+</Dataset>
+<Dataset name='Result 17'>
+ <Row><Result_17>true</Result_17></Row>
+</Dataset>
+<Dataset name='Result 18'>
+ <Row><Result_18>false</Result_18></Row>
+</Dataset>
