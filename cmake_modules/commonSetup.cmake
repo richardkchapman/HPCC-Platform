@@ -481,6 +481,9 @@ IF ("${COMMONSETUP_DONE}" STREQUAL "")
   SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
   SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${OSSDIR}/lib")
   SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+  IF ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin" )
+    SET(CMAKE_INSTALL_NAME_DIR ${CMAKE_INSTALL_RPATH})
+  endif()
 
   MACRO (FETCH_GIT_TAG workdir edition result)
       execute_process(COMMAND "${GIT_COMMAND}" describe --tags --dirty --abbrev=6 --match ${edition}*
