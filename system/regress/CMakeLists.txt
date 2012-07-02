@@ -16,14 +16,14 @@
 ################################################################################
 
 
-# Component: systemtest
+# Component: jlibtest
 #####################################################
 # Description:
 # ------------
-#    Cmake Input File for systemtest
+#    Cmake Input File for jlibtest
 #####################################################
 
-project( systemtest )
+project( jlibtest )
 
 set (    SRCS
          jlibtest.cpp
@@ -39,12 +39,13 @@ include_directories (
 
 ADD_DEFINITIONS( -D_CONSOLE )
 
-HPCC_ADD_EXECUTABLE ( systemtest ${SRCS} )
+HPCC_ADD_EXECUTABLE ( jlibtest ${SRCS} )
 
-install ( TARGETS systemtest DESTINATION ${OSSDIR}/bin )
-target_link_libraries ( systemtest
+install ( TARGETS jlibtest DESTINATION ${OSSDIR}/bin )
+target_link_libraries ( jlibtest
          jlib
          mp
          hrpc
          remote
+         uriparser
     )

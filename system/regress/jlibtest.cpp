@@ -30,40 +30,32 @@ static unsigned errors;
 static unsigned tests;
 
 // =============================================================== jURI - URI parser
-const char * scheme_str(URISchemeType scheme)
+void appendSchemeStr(URISchemeType scheme, StringBuffer& buf)
 {
     switch(scheme)
     {
     case URIScheme_hpcc:
-        return "HPCC";
+        buf.append("HPCC");
     case URIScheme_file:
-        return "FILE";
+        buf.append("FILE");
     default:
-        return "ERROR";
+        buf.append("ERROR");
     }
 }
 
-const char * server_str(URIServerDescription server)
+void appendServerStr(const URIServerDescription * server, StringBuffer& buf)
 {
-    StringBuffer buf;
-    if (!server.user.isEmpty())
-    {
-        buf.append(server.user.get());
-        if (!server.passwd.isEmpty())
-            buf.append(":").append(server.passwd.get());
-        buf.append("@");
-    }
-    buf.append(server.host.get());
-    if (server.port)
-        buf.append(":").append(server.port);
-    return buf.str();
+    if (!server->user.isEmpty())
+        buf.append(server->user.get()).append("@");
+    buf.append(server->host.get());
+    if (server->port)
+        buf.append(":").append(server->port);
 }
 
-const char * path_str(URIPathDescription path)
+void appendPathStr(const URIPathDescription * path, StringBuffer& buf)
 {
-    StringBuffer buf;
-    buf.append(path.path.get());
-    switch(path.type)
+    buf.append(path->path.get());
+    switch(path->type)
     {
     case URIFile_super:
         buf.append("?super");
@@ -72,11 +64,10 @@ const char * path_str(URIPathDescription path)
         buf.append("?stream");
         break;
     }
-    if (path.index)
-        buf.append("#").append(path.index);
-    else if (path.subname.get())
-        buf.append("#").append(path.subname.get());
-    return buf.str();
+    if (path->index)
+        buf.append("#").append(path->index);
+    else if (path->subname.length())
+        buf.append("#").append(path->subname.get());
 }
 
 /*
@@ -93,51 +84,64 @@ void test_uri(const char * str, bool shouldBeURI, URISchemeType scheme=URIScheme
     tests++;
     bool isURI = URI::isURI(str);
 
-    if (isURI)
+    // Bad parsing of URI (should never happen, this rely on uriparse library)
+    if (!isURI)
     {
-        if (!shouldBeURI)
+        if (shouldBeURI)
         {
-            cout << "String: [" << str << "] should not be an URI, but was recognised as so" << endl;
+            cout << "String: [" << str << "] should be an URI, but was not recognised as so" << endl;
+            errors++;
+        }
+        return;
+    }
+    else if (!shouldBeURI)
+    {
+        cout << "String: [" << str << "] should not be an URI, but was recognised as so" << endl;
+        errors++;
+        return;
+    }
+
+    // Now, validate URI
+    try
+    {
+        URI res(str);
+
+        StringBuffer response;
+        if (res.getScheme() != scheme)
+        {
+            StringBuffer request;
+            appendSchemeStr(scheme, request);
+            appendSchemeStr(res.getScheme(), response);
+            cout << "Scheme: requested '" << request.str() << "', got '" << response.str() << "'" << endl;
             errors++;
             return;
         }
-        try
+        if (scheme == URIScheme_error)
+            return;        // No need to validate the rest
+
+        appendServerStr(res.getServer(), response);
+        if (strcmp(response.str(), server) != 0)
         {
-            URI res(str);
-            if (res.getScheme() != scheme)
-            {
-                cout << "Scheme: '" << scheme_str(res.getScheme()) << "' != '" << scheme_str(scheme) << "'" << endl;
-                errors++;
-                return;
-            }
-            const char * s = server_str(res.getServer());
-            if (strcmp(s, server) != 0)
-            {
-                cout << "Server: '" << s << "' != '" << server << "'" << endl;
-                errors++;
-                return;
-            }
-            const char * p = path_str(res.getPath());
-            if (strcmp(p, path) != 0)
-            {
-                cout << "Path: '" << p << "' != '" << path << "'" << endl;
-                errors++;
-                return;
-            }
+            cout << "Server: requested '" << server << "', got '" << response.str() << "'" << endl;
+            errors++;
+            return;
         }
-        catch (IException *e)
+        response.clear();
+        appendPathStr(res.getPath(), response);
+        if (strcmp(response.str(), path) != 0)
         {
-            StringBuffer buf;
-            cout << e->errorMessage(buf).str() << endl;
-            e->Release();
+            cout << "Path: requested '" << path << "', got '" << response.str() << "'" << endl;
             errors++;
             return;
         }
     }
-    else if (shouldBeURI)
+    catch (IException *e)
     {
-        cout << "String: [" << str << "] should be an URI, but was not recognised as so" << endl;
+        StringBuffer buf;
+        cout << e->errorMessage(buf).str() << endl;
+        e->Release();
         errors++;
+        return;
     }
 }
 
@@ -146,7 +150,7 @@ int main() {
     errors = 0;
 
     // URL
-    test_uri("http://www.hpccsystems.com/", false);
+    test_uri("http://www.hpccsystems.com/", true);
 
     // Local files
     test_uri("file:///opt/HPCCSystems/examples/IMDB/ActorsInMovies.ecl", true, URIScheme_file, "", "/opt/HPCCSystems/examples/IMDB/ActorsInMovies.ecl");
@@ -156,7 +160,7 @@ int main() {
     test_uri("hpcc://mydali/path/to/superfile?super", true, URIScheme_hpcc, "mydali", "path/to/superfile?super");
     test_uri("hpcc://mydali/path/to/superfile?super#subname", true, URIScheme_hpcc, "mydali", "path/to/superfile?super#subname");
     test_uri("hpcc://mydali/path/to/streamfile?stream", true, URIScheme_hpcc, "mydali", "path/to/streamfile?stream");
-    test_uri("hpcc://mydali/path/to/streamfile?stream#047", true, URIScheme_hpcc, "mydali", "path/to/streamfile?stream#047");
+    test_uri("hpcc://mydali/path/to/streamfile?stream#047", true, URIScheme_hpcc, "mydali", "path/to/streamfile?stream#47");
 
     // Variations in Dali location
     test_uri("hpcc://mydali:7070/path/to/file", true, URIScheme_hpcc, "mydali:7070", "path/to/file");

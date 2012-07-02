@@ -19,6 +19,7 @@
 #ifndef __JURI__
 #define __JURI__
 
+#include <uriparser/Uri.h>
 #include "jlib.hpp"
 #include "jexcept.hpp"
 
@@ -43,6 +44,7 @@ enum URIServerType
 // Supported file types
 enum URIFileType
 {
+    URIFile_local,    // Local files
     URIFile_logic,    // Normal files
     URIFile_super,    // Super files
     URIFile_stream    // Stream files (to be implemented)
@@ -51,7 +53,6 @@ enum URIFileType
 struct URIServerDescription
 {
     StringAttr user;
-    StringAttr passwd;
     StringAttr host;
     unsigned port;
 };
@@ -60,10 +61,8 @@ struct URIPathDescription
 {
     StringAttr path;
     URIFileType type;
-    // Super files' sub
-    StringAttr subname;
-    // Stream files
-    unsigned index;
+    StringAttr subname;  // Super files' sub
+    unsigned index;      // Stream files
 };
 
 // ==================================================================================
@@ -90,83 +89,124 @@ struct URIPathDescription
 // ==================================================================================
 /*
  * URI deals with strings referring to paths that can be resolved in
- * many different ways. This object is immutable
+ * many different ways. This object is immutable.
  *
  * Dali files (logic, super, stream), local files (on disk),
  * Web files (http, ftp, webdav) have different ways of resolving, and all of them
  * should have a consistent query mechanism from the HPCC engines point of view.
+ *
+ * The URI parser used is uriparser, from http://uriparser.sourceforge.net/
  */
 class URI
 {
     URISchemeType scheme;
     URIServerDescription server;
     URIPathDescription path;
+    UriParserStateA state;
+    UriUriA uri;
 
-    /*
-     * We have to be very strict here, since the enum is what will tell
-     * which URIFileResolver to use (see above).
-     */
-    void validateScheme(StringAttr &str)
+    void populateFields()
     {
-        str.toUpperCase();
-        if (strcmp(str.get(), "HPCC") == 0)
+        // Scheme (defines which resolver to use, see above)
+        StringBuffer schemeStr(uri.scheme.afterLast - uri.scheme.first, uri.scheme.first);
+        schemeStr.toLowerCase();
+        if (strcmp(schemeStr.str(), "hpcc") == 0)
             scheme = URIScheme_hpcc;
-        else if (strcmp(str.get(), "FILE") == 0)
+        else if (strcmp(schemeStr.str(), "file") == 0)
             scheme = URIScheme_file;
         else
-            throw MakeStringException(-1, "String '%s' is not a supported scheme", str.get());
-    }
+            scheme = URIScheme_error;
 
-    void validateServer(StringAttr &str)
-    {
-        server.port = 0;
-        bool hasUserHostSep = false;
-        switch (scheme)
+        // Server
+        server.user.set(uri.userInfo.first, uri.userInfo.afterLast - uri.userInfo.first);
+        server.host.set(uri.hostText.first, uri.hostText.afterLast - uri.hostText.first);
+        StringAttr portStr(uri.portText.first, uri.portText.afterLast - uri.portText.first);
+        server.port = atoi(portStr.get()); // More - use default ports?
+
+        // Path
+        UriPathSegmentA* cur = uri.pathHead;
+        StringBuffer pathStr;
+        if (uri.absolutePath || scheme == URIScheme_file)
+            pathStr.append("/");
+        bool first = true;
+        while (cur)
         {
-        case URIScheme_hpcc:
-            break;
-        case URIScheme_file:
-            break;
-        default:
-            throw MakeStringException(-1, "Validate scheme first");
+            if (!first)
+                pathStr.append("/");
+            pathStr.append(cur->text.afterLast - cur->text.first, cur->text.first);
+            first = false;
+            cur = cur->next;
+        }
+        path.path.set(pathStr.str());
+
+        // Extra info
+        if (scheme == URIScheme_hpcc)
+        {
+            StringBuffer query(uri.query.afterLast - uri.query.first, uri.query.first);
+            query.toLowerCase();
+            if (strcmp(query.str(), "super") == 0)
+            {
+                path.type = URIFile_super;
+                path.subname.set(uri.fragment.first, uri.fragment.afterLast - uri.fragment.first);
+                path.index = 0;
+            }
+            else if (strcmp(query.str(), "stream") == 0)
+            {
+                path.type = URIFile_stream;
+                StringAttr index(uri.fragment.first, uri.fragment.afterLast - uri.fragment.first);
+                path.index = atoi(index.get());
+            }
+            else
+            {
+                path.type = URIFile_logic;
+                path.index = 0;
+            }
+        }
+        else
+        {
+            path.type = URIFile_local;
+            path.index = 0;
         }
     }
 
-    void validatePath(StringAttr &str)
-    {
-    }
-
 public:
-    URI(const char* str)
+    URI(const char* path)
     {
-        // Parse string
-        StringAttr uri(str);
-        // Validate each part separately, in order
-        validateScheme(uri);
-        validateServer(uri);
-        validatePath(uri);
+        state.uri = &uri;
+        if (uriParseUriA(&state, path) != URI_SUCCESS)
+        {
+            uriFreeUriMembersA(&uri);
+            throw MakeStringException(-1, "Invalid URI '%s'", path); // all free by now
+        }
+        populateFields(); // In a format we understand
+        uriFreeUriMembersA(&uri);
     }
 
     // Helper, to validate URI before creating object
     static bool isURI(const char *path)
     {
-        return true;
+        UriParserStateA state;
+        UriUriA uri;
+        state.uri = &uri;
+        bool match = (uriParseUriA(&state, path) == URI_SUCCESS);
+        uriFreeUriMembersA(&uri);
+        return match;
     }
 
-    // Return by copy, as we need this object to be immutable
+    // Immutable
     URISchemeType getScheme() const
     {
         return scheme;
     }
-    // Return by copy, as we need this object to be immutable
-    URIServerDescription getServer() const
+    // Immutable
+    const URIServerDescription * const getServer() const
     {
-        return server;
+        return &server;
     }
-    // Return by copy, as we need this object to be immutable
-    URIPathDescription getPath() const
+    // Immutable
+    const URIPathDescription * const getPath() const
     {
-        return path;
+        return &path;
     }
 };
 
