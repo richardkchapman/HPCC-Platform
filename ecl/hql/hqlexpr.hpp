@@ -224,7 +224,7 @@ enum _node_operator {
         no_comma,
         no_count,
         no_countgroup,
-    no_unused82,
+        no_selectmap,
         no_exists,
         no_within,
         no_notwithin,
@@ -355,12 +355,12 @@ enum _node_operator {
         no_dataset_from_transform,
         no_childquery,
         no_unknown,
-    no_unused3,
-    no_unused4,
-    no_unused5,
+        no_inlinedictionary,
+        no_indict,
+        no_countdict,
         no_any,
-    no_unused27,
-    no_unused26,
+        no_userdictionary,
+        no_newuserdictionary,
     no_unused25,
     no_unused28,  
     no_unused29,
@@ -1062,6 +1062,7 @@ interface IHqlExpression : public IInterface
     virtual bool isBoolean() = 0;
     virtual bool isDataset() = 0;
     virtual bool isDatarow() = 0;
+    virtual bool isDictionary() = 0;
     virtual bool isScope() = 0;
     virtual bool isType() = 0;
     virtual bool isAction() = 0;
@@ -1247,6 +1248,9 @@ extern HQL_API IHqlExpression *createDataset(node_operator op, IHqlExpression *d
 extern HQL_API IHqlExpression *createDataset(node_operator op, IHqlExpression *dataset, IHqlExpression *elist);
 extern HQL_API IHqlExpression *createDataset(node_operator op, HqlExprArray & parms);       // inScope should only be set internally.
 extern HQL_API IHqlExpression *createDatasetF(node_operator op, ...);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, IHqlExpression *initializer, IHqlExpression *recordDef);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, IHqlExpression *dictionary);
+extern HQL_API IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms);
 extern HQL_API IHqlExpression *createNewDataset(IHqlExpression *name, IHqlExpression *recorddef, IHqlExpression *mode, IHqlExpression *parent, IHqlExpression *joinCondition, IHqlExpression * options = NULL);
 extern HQL_API IHqlExpression *createRow(node_operator op, IHqlExpression *Dataset, IHqlExpression *element = NULL);
 extern HQL_API IHqlExpression *createRow(node_operator op, HqlExprArray & args);
@@ -1535,6 +1539,7 @@ extern HQL_API bool isSimpleCountAggregate(IHqlExpression * aggregateExpr, bool 
 extern HQL_API bool isSimpleCountExistsAggregate(IHqlExpression * aggregateExpr, bool canFilterArg, bool canCast);
 extern HQL_API bool isKeyedCountAggregate(IHqlExpression * aggregate);
 extern HQL_API IHqlExpression * createNullDataset();
+extern HQL_API IHqlExpression * createNullDictionary();
 extern HQL_API IHqlExpression * queryNullRecord();
 extern HQL_API IHqlExpression * queryNullRowRecord();
 extern HQL_API IHqlExpression * queryExpression(ITypeInfo * t);
@@ -1552,6 +1557,7 @@ extern HQL_API IHqlExpression * extractChildren(IHqlExpression * value);
 extern HQL_API IHqlExpression * queryOnlyField(IHqlExpression * record);
 extern HQL_API bool recordTypesMatch(ITypeInfo * left, ITypeInfo * right);
 extern HQL_API bool recordTypesMatch(IHqlExpression * left, IHqlExpression * right);
+extern HQL_API bool recordTypesMatchIgnorePayload(IHqlExpression *left, IHqlExpression *right);
 extern HQL_API IHqlExpression * queryOriginalRecord(IHqlExpression * expr);
 extern HQL_API IHqlExpression * queryOriginalRecord(ITypeInfo * type);
 extern HQL_API IHqlExpression * queryOriginalTypeExpression(ITypeInfo * type);
