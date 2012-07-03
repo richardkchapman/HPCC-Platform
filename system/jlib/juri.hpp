@@ -175,9 +175,10 @@ public:
         state.uri = &uri;
         try {
             if (uriParseUriA(&state, path) != URI_SUCCESS)
-                throw MakeStringException(-1, "Invalid URI '%s'", path); // all free by now
+                throw MakeStringException(-1, "Invalid URI '%s'", path);
             populateFields(); // In a format we understand
         }
+        // On parser failure, but also system exceptions (bad alloc, etc)
         catch (IException *)
         {
             uriFreeUriMembersA(&uri);
