@@ -173,12 +173,16 @@ public:
     URI(const char* path)
     {
         state.uri = &uri;
-        if (uriParseUriA(&state, path) != URI_SUCCESS)
+        try {
+            if (uriParseUriA(&state, path) != URI_SUCCESS)
+                throw MakeStringException(-1, "Invalid URI '%s'", path); // all free by now
+            populateFields(); // In a format we understand
+        }
+        catch (IException *)
         {
             uriFreeUriMembersA(&uri);
-            throw MakeStringException(-1, "Invalid URI '%s'", path); // all free by now
+            throw;
         }
-        populateFields(); // In a format we understand
         uriFreeUriMembersA(&uri);
     }
 
