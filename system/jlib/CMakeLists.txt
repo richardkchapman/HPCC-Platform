@@ -44,6 +44,7 @@ set (    SRCS
          jdebug.cpp 
          jencrypt.cpp 
          jexcept.cpp 
+         juri.cpp
          jfile.cpp 
          jflz.cpp 
          jhash.cpp 
