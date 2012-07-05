@@ -108,33 +108,10 @@ class URI
     void populateFields();
 
 public:
-    URI(const char* path)
-    {
-        state.uri = &uri;
-        try {
-            if (uriParseUriA(&state, path) != URI_SUCCESS)
-                throw MakeStringException(-1, "Invalid URI '%s'", path);
-            populateFields(); // In a format we understand
-        }
-        // On parser failure, but also system exceptions (bad alloc, etc)
-        catch (IException *)
-        {
-            uriFreeUriMembersA(&uri);
-            throw;
-        }
-        uriFreeUriMembersA(&uri);
-    }
+    URI(const char* path);
 
     // Helper, to validate URI before creating object
-    static bool isURI(const char *path)
-    {
-        UriParserStateA state;
-        UriUriA uri;
-        state.uri = &uri;
-        bool match = (uriParseUriA(&state, path) == URI_SUCCESS);
-        uriFreeUriMembersA(&uri);
-        return match;
-    }
+    static bool isURI(const char *path);
 
     // Immutable
     URISchemeType getScheme() const

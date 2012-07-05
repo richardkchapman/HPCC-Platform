@@ -18,6 +18,34 @@
 
 #include "juri.hpp"
 
+URI::URI(const char* path)
+{
+    state.uri = &uri;
+    try {
+        if (uriParseUriA(&state, path) != URI_SUCCESS)
+            throw MakeStringException(-1, "Invalid URI '%s'", path);
+        populateFields(); // In a format we understand
+    }
+    // On parser failure, but also system exceptions (bad alloc, etc)
+    catch (IException *)
+    {
+        uriFreeUriMembersA(&uri);
+        throw;
+    }
+    uriFreeUriMembersA(&uri);
+}
+
+// Helper, to validate URI before creating object
+bool isURI(const char *path)
+{
+    UriParserStateA state;
+    UriUriA uri;
+    state.uri = &uri;
+    bool match = (uriParseUriA(&state, path) == URI_SUCCESS);
+    uriFreeUriMembersA(&uri);
+    return match;
+}
+
 void URI::populateFields()
 {
     // Scheme (defines which resolver to use, see above)
