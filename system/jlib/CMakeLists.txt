@@ -176,7 +176,7 @@ HPCC_ADD_LIBRARY( jlib SHARED ${SRCS} ${INCLUDES} )
 install ( TARGETS jlib DESTINATION ${OSSDIR}/lib )
 target_link_libraries ( jlib
         lzma
-        uriparser
+        ${URIPARSER_LIBRARIES}
        )
 
 if ( ${HAVE_LIBDL} )
