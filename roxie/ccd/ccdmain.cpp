@@ -965,8 +965,24 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         delete [] primaries;
         setDaliServixSocketCaching(true);  // enable daliservix caching
         loadPlugins();
-        globalPackageSetManager = createRoxiePackageSetManager(standAloneDll.getClear());
-        globalPackageSetManager->load();
+        if (standAloneDll)
+        {
+            Owned<IRoxieQueryPackageManagerSet> querySetManager = createStandalonePackageSetManager(standAloneDll.getClear());
+            querySetManager->load();
+            globalPackageManagerSets.setValue("roxie", querySetManager.getClear());
+        }
+        else
+        {
+            Owned<IStringIterator> querySets = getTargetClusters("Roxie", roxieName);
+            ForEach (*querySets)
+            {
+                SCMStringBuffer querySet;
+                querySets->str(querySet);
+                Owned<IRoxieQueryPackageManagerSet> querySetManager = createRoxiePackageSetManager(querySet.str());
+                querySetManager->load();
+                globalPackageManagerSets.setValue(querySet.str(), querySetManager.getClear());
+            }
+        }
         unsigned snifferChannel = numChannels+2; // MORE - why +2 not +1 ??
         ROQ = createOutputQueueManager(snifferChannel, isCCD ? numSlaveThreads : 1);
         ROQ->setHeadRegionSize(headRegionSize);
@@ -980,7 +996,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         setSEHtoExceptionHandler(&abortHandler);
         if (runOnce)
         {
-            Owned <IRoxieListener> roxieServer = createRoxieSocketListener(0, 1, 0, false);
+            Owned <IRoxieListener> roxieServer = createRoxieSocketListener(0, 1, 0, false, "roxie");
             try
             {
                 const char *format = globals->queryProp("format");
@@ -1011,7 +1027,6 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
             Owned<IPropertyTreeIterator> it = ccdChannels->getElements("RoxieServerProcess");
             ForEach(*it)
             {
-                // MORE - there are assumptions that everyone is a server (in deployment)
                 IPropertyTree &serverInfo = it->query();
                 unsigned port = serverInfo.getPropInt("@port", -1);
                 bool suspended = serverInfo.getPropBool("@suspended", false);
@@ -1019,7 +1034,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
                 unsigned listenQueue = serverInfo.getPropInt("@listenQueue", DEFAULT_LISTEN_QUEUE_SIZE);
                 Owned <IRoxieListener> roxieServer;
                 if (port)
-                    roxieServer.setown(createRoxieSocketListener(port, numThreads, listenQueue, suspended));
+                    roxieServer.setown(createRoxieSocketListener(port, numThreads, listenQueue, suspended, serverInfo.queryProp("@querySet")));
                 else
                     roxieServer.setown(createRoxieWorkUnitListener(numThreads, suspended));
                 Owned<IPropertyTreeIterator> accesses = serverInfo.getElements("Access");
@@ -1076,8 +1091,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
     roxieMetrics.clear();
     allRoxieServers.kill();
     stopPerformanceMonitor();
-    ::Release(globalPackageSetManager);
-    globalPackageSetManager = NULL;
+    globalPackageManagerSets.kill();
     cleanupPlugins();
     closeMulticastSockets();
     releaseSlaveDynamicFileCache();

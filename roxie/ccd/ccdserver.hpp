@@ -27,7 +27,6 @@
 #include "roxiedebug.hpp"
 #include "thorstep.hpp"
 
-interface IRoxieQuerySetManager;
 interface IRoxieListener : extends IInterface
 {
     virtual void start() = 0;
@@ -74,7 +73,7 @@ interface IRoxieServerQueryPacket : public IInterface, public ILRUChain
     virtual void setDebugResponse(unsigned sequence, IRoxieQueryPacket *) = 0;
 };
 
-IRoxieListener *createRoxieSocketListener(unsigned port, unsigned poolSize, unsigned listenQueue, bool suspended);
+IRoxieListener *createRoxieSocketListener(unsigned port, unsigned poolSize, unsigned listenQueue, bool suspended, const char *querySet);
 IRoxieListener *createRoxieWorkUnitListener(unsigned poolSize, bool suspended);
 bool suspendRoxieListener(unsigned port, bool suspended);
 extern IArrayOf<IRoxieListener> socketListeners;

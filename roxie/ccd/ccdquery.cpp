@@ -118,19 +118,12 @@ public:
             return new CQueryDll(dllName, dll.getClear());
         }
     }
-    static const IQueryDll *getWorkUnitDll(const char *wuid)
+    static const IQueryDll *getWorkUnitDll(IConstWorkUnit *wu)
     {
-        Owned <IRoxieDaliHelper> daliHelper = connectToDali();
-        Owned<IConstWorkUnit> wu = daliHelper->attachWorkunit(wuid, NULL);
-        if (wu)
-        {
-            SCMStringBuffer dllName;
-            Owned<IConstWUQuery> q = wu->getQuery();
-            q->getQueryDllName(dllName);
-            return getQueryDll(dllName.str(), false);
-        }
-        else
-            return NULL;
+        SCMStringBuffer dllName;
+        Owned<IConstWUQuery> q = wu->getQuery();
+        q->getQueryDllName(dllName);
+        return getQueryDll(dllName.str(), false);
     }
     virtual HelperFactory *getFactory(const char *helperName) const
     {
@@ -158,9 +151,9 @@ extern const IQueryDll *createExeQueryDll(const char *exeName)
     return CQueryDll::getQueryDll(exeName, true);
 }
 
-extern const IQueryDll *createWuQueryDll(const char *wuid)
+extern const IQueryDll *createWuQueryDll(IConstWorkUnit *wu)
 {
-    return CQueryDll::getWorkUnitDll(wuid);
+    return CQueryDll::getWorkUnitDll(wu);
 }
 
 
@@ -175,6 +168,7 @@ extern const IQueryDll *createWuQueryDll(const char *wuid)
 class CQueryFactory : public CInterface, implements IQueryFactory, implements IResourceContext
 {
 protected:
+    IRoxieLibraryLookupContext *libraryContext;  // has linked to me
     const IRoxiePackage &package;
     Owned<const IQueryDll> dll;
     MapStringToActivityArray graphMap;
@@ -722,8 +716,8 @@ public:
     IMPLEMENT_IINTERFACE;
     unsigned channelNo;
 
-    CQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo) 
-        : id(_id), package(_package), dll(_dll), channelNo(_channelNo), hashValue(_hashValue)
+    CQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo, IRoxieLibraryLookupContext *_libraryContext)
+        : id(_id), package(_package), dll(_dll), channelNo(_channelNo), hashValue(_hashValue), libraryContext(_libraryContext)
     {
         package.Link();
         isSuspended = false;
@@ -747,6 +741,11 @@ public:
         package.Release();
     }
 
+    virtual IQueryFactory *lookupLibrary(const char *libraryName, unsigned expectedInterfaceHash, const IRoxieContextLogger &logctx) const
+    {
+        return libraryContext->lookupLibrary(libraryName, expectedInterfaceHash, logctx);
+    }
+
     virtual void beforeDispose()
     {
         SpinBlock b(queriesCrit);
@@ -767,10 +766,12 @@ public:
             return NULL;
     }
 
-    static hash64_t getQueryHash(const char *id, const IQueryDll *dll, const IRoxiePackage &package, const IPropertyTree *stateInfo)
+    static hash64_t getQueryHash(const char *id, const IQueryDll *dll, const IRoxiePackage &package, const IPropertyTree *stateInfo, IRoxieLibraryLookupContext *libraryContext)
     {
         hash64_t hashValue = rtlHash64VStr(dll->queryDll()->queryName(), package.queryHash());
         hashValue = rtlHash64VStr(id, hashValue);
+        if (libraryContext)  // Unit tests don't set it
+            hashValue = rtlHash64VStr(libraryContext->queryId(), hashValue);  // MORE - bit odd...
         if (stateInfo)
         {
             StringBuffer xml;
@@ -1145,7 +1146,8 @@ protected:
     }
 
 public:
-    CRoxieServerQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue) : CQueryFactory(_id, _dll, _package, _hashValue, 0)
+    CRoxieServerQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, IRoxieLibraryLookupContext *_libraryContext)
+        : CQueryFactory(_id, _dll, _package, _hashValue, 0, _libraryContext)
     {
         queryStats.setown(createQueryStatsAggregator(id.get(), statsExpiryTime));
     }
@@ -1263,27 +1265,28 @@ public:
 
 };
 
-IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *dll, const IRoxiePackage &package, const IPropertyTree *stateInfo)
+extern IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *dll, const IRoxiePackage &package, const IPropertyTree *stateInfo, IRoxieLibraryLookupContext *libraryContext)
 {
     CriticalBlock b(CQueryFactory::queryCreateLock);
-    hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo);
+    hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo, libraryContext);
     IQueryFactory *cached = getQueryFactory(hashValue, 0);
     if (cached)
     {
         ::Release(dll);
         return cached;
     }
-    Owned<CRoxieServerQueryFactory> newFactory = new CRoxieServerQueryFactory(id, dll, package, hashValue);
+    Owned<CRoxieServerQueryFactory> newFactory = new CRoxieServerQueryFactory(id, dll, package, hashValue, libraryContext);
     newFactory->load(stateInfo);
     return newFactory.getClear();
 }
 
-extern IQueryFactory *createServerQueryFactoryFromWu(const char *wuid)
+extern IQueryFactory *createServerQueryFactoryFromWu(IConstWorkUnit *wu, IRoxieLibraryLookupContext *libraryContext)
 {
-    Owned<const IQueryDll> dll = createWuQueryDll(wuid);
+    Owned<const IQueryDll> dll = createWuQueryDll(wu);
     if (!dll)
         return NULL;
-    return createServerQueryFactory(wuid, dll.getClear(), queryRootPackage(), NULL); // MORE - if use a constant for id might cache better?
+    SCMStringBuffer wuid;
+    return createServerQueryFactory(wu->getWuid(wuid).str(), dll.getClear(), queryRootPackage(), NULL, libraryContext); // MORE - if use a constant for id might cache better?
 }
 
 //==============================================================================================================================================
@@ -1461,8 +1464,8 @@ class CSlaveQueryFactory : public CQueryFactory
     }
 
 public:
-    CSlaveQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo)
-        : CQueryFactory(_id, _dll, _package, _hashValue, _channelNo)
+    CSlaveQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo, IRoxieLibraryLookupContext *_libraryContext)
+        : CQueryFactory(_id, _dll, _package, _hashValue, _channelNo, _libraryContext)
     {
     }
 
@@ -1511,27 +1514,28 @@ public:
     }
 };
 
-IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, const IRoxiePackage &package, unsigned channel, const IPropertyTree *stateInfo)
+IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, const IRoxiePackage &package, unsigned channel, const IPropertyTree *stateInfo, IRoxieLibraryLookupContext *libraryContext)
 {
     CriticalBlock b(CQueryFactory::queryCreateLock);
-    hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo);
+    hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo, libraryContext);
     IQueryFactory *cached = getQueryFactory(hashValue, channel);
     if (cached)
     {
         ::Release(dll);
         return cached;
     }
-    Owned<CSlaveQueryFactory> newFactory = new CSlaveQueryFactory(id, dll, package, hashValue, channel);
+    Owned<CSlaveQueryFactory> newFactory = new CSlaveQueryFactory(id, dll, package, hashValue, channel, libraryContext);
     newFactory->load(stateInfo);
     return newFactory.getClear();
 }
 
-extern IQueryFactory *createSlaveQueryFactoryFromWu(const char *wuid, unsigned channelNo)
+extern IQueryFactory *createSlaveQueryFactoryFromWu(IConstWorkUnit *wu, unsigned channelNo, IRoxieLibraryLookupContext *libraryContext)
 {
-    Owned<const IQueryDll> dll = createWuQueryDll(wuid);
+    Owned<const IQueryDll> dll = createWuQueryDll(wu);
     if (!dll)
         return NULL;
-    return createSlaveQueryFactory(wuid, dll.getClear(), queryRootPackage(), channelNo, NULL);  // MORE - if use a constant for id might cache better?
+    SCMStringBuffer wuid;
+    return createSlaveQueryFactory(wu->getWuid(wuid).str(), dll.getClear(), queryRootPackage(), channelNo, NULL, libraryContext);  // MORE - if use a constant for id might cache better?
 }
 
 IRecordLayoutTranslator * createRecordLayoutTranslator(const char *logicalName, IDefRecordMeta const * diskMeta, IDefRecordMeta const * activityMeta)

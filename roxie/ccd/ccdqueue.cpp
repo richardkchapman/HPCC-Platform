@@ -997,7 +997,13 @@ public:
         Owned<IQueryFactory> queryFactory = getQueryFactory(queryHash, channel);
         if (!queryFactory && logctx.queryWuid())
         {
-            queryFactory.setown(createSlaveQueryFactoryFromWu(logctx.queryWuid(), channel));
+            // We don't know what querySet to use, as the wu listener is shared by all of them. Look it up from the target cluster name
+            Owned <IRoxieDaliHelper> daliHelper = connectToDali();
+            Owned<IConstWorkUnit> wu = daliHelper->attachWorkunit(logctx.queryWuid(), NULL);
+            SCMStringBuffer target;
+            Owned <IRoxieQueryPackageManagerSet> packageManager = globalPackageManagerSets.getValue(wu->getClusterName(target).str());
+            assertex(packageManager);
+            queryFactory.setown(createSlaveQueryFactoryFromWu(wu, channel, packageManager));
             if (queryFactory)
                 cacheOnDemandQuery(queryHash, channel, queryFactory);
         }

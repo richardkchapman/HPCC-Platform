@@ -27817,7 +27817,8 @@ public:
         }
         else
         {
-            Owned<IQueryFactory> libraryQuery = globalPackageSetManager->lookupLibrary(extra.libraryName, extra.interfaceHash, *this);
+            Owned<IQueryFactory> libraryQuery = factory->lookupLibrary(extra.libraryName, extra.interfaceHash, *this);
+            assertex(libraryQuery);
             return libraryQuery->lookupGraph("graph1", probeManager, *this, parentActivity);
         }
     }
@@ -28234,8 +28235,7 @@ public:
     virtual void debugInitialize(const char *id, const char *_queryName, bool _breakAtStart)
     {
         CBaseServerDebugContext::debugInitialize(id, _queryName, _breakAtStart);
-        Owned<IRoxieDebugSessionManager> QM = globalPackageSetManager->getRoxieDebugSessionManager();
-        QM->registerDebugId(id, this);
+        queryRoxieDebugSessionManager().registerDebugId(id, this);
     }
 
     virtual void debugTerminate()
@@ -28244,8 +28244,7 @@ public:
         assertex(running);
         currentState = DebugStateUnloaded;
         running = false;
-        Owned<IRoxieDebugSessionManager> QM = globalPackageSetManager->getRoxieDebugSessionManager();
-        QM->deregisterDebugId(debugId);
+        queryRoxieDebugSessionManager().deregisterDebugId(debugId);
         if (debuggerActive)
         {
             debuggerSem.signal(debuggerActive);
@@ -30299,6 +30298,7 @@ class CascadeManager : public CInterface
     CriticalSection revisionCrit;
     int myEndpoint;
     const IRoxieContextLogger &logctx;
+    IRoxieQueryPackageManagerSet *packageManagerSet;
 
     void unlockChildren()
     {
@@ -30517,7 +30517,8 @@ private:
 
 public:
     IMPLEMENT_IINTERFACE;
-    CascadeManager(const IRoxieContextLogger &_logctx) : logctx(_logctx)
+    CascadeManager(const IRoxieContextLogger &_logctx, IRoxieQueryPackageManagerSet *_packageManagerSet) :
+        logctx(_logctx), packageManagerSet(_packageManagerSet)
     {
         entered = false;
         connected = false;
@@ -30639,11 +30640,14 @@ public:
             SocketEndpoint &ep;
             unsigned numChildren;
             const IRoxieContextLogger &logctx;
+            IRoxieQueryPackageManagerSet *packageManagerSet;
 
         public:
             casyncfor(const char *_queryText, CascadeManager *_parent, IPropertyTree *_mergedStats, 
-                      StringBuffer &_reply, SocketEndpoint &_ep, unsigned _numChildren, const IRoxieContextLogger &_logctx) 
-                : queryText(_queryText), parent(_parent), mergedStats(_mergedStats), reply(_reply), ep(_ep), numChildren(_numChildren), logctx(_logctx)
+                      StringBuffer &_reply, SocketEndpoint &_ep, unsigned _numChildren, const IRoxieContextLogger &_logctx,
+                      IRoxieQueryPackageManagerSet *_packageManagerSet)
+                : queryText(_queryText), parent(_parent), mergedStats(_mergedStats), reply(_reply), ep(_ep),
+                  numChildren(_numChildren), logctx(_logctx), packageManagerSet(_packageManagerSet)
             {
             }
             void Do(unsigned i)
@@ -30686,7 +30690,7 @@ public:
                 try
                 {
                     Owned<IPropertyTree> xml = createPTreeFromXMLString(queryText); // control queries are case sensitive
-                    globalPackageSetManager->doControlMessage(xml, myReply, logctx);
+                    packageManagerSet->doControlMessage(xml, myReply, logctx);  // MORE - do you want it per querySet ? Arguable...
                 }
                 catch(IException *E)
                 {
@@ -30706,7 +30710,7 @@ public:
                 else
                     reply.append(myReply);
             }
-        } afor(queryText, this, mergedStats, reply, ep, activeChildren.ordinality(), logctx);
+        } afor(queryText, this, mergedStats, reply, ep, activeChildren.ordinality(), logctx, packageManagerSet);
         afor.For(activeChildren.ordinality()+(isMaster ? 0 : 1), 10);
         activeChildren.kill();
         if (mergedStats)
@@ -31095,14 +31099,17 @@ class RoxieSocketListener : public RoxieListener
     unsigned listenQueue;
     Owned<ISocket> socket;
     SocketEndpoint ep;
+    StringAttr querySet;
+    Owned<IRoxieQueryPackageManagerSet> packageManagerSet;
 
 public:
-    RoxieSocketListener(unsigned _port, unsigned _poolSize, unsigned _listenQueue, bool _suspended)
-      : RoxieListener(_poolSize, _suspended)
+    RoxieSocketListener(unsigned _port, unsigned _poolSize, unsigned _listenQueue, bool _suspended, const char *_querySet)
+      : RoxieListener(_poolSize, _suspended), querySet(_querySet)
     {
         port = _port;
         listenQueue = _listenQueue;
         ep.set(port, queryHostIP());
+        packageManagerSet.setown(globalPackageManagerSets.getValue(_querySet));
     }
 
     virtual bool stop(unsigned timeout)
@@ -31201,9 +31208,8 @@ class RoxieQueryWorker : public CInterface, implements IPooledThread
 public:
     IMPLEMENT_IINTERFACE;
 
-    RoxieQueryWorker(RoxieListener *_pool)
+    RoxieQueryWorker(RoxieListener *_pool) : pool(_pool)
     {
-        pool = _pool;
         qstart = msTick();
         time(&startTime);
     }
@@ -31291,7 +31297,13 @@ public:
         daliHelper->noteWorkunitRunning(wuid.get(), true);
         if (!wu)
             throw MakeStringException(ROXIE_DALI_ERROR, "Failed to open workunit %s", wuid.get());
-        Owned<IQueryFactory> queryFactory = createServerQueryFactoryFromWu(wuid.get());
+        // We don't know what querySet to use, as the wu listener is shared by all of them. Look it up from the target cluster name
+        // MORE - Not 100% sure if that is right either - there's no package file resolution in play for WUs read from a queue, but I think as this stands we will
+        // resolve libraries using those packages defined as loading for this QuerySet.
+        SCMStringBuffer target;
+        Owned <IRoxieQueryPackageManagerSet> packageManager = globalPackageManagerSets.getValue(wu->getClusterName(target).str());
+        assertex(packageManager);
+        Owned<IQueryFactory> queryFactory = createServerQueryFactoryFromWu(wu, packageManager);
         Owned<StringContextLogger> logctx = new StringContextLogger(wuid.get());
         doMain(wu, queryFactory, *logctx);
         sendUnloadMessage(queryFactory->queryHash(), wuid.get(), *logctx);
@@ -31397,10 +31409,11 @@ class RoxieSocketWorker : public RoxieQueryWorker
     Owned<SafeSocket> client;
     Owned<CDebugCommandHandler> debugCmdHandler;
     SocketEndpoint ep;
+    Owned<IRoxieQueryPackageManagerSet> packageManagerSet;
 
 public:
-    RoxieSocketWorker(RoxieListener *_pool, SocketEndpoint &_ep)
-        : RoxieQueryWorker(_pool), ep(_ep)
+    RoxieSocketWorker(RoxieListener *_pool, IRoxieQueryPackageManagerSet *_packageManagerSet, SocketEndpoint &_ep)
+        : RoxieQueryWorker(_pool), packageManagerSet(_packageManagerSet), ep(_ep)
     {
     }
 
@@ -31585,7 +31598,7 @@ readAnother:
                 FlushingStringBuffer response(client, false, true, false, false, logctx);
                 response.startDataset("Control", NULL, (unsigned) -1);
                 if (!cascade)
-                    cascade.setown(new CascadeManager(logctx));
+                    cascade.setown(new CascadeManager(logctx, packageManagerSet));
                 StringBuffer s;
                 cascade->doLockGlobal(s, false);
                 response.append(s);
@@ -31604,7 +31617,7 @@ readAnother:
                 FlushingStringBuffer response(client, false, true, false, false, logctx);
                 response.startDataset("Control", NULL, (unsigned) -1);
                 if (!cascade)
-                    cascade.setown(new CascadeManager(logctx));
+                    cascade.setown(new CascadeManager(logctx, packageManagerSet));
                 StringBuffer s;
                 cascade->doLockChild(rawText.str(), s);
                 response.append(s);
@@ -31668,7 +31681,7 @@ readAnother:
                 if (doControlQuery)
                 {
                     if(!cascade)
-                        cascade.setown(new CascadeManager(logctx));
+                        cascade.setown(new CascadeManager(logctx, packageManagerSet));
                     StringBuffer s;
                     cascade->doControlQuery(ep, rawText, s);
                     response.append(s);
@@ -31722,8 +31735,7 @@ readAnother:
 #else
                             throw MakeStringException(ROXIE_DEBUG_ERROR, "Debug id not specified");
 #endif
-                        Owned<IRoxieDebugSessionManager> QM = globalPackageSetManager->getRoxieDebugSessionManager();
-                        debuggerContext.setown(QM->lookupDebuggerContext(uid));
+                        debuggerContext.setown(queryRoxieDebugSessionManager().lookupDebuggerContext(uid));
                         if (!debuggerContext)
                             throw MakeStringException(ROXIE_DEBUG_ERROR, "No active query matching context %s found", uid);
                         if (!debugCmdHandler.get())
@@ -31754,7 +31766,7 @@ readAnother:
                     }
                     else
                     {
-                        queryFactory.setown(globalPackageSetManager->getQuery(queryName, logctx));
+                        queryFactory.setown(packageManagerSet->getQuery(queryName, logctx));
                         if (isHTTP)
                             client->setHttpMode(queryName, isRequestArray);
                         if (queryFactory)
@@ -32030,20 +32042,21 @@ IPooledThread *RoxieWorkUnitListener::createNew()
 
 IPooledThread *RoxieSocketListener::createNew()
 {
-    return new RoxieSocketWorker(this, ep);
+    return new RoxieSocketWorker(this, packageManagerSet, ep);
 }
 
 void RoxieSocketListener::runOnce(const char *query)
 {
-    Owned<RoxieSocketWorker> p = new RoxieSocketWorker(this, ep);
+    Owned<RoxieSocketWorker> p = new RoxieSocketWorker(this, packageManagerSet, ep);
     p->runOnce(query);
 }
 
-IRoxieListener *createRoxieSocketListener(unsigned port, unsigned poolSize, unsigned listenQueue, bool suspended)
+IRoxieListener *createRoxieSocketListener(unsigned port, unsigned poolSize, unsigned listenQueue, bool suspended, const char *querySet)
 {
     if (traceLevel)
-        DBGLOG("Creating Roxie socket listener, pool size %d, listen queue %d%s", poolSize, listenQueue, suspended?" SUSPENDED":"");
-    return new RoxieSocketListener(port, poolSize, listenQueue, suspended);
+        DBGLOG("Creating Roxie socket listener, querySet %s, pool size %d, listen queue %d%s",
+                querySet, poolSize, listenQueue, suspended?" SUSPENDED":"");
+    return new RoxieSocketListener(port, poolSize, listenQueue, suspended, querySet);
 }
 
 IRoxieListener *createRoxieWorkUnitListener(unsigned poolSize, bool suspended)
@@ -32331,7 +32344,7 @@ protected:
         package.setown(createPackage(NULL));
         ctx.setown(createSlaveContext(NULL, logctx, 0, 50*1024*1024, NULL));
         queryDll.setown(createExeQueryDll("roxie"));
-        queryFactory.setown(createServerQueryFactory("test", queryDll.getLink(), *package, NULL));
+        queryFactory.setown(createServerQueryFactory("test", queryDll.getLink(), *package, NULL, NULL));
         timer->reset();
     }
 
