@@ -2399,7 +2399,7 @@ extern IRoxieQueryPackageManagerSet *createRoxiePackageSetManager(const char *qu
     return new CRoxiePackageSetManager(NULL, querySet);
 }
 
-MapStringToMyClass<IRoxieQueryPackageManagerSet> globalPackageManagerSets;
+MapStringToMyClass<IRoxieQueryPackageManagerSet> globalPackageManagerSets;  // MORE - may need to define an order? What if ambiguous. Should also allow QuerySet:QueryName or something? Maybe use an array? Maybe revert to a single one? But still need to define the order. Or leave it undefined? Or require unambiguous?
 
 extern void loadPlugins()
 {

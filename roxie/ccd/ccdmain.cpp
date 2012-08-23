@@ -1034,7 +1034,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
                 unsigned listenQueue = serverInfo.getPropInt("@listenQueue", DEFAULT_LISTEN_QUEUE_SIZE);
                 Owned <IRoxieListener> roxieServer;
                 if (port)
-                    roxieServer.setown(createRoxieSocketListener(port, numThreads, listenQueue, suspended, serverInfo.queryProp("@querySet")));
+                    roxieServer.setown(createRoxieSocketListener(port, numThreads, listenQueue, suspended));
                 else
                     roxieServer.setown(createRoxieWorkUnitListener(numThreads, suspended));
                 Owned<IPropertyTreeIterator> accesses = serverInfo.getElements("Access");
