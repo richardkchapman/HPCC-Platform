@@ -324,6 +324,8 @@ extern unsigned headRegionSize;
 extern CriticalSection ccdChannelsCrit;
 extern IPropertyTree* ccdChannels;
 extern IPropertyTree* topology;
+extern StringArray allQuerySetNames;
+
 extern bool crcResources;
 extern bool logFullQueries;
 extern bool blindLogging;

@@ -596,6 +596,7 @@ void decIbytiDelay(unsigned channel, unsigned factor = 2)
 
 static SpinLock onDemandQueriesCrit;
 static MapXToMyClass<hash64_t, hash64_t, IQueryFactory> onDemandQueryCache;
+static MapXToMyClass<hash64_t, hash64_t, IRoxieLibraryLookupContext> onDemandLibraryLookupCache;
 
 void sendUnloadMessage(hash64_t hash, const char *id, const IRoxieContextLogger &logctx)
 {
@@ -623,12 +624,14 @@ void doUnload(IRoxieQueryPacket *packet, const IRoxieContextLogger &logctx)
     hash64_t hashValue = header.queryHash;
     SpinBlock b(onDemandQueriesCrit);
     onDemandQueryCache.remove(hashValue+channelNo);
+    onDemandLibraryLookupCache.remove(hashValue+channelNo);
 }
 
-void cacheOnDemandQuery(hash64_t hashValue, unsigned channelNo, IQueryFactory *query)
+void cacheOnDemandQuery(hash64_t hashValue, unsigned channelNo, IQueryFactory *query, IRoxieLibraryLookupContext *libraryContext)
 {
     SpinBlock b(onDemandQueriesCrit);
     onDemandQueryCache.setValue(hashValue+channelNo, query);
+    onDemandLibraryLookupCache.setValue(hashValue+channelNo, libraryContext);
 }
 
 //=================================================================================
@@ -995,17 +998,18 @@ public:
         hash64_t queryHash = packet->queryHeader().queryHash;
         unsigned activityId = packet->queryHeader().activityId & ~ROXIE_PRIORITY_MASK;
         Owned<IQueryFactory> queryFactory = getQueryFactory(queryHash, channel);
+        Owned<IRoxieLibraryLookupContext> libraryContext;
         if (!queryFactory && logctx.queryWuid())
         {
-            // We don't know what querySet to use, as the wu listener is shared by all of them. Look it up from the target cluster name
+            // Ensure that any library lookup is done in the correct QuerySet...
             Owned <IRoxieDaliHelper> daliHelper = connectToDali();
             Owned<IConstWorkUnit> wu = daliHelper->attachWorkunit(logctx.queryWuid(), NULL);
             SCMStringBuffer target;
-            Owned <IRoxieQueryPackageManagerSet> packageManager = globalPackageManagerSets.getValue(wu->getClusterName(target).str());
-            assertex(packageManager);
-            queryFactory.setown(createSlaveQueryFactoryFromWu(wu, channel, packageManager));
+            wu->getClusterName(target);
+            libraryContext.setown(globalPackageSetManager->getLibraryLookupContext(target.str()));
+            queryFactory.setown(createSlaveQueryFactoryFromWu(wu, channel, libraryContext));
             if (queryFactory)
-                cacheOnDemandQuery(queryHash, channel, queryFactory);
+                cacheOnDemandQuery(queryHash, channel, queryFactory, libraryContext);
         }
         if (!queryFactory)
         {

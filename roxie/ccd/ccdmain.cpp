@@ -93,6 +93,7 @@ bool roxieMulticastEnabled = true;
 IPropertyTree* topology;
 CriticalSection ccdChannelsCrit;
 IPropertyTree* ccdChannels;
+StringArray allQuerySetNames;
 
 bool crcResources;
 bool useRemoteResources;
@@ -835,7 +836,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
 #else
         topology->addPropBool("@linuxOS", true);
 #endif
-
+        CslToStringArray(topology->queryProp("@querySets"), allQuerySetNames, true);
         if (!numChannels)
             throw MakeStringException(MSGAUD_operator, ROXIE_INVALID_TOPOLOGY, "Invalid topology file - numChannels attribute must be specified");
 
@@ -965,24 +966,8 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         delete [] primaries;
         setDaliServixSocketCaching(true);  // enable daliservix caching
         loadPlugins();
-        if (standAloneDll)
-        {
-            Owned<IRoxieQueryPackageManagerSet> querySetManager = createStandalonePackageSetManager(standAloneDll.getClear());
-            querySetManager->load();
-            globalPackageManagerSets.setValue("roxie", querySetManager.getClear());
-        }
-        else
-        {
-            Owned<IStringIterator> querySets = getTargetClusters("Roxie", roxieName);
-            ForEach (*querySets)
-            {
-                SCMStringBuffer querySet;
-                querySets->str(querySet);
-                Owned<IRoxieQueryPackageManagerSet> querySetManager = createRoxiePackageSetManager(querySet.str());
-                querySetManager->load();
-                globalPackageManagerSets.setValue(querySet.str(), querySetManager.getClear());
-            }
-        }
+        globalPackageSetManager = createRoxiePackageSetManager(standAloneDll.getClear());
+        globalPackageSetManager->load();
         unsigned snifferChannel = numChannels+2; // MORE - why +2 not +1 ??
         ROQ = createOutputQueueManager(snifferChannel, isCCD ? numSlaveThreads : 1);
         ROQ->setHeadRegionSize(headRegionSize);
@@ -996,7 +981,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         setSEHtoExceptionHandler(&abortHandler);
         if (runOnce)
         {
-            Owned <IRoxieListener> roxieServer = createRoxieSocketListener(0, 1, 0, false, "roxie");
+            Owned <IRoxieListener> roxieServer = createRoxieSocketListener(0, 1, 0, false);
             try
             {
                 const char *format = globals->queryProp("format");
@@ -1027,6 +1012,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
             Owned<IPropertyTreeIterator> it = ccdChannels->getElements("RoxieServerProcess");
             ForEach(*it)
             {
+                // MORE - there are assumptions that everyone is a server (in deployment)
                 IPropertyTree &serverInfo = it->query();
                 unsigned port = serverInfo.getPropInt("@port", -1);
                 bool suspended = serverInfo.getPropBool("@suspended", false);
@@ -1091,7 +1077,8 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
     roxieMetrics.clear();
     allRoxieServers.kill();
     stopPerformanceMonitor();
-    globalPackageManagerSets.kill();
+    ::Release(globalPackageSetManager);
+    globalPackageSetManager = NULL;
     cleanupPlugins();
     closeMulticastSockets();
     releaseSlaveDynamicFileCache();
