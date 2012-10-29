@@ -41,7 +41,6 @@ inline cycle_t getTSC() { __asm { __asm _emit 0x0f __asm _emit 0x31 } }
 #elif !defined(_WIN32)
 inline volatile __int64 getTSC()
 {
-   cycle_t x;
    unsigned a, d;
    __asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
    return ((cycle_t)a)|(((cycle_t)d) << 32);

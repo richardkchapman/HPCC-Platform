@@ -298,7 +298,7 @@ class jlib_decl  SpinLock
     atomic_t value;
     unsigned nesting;           // not volatile since it is only accessed by one thread at a time
     struct { volatile ThreadId tid; } owner;
-    inline SpinLock(SpinLock & value) { assert(false); } // dummy to prevent inadvetant use as block
+    inline SpinLock(SpinLock &) { assert(false); } // private dummy to prevent inadvertant use as block
 public:
     inline SpinLock()       
     {   
@@ -384,7 +384,7 @@ class jlib_decl NonReentrantSpinLock
 {
     atomic_t value;
     struct { volatile ThreadId tid; } owner; // atomic
-    inline NonReentrantSpinLock(NonReentrantSpinLock & value) { assert(false); } // dummy to prevent inadvertent use as block
+    inline NonReentrantSpinLock(NonReentrantSpinLock &) { assert(false); } // private dummy to prevent inadvertent use as block
 public:
     inline NonReentrantSpinLock()       
     {

@@ -1181,6 +1181,7 @@ void CJMallocLargeMemoryAllocator::disposechunkmem()
 CFixedSizeAllocator::CFixedSizeAllocator()
 {
     chunklist = NULL;
+
 }
 
 CFixedSizeAllocator::CFixedSizeAllocator(size32_t _allocsize,size32_t _chunksize)
