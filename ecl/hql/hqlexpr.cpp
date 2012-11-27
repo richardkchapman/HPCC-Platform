@@ -9957,6 +9957,9 @@ IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
     case no_if:
         type.set(parms.item(1).queryType());  // It's an error if they don't match, caught elsewhere
         break;
+    case no_chooseds:
+        type.set(parms.item(1).queryType());  // It's an error if they don't match, caught elsewhere
+        break;
     case no_case:
         //following is wrong, but they get removed pretty quickly so I don't really care
         type.set(parms.item(1).queryType());

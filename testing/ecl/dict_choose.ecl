@@ -20,14 +20,14 @@ resistorCodesFR := dataset([{0, 'Noir'},
                             {8, 'Gris'},
                             {9, 'Blanc'}], {unsigned1 value, string color});
 
-string2 lang := 'EN' : STORED('lang');
+integer lang := 1 : STORED('lang');
 
 color2codeEN := DICTIONARY(resistorCodesEN, { color => value});
 code2colorEN := DICTIONARY(resistorCodesEN, { value => color});
 color2codeFR := DICTIONARY(resistorCodesFR, { color => value});
 code2colorFR := DICTIONARY(resistorCodesFR, { value => color});
 
-color2code := MAP(lang='EN'=>color2codeEN, lang='FR'=>color2codeFR, ERROR(color2codeEN, 'Unknown language ' + lang));
+color2code := CHOOSE(lang, color2codeEN, color2codeFR);
 
 integer pow10(integer val) := CASE(val, 0=>1, 1=>10, 2=>100, ERROR('Out of range'));
 

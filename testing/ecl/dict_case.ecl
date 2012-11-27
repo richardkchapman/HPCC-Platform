@@ -27,7 +27,7 @@ code2colorEN := DICTIONARY(resistorCodesEN, { value => color});
 color2codeFR := DICTIONARY(resistorCodesFR, { color => value});
 code2colorFR := DICTIONARY(resistorCodesFR, { value => color});
 
-color2code := CASE(lang, 'EN'=>color2codeEN, 'FR'=>color2codeFR, ERROR('Unknown language ' + lang));
+color2code := CASE(lang, 'EN'=>color2codeEN, 'FR'=>color2codeFR, ERROR(color2codeEN, 'Unknown language ' + lang));
 
 integer pow10(integer val) := CASE(val, 0=>1, 1=>10, 2=>100, ERROR('Out of range'));
 
