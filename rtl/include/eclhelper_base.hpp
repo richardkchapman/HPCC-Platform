@@ -1934,6 +1934,29 @@ class CThorXmlWorkunitWriteArg : public CThorArg, implements IHThorXmlWorkunitWr
     virtual unsigned getFlags()                             { return 0; }
 };
 
+class CThorDictionaryWorkUnitWriteArg : public CThorArg, implements IHThorDictionaryWorkUnitWriteArg
+{
+    virtual void Link() const { RtlCInterface::Link(); }
+    virtual bool Release() const { return RtlCInterface::Release(); }
+    virtual void onCreate(ICodeContext * _ctx, IHThorArg *, MemoryBuffer * in) { ctx = _ctx; }
+    virtual IOutputMetaData * queryOutputMeta() { return NULL; }
+
+    virtual IInterface * selectInterface(ActivityInterfaceEnum which)
+    {
+        switch (which)
+        {
+        case TAIarg:
+        case TAIdictionaryworkunitwritearg_1:
+            return static_cast<IHThorDictionaryWorkUnitWriteArg *>(this);
+        }
+        return NULL;
+    }
+
+    virtual int getSequence()                               { return -3; }
+    virtual const char * queryName()                        { return NULL; }
+    virtual unsigned getFlags()                             { return 0; }
+};
+
 class CThorHashDistributeArg : public CThorArg, implements IHThorHashDistributeArg
 {
     virtual void Link() const { RtlCInterface::Link(); }

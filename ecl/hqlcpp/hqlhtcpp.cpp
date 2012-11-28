@@ -9961,6 +9961,8 @@ ABoundActivity * HqlCppTranslator::doBuildActivityOutput(BuildCtx & ctx, IHqlExp
     IHqlExpression * dataset  = expr->queryChild(0);
     IHqlExpression * rawFilename = queryRealChild(expr, 1);
 
+    if (dataset->isDictionary())
+        return doBuildActivityDictionaryWorkunitWrite(ctx, expr, isRoot);
     if (!rawFilename)
         return doBuildActivityOutputWorkunit(ctx, expr, isRoot);
 
@@ -10674,8 +10676,6 @@ void HqlCppTranslator::buildXmlSerializeUsingMeta(BuildCtx & ctx, IHqlExpression
 
 //-------------------------------------------------------------------------------------------------------------------
 
-//-------------------------------------------------------------------------------------------------------------------
-
 ABoundActivity * HqlCppTranslator::doBuildActivityOutputWorkunit(BuildCtx & ctx, IHqlExpression * expr, bool isRoot)
 {
     IHqlExpression * dataset = expr->queryChild(0);
@@ -10801,6 +10801,57 @@ void HqlCppTranslator::doBuildStmtOutput(BuildCtx & ctx, IHqlExpression * expr)
     args.append(*createTranslated(count));
     args.append(*LINK(queryBoolExpr(expr->hasProperty(extendAtom))));
     buildFunctionCall(ctx, setResultDatasetAtom, args);
+}
+
+
+//-------------------------------------------------------------------------------------------------------------------
+
+ABoundActivity * HqlCppTranslator::doBuildActivityDictionaryWorkunitWrite(BuildCtx & ctx, IHqlExpression * expr, bool isRoot)
+{
+    IHqlExpression * dictionary = expr->queryChild(0);
+    IHqlExpression * record = dictionary->queryRecord();
+    IHqlExpression * seq = querySequence(expr);
+    IHqlExpression * name = queryResultName(expr);
+    int sequence = (int)getIntValue(seq, ResultSequenceInternal);
+
+    assertex(dictionary->getOperator() == no_newuserdictionary);
+    IHqlExpression * dataset = dictionary->queryChild(0);
+
+    Owned<ABoundActivity> boundDataset = buildCachedActivity(ctx, dataset);
+
+    StringBuffer graphLabel;
+    Owned<ActivityInstance> instance = new ActivityInstance(*this, ctx, TAKworkunitwrite, expr, "WorkUnitWrite");
+
+    graphLabel.append(getActivityText(instance->kind)).append("\n");
+    getStoredDescription(graphLabel, seq, name, true);
+    instance->graphLabel.set(graphLabel.str());
+    buildActivityFramework(instance, isRoot && !isInternalSeq(seq));
+
+    buildInstancePrefix(instance);
+
+    noteResultDefined(ctx, instance, seq, name, isRoot);
+
+    //virtual unsigned getFlags()
+    StringBuffer flags;
+
+    doBuildSequenceFunc(instance->classctx, seq, true);
+    if (name)
+    {
+        BuildCtx namectx(instance->startctx);
+        namectx.addQuotedCompound("virtual const char * queryName()");
+        buildReturn(namectx, name, constUnknownVarStringType);
+    }
+
+    //Owned<IWUResult> result = createDatasetResultSchema(seq, name, record, true, false);
+
+    if (flags.length())
+        doBuildUnsignedFunction(instance->classctx, "getFlags", flags.str()+1);
+
+    buildInstanceSuffix(instance);
+
+    buildConnectInputOutput(ctx, instance, boundDataset, 0, 0);
+    associateRemoteResult(*instance, seq, name);
+    return instance->getBoundActivity();
 }
 
 

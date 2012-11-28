@@ -1363,6 +1363,7 @@ public:
     ABoundActivity * doBuildActivityDedup(BuildCtx & ctx, IHqlExpression * expr);
     ABoundActivity * doBuildActivityDefineSideEffect(BuildCtx & ctx, IHqlExpression * expr);
     ABoundActivity * doBuildActivityDenormalize(BuildCtx & ctx, IHqlExpression * expr);
+    ABoundActivity * doBuildActivityDictionaryWorkunitWrite(BuildCtx & ctx, IHqlExpression * expr, bool isRoot);
     ABoundActivity * doBuildActivityDiskAggregate(BuildCtx & ctx, IHqlExpression * expr);
     ABoundActivity * doBuildActivityDiskGroupAggregate(BuildCtx & ctx, IHqlExpression * expr);
     ABoundActivity * doBuildActivityDiskNormalize(BuildCtx & ctx, IHqlExpression * expr);

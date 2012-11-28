@@ -814,6 +814,7 @@ enum ThorActivityKind
     TAKexternalsource,
     TAKexternalsink,
     TAKexternalprocess,
+    TAKdictionaryworkunitwrite,
 
     TAKlast
 };
@@ -959,6 +960,7 @@ enum ActivityInterfaceEnum
     TAIshuffleextra_1,
     TAIhashdeduparg_2,
     TAIsoapcallextra_2,
+    TAIdictionaryworkunitwritearg_1,
 
 //Should remain as last of all meaningful tags, but before aliases
     TAImax,
@@ -2703,6 +2705,14 @@ interface IHThorHashLookupInfo
     virtual ICompare * queryCompare() = 0;
 };
 
+
+struct IHThorDictionaryWorkUnitWriteArg : public IHThorArg
+{
+    virtual int getSequence() = 0;
+    virtual const char * queryName() = 0;
+    virtual unsigned getFlags() = 0;
+    virtual IHThorHashLookupInfo * queryHashLookupInfo() = 0;
+};
 
 //------------------------- Other stuff -------------------------
 

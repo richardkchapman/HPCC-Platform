@@ -9971,6 +9971,7 @@ IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
     case no_null:
     case no_fail:
     case no_anon:
+    case no_workunit_dataset:
     {
         IHqlExpression * record = &parms.item(0);
         IHqlExpression * metadata = queryProperty(_metadata_Atom, parms);

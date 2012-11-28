@@ -1312,6 +1312,9 @@ void ImplicitProjectTransformer::analyseExpr(IHqlExpression * expr)
         if (expr->isConstant())
             return;
         break;
+    case no_workunit_dataset:
+        op = op;
+        break;
     }
 
     ITypeInfo * type = expr->queryType();
@@ -1459,7 +1462,7 @@ void ImplicitProjectTransformer::analyseExpr(IHqlExpression * expr)
                 unsigned first = 0;
                 unsigned last = numArgs;
                 unsigned start = 0;
-                if (!expr->isAction() && !expr->isDataset() && !expr->isDatarow())
+                if (!expr->isAction() && !expr->isDataset() && !expr->isDatarow() && !expr->isDictionary())
                 {
                     switch (op)
                     {
@@ -1627,7 +1630,7 @@ void ImplicitProjectTransformer::analyseExpr(IHqlExpression * expr)
     }
 
     IHqlExpression * record = expr->queryRecord();
-    if (record && !isPatternType(type) && !expr->isTransform() && !expr->isDictionary())
+    if (record && !isPatternType(type) && !expr->isTransform())
     {
         assertex(complexExtra);
         complexExtra->setOriginalRecord(queryBodyComplexExtra(record));
@@ -2166,6 +2169,7 @@ ProjectExprKind ImplicitProjectTransformer::getProjectExprKind(IHqlExpression * 
     case type_groupedtable:
         break;
     case type_dictionary:
+        return FixedInputActivity;
     case type_transform:
         return NonActivity;
     default:
