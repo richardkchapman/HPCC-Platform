@@ -9,8 +9,8 @@ resistorCodes := dataset([{0, 'Black'},
                           {8, 'Grey'},
                           {9, 'White'}], {unsigned1 value, string color});
 
-color2code := DICTIONARY(resistorCodes, { color => value});
-code2color := DICTIONARY(resistorCodes, { value => color});
+color2code := DICTIONARY(resistorCodes, { color => value}) : ONCE;
+code2color := DICTIONARY(resistorCodes, { value => color}) : ONCE;
 
 integer pow10(integer val) := CASE(val, 0=>1, 1=>10, 2=>100, ERROR('Out of range'));
 
