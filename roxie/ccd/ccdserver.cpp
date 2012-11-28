@@ -19353,8 +19353,11 @@ public:
             }
             ReleaseRoxieRow(row);
         }
+#if 0
+        TBD
         if (lResult)
             serverContext->appendResultDeserialized(storedName, sequence, lResult, (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
+#endif
         if (serverContext->outputResultsToWorkUnit())
             serverContext->appendResultRawContext(storedName, sequence, result.length(), result.toByteArray(), processed, (helper.getFlags() & POFextend) != 0, false); // MORE - shame to do extra copy...
     }
@@ -19370,7 +19373,7 @@ public:
     {
         isReread = usageCount > 0;
         Owned<IHThorWorkUnitWriteArg> helper = (IHThorWorkUnitWriteArg *) helperFactory();
-        isInternal = (helper->getSequence()==-3);
+        isInternal = (helper->getSequence()==ResultSequenceInternal);
     }
 
     virtual IRoxieServerActivity *createActivity(IProbeManager *_probeManager) const
@@ -19381,6 +19384,79 @@ public:
 };
 
 IRoxieServerActivityFactory *createRoxieServerWorkUnitWriteActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, unsigned _usageCount, bool _isRoot)
+{
+    return new CRoxieServerWorkUnitWriteActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _usageCount, _isRoot);
+
+}
+
+//=====================================================================================================
+
+class CRoxieServerWorkUnitWriteDictActivity : public CRoxieServerInternalSinkActivity
+{
+    IHThorWorkUnitWriteDictArg &helper;
+    IRoxieServerContext *serverContext;
+
+public:
+    CRoxieServerWorkUnitWriteDictActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
+        : CRoxieServerInternalSinkActivity(_factory, _probeManager), helper((IHThorWorkUnitWriteDictArg &)basehelper)
+    {
+        serverContext = NULL;
+    }
+
+    virtual void onCreate(IRoxieSlaveContext *_ctx, IHThorArg *_colocalParent)
+    {
+        CRoxieServerInternalSinkActivity::onCreate(_ctx, _colocalParent);
+        serverContext = ctx->queryServerContext();
+        if (!serverContext)
+        {
+            throw MakeStringException(ROXIE_PIPE_ERROR, "Write Dictionary activity cannot be executed in slave context");
+        }
+    }
+
+    virtual void onExecute()
+    {
+        int sequence = helper.getSequence();
+        const char *storedName = helper.queryName();
+        assertex(storedName && *storedName);
+        assertex(sequence < 0);
+
+        __int64 initialProcessed = processed;
+        RtlLinkedDictionaryBuilder builder(rowAllocator, helper.queryHashInfo());
+        loop
+        {
+            const void *row = input->nextInGroup();
+            if (!row)
+            {
+                row = input->nextInGroup();
+                if (!row)
+                    break;
+            }
+            builder.appendOwn(row);
+            processed++;
+        }
+//        serverContext->appendResultDeserialized(storedName, sequence, lResult, (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
+    }
+};
+
+class CRoxieServerWorkUnitWriteDictActivityFactory : public CRoxieServerInternalSinkFactory
+{
+
+public:
+    CRoxieServerWorkUnitWriteDictActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, unsigned _usageCount, bool _isRoot)
+        : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _usageCount, _isRoot)
+    {
+        Owned<IHThorWorkUnitWriteDictArg> helper = (IHThorWorkUnitWriteDictArg *) helperFactory();
+        isInternal = (helper->getSequence()==ResultSequenceInternal);
+    }
+
+    virtual IRoxieServerActivity *createActivity(IProbeManager *_probeManager) const
+    {
+        return new CRoxieServerWorkUnitWriteDictActivity(this, _probeManager);
+    }
+
+};
+
+IRoxieServerActivityFactory *createRoxieServerWorkUnitWriteDictActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, unsigned _usageCount, bool _isRoot)
 {
     return new CRoxieServerWorkUnitWriteActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _usageCount, _isRoot);
 
@@ -19413,7 +19489,7 @@ public:
         : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _usageCount, _isRoot)
     {
         Owned<IHThorRemoteResultArg> helper = (IHThorRemoteResultArg *) helperFactory();
-        isInternal = (helper->getSequence()==-3);
+        isInternal = (helper->getSequence()==ResultSequenceInternal);
     }
 
     virtual IRoxieServerActivity *createActivity(IProbeManager *_probeManager) const
@@ -28419,13 +28495,13 @@ public:
         if (!type || stricmp(type, "temporary"))
         {
             output->outputBeginNested("Temporary", true);
-            ctx->printResults(output, name, (unsigned) -3);
+            ctx->printResults(output, name, (unsigned) ResultSequenceInternal);
             output->outputEndNested("Temporary");
         }
         if (!type || stricmp(type, "global"))
         {
             output->outputBeginNested("Global", true);
-            ctx->printResults(output, name, (unsigned) -1);
+            ctx->printResults(output, name, (unsigned) ResultSequenceStored);
             output->outputEndNested("Global");
         }
         output->outputEndNested("Variables");
@@ -28433,21 +28509,27 @@ public:
 
 };
 
+typedef const byte *row_t;
+typedef row_t * rowset_t;
+MAKEArrayOf(rowset_t, rowset_t, RowsetArray);
+
 class DeserializedDataReader : public CInterface, implements IWorkUnitRowReader
 {
-    const ConstPointerArray &data;
+    const rowset_t data;
+    size32_t count;
     unsigned idx;
 public:
     IMPLEMENT_IINTERFACE;
-    DeserializedDataReader(const ConstPointerArray &_data) : data(_data)
+    DeserializedDataReader(size32_t _count, rowset_t _data)
+    : data(_data), count(_count)
     {
         idx = 0;
     }
     virtual const void * nextInGroup() 
     {
-        if (data.isItem(idx))
+        if (idx < count)
         {
-            const void *row = data.item(idx);
+            const void *row = data[idx];
             if (row)
                 LinkRoxieRow(row);
             idx++;
@@ -28459,7 +28541,8 @@ public:
 
 class CDeserializedResultStore : public CInterface, implements IDeserializedResultStore 
 {
-    PointerArrayOf<ConstPointerArray> stored;
+    RowsetArray stored;
+    UnsignedArray counts;
     PointerIArrayOf<IOutputMetaData> metas;
     mutable SpinLock lock;
 public:
@@ -28468,25 +28551,27 @@ public:
     {
         ForEachItemIn(idx, stored)
         {
-            ConstPointerArray *rows = stored.item(idx);
+            rowset_t rows = stored.item(idx);
             if (rows)
             {
-                ReleaseRoxieRowSet(*rows);
-                delete rows;
+                rtlReleaseRowset(counts.item(idx), (byte**) rows);
             }
         }
     }
-    virtual int addResult(ConstPointerArray *data, IOutputMetaData *meta)
+    virtual int addResult(size32_t count, rowset_t data, IOutputMetaData *meta)
     {
         SpinBlock b(lock);
         stored.append(data);
+        counts.append(count);
         metas.append(meta);
         return stored.ordinality()-1;
     }
-    virtual int appendResult(int oldId, ConstPointerArray *data, IOutputMetaData *meta)
+    virtual int appendResult(int oldId, size32_t count, rowset_t data, IOutputMetaData *meta)
     {
         SpinBlock b(lock);
-        ConstPointerArray *oldData = stored.item(oldId);
+        UNIMPLEMENTED;
+        /*
+        const byte ** *oldData = stored.item(oldId);
         ConstPointerArray *newData = new ConstPointerArray;
         ForEachItemIn(idx, *oldData)
         {
@@ -28501,30 +28586,32 @@ public:
             newData->append(row);       // don't link these rows, because...
         }
         delete data;                    // ...then we don't need to release them when we delete this array
-        // Note that we don't delete the previons ConstPointerArray yet, as it could be in use. 
+        // Note that we don't delete the previous ConstPointerArray yet, as it could be in use.
         return addResult(newData, meta);
+        */
     }
     virtual IWorkUnitRowReader *createDeserializedReader(int id) const
     {
-        return new DeserializedDataReader(*stored.item(id));
+        return new DeserializedDataReader(counts.item(id), stored.item(id));
     }
     virtual void serialize(unsigned & tlen, void * & tgt, int id, ICodeContext *codectx) const
     {
         IOutputMetaData *meta = metas.item(id);
-        ConstPointerArray *data = stored.item(id);
+        rowset_t data = stored.item(id);
+        size32_t count = counts.item(id);
 
         MemoryBuffer result;
-        Owned<IOutputRowSerializer> rowSerializer = meta->createRowSerializer(codectx, 0); // NOTE - we don't have a maningful activity id. Only used for error reporting.
+        Owned<IOutputRowSerializer> rowSerializer = meta->createRowSerializer(codectx, 0); // NOTE - we don't have a meaningful activity id. Only used for error reporting.
         bool grouped = meta->isGrouped();
-        ForEachItemIn(idx, *data)
+        for (size32_t idx = 0; idx<count; idx++)
         {
-            const void *row = data->item(idx);
+            const byte *row = data[idx];
             if (grouped && idx)
                 result.append(row == NULL);
             if (row)
             {
                 CThorDemoRowSerializer serializerTarget(result);
-                rowSerializer->serialize(serializerTarget, (const byte *) row);
+                rowSerializer->serialize(serializerTarget, row);
             }
         }
         tlen = result.length();
@@ -29065,7 +29152,7 @@ public:
             }
         }
     }
-    virtual void appendResultDeserialized(const char *name, unsigned sequence, ConstPointerArray *data, bool extend, IOutputMetaData *meta)
+    virtual void appendResultDeserialized(const char *name, unsigned sequence, size32_t count, rowset_t data, bool extend, IOutputMetaData *meta)
     {
         CriticalBlock b(contextCrit);
         IPropertyTree &ctx = useContext(sequence);
@@ -29075,14 +29162,14 @@ public:
         {
             int old = val->getPropInt("@id", -1);
             assertex(old!=-1);
-            val->setPropInt("@id", resultStore.appendResult(old, data, meta));
+            val->setPropInt("@id", resultStore.appendResult(old, count, data, meta));
         }
         else
         {
             if (!val)
                 val = ctx.addPropTree(name, createPTree());
             val->setProp("@format", "deserialized");
-            val->setPropInt("@id", resultStore.addResult(data, meta));
+            val->setPropInt("@id", resultStore.addResult(count, data, meta));
         }
 
     }

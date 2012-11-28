@@ -1773,6 +1773,16 @@ enum
     POFgrouped          = 0x0002,
 };
 
+interface IHThorHashLookupInfo;
+
+struct IHThorWorkUnitWriteDictArg : public IHThorArg
+{
+    virtual int getSequence() = 0;
+    virtual const char * queryName() = 0;
+    virtual IHThorHashLookupInfo * queryHashInfo();
+    virtual unsigned getFlags() = 0;
+};
+
 struct IHThorWorkUnitWriteArg : public IHThorArg
 {
     virtual int getSequence() = 0;
