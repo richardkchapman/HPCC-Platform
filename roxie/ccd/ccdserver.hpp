@@ -90,8 +90,8 @@ interface IWorkUnitRowReader : public IInterface
 
 interface IDeserializedResultStore : public IInterface
 {
-    virtual int addResult(size32_t count, const byte **data, IOutputMetaData *meta) = 0;
-    virtual int appendResult(int oldId, size32_t count, const byte **data, IOutputMetaData *meta) = 0;
+    virtual int addResult(size32_t count, byte **data, IOutputMetaData *meta) = 0;
+    virtual int appendResult(int oldId, size32_t count, byte **data, IOutputMetaData *meta) = 0;
     virtual IWorkUnitRowReader *createDeserializedReader(int id) const = 0;
     virtual void serialize(unsigned & tlen, void * & tgt, int id, ICodeContext *ctx) const = 0;
 };
@@ -161,7 +161,7 @@ interface IRoxieServerContext : extends IInterface
     virtual IGlobalCodeContext *queryGlobalCodeContext() = 0;
     virtual FlushingStringBuffer *queryResult(unsigned sequence) = 0;
     virtual void setResultXml(const char *name, unsigned sequence, const char *xml) = 0;
-    virtual void appendResultDeserialized(const char *name, unsigned sequence, size32_t count, const byte **data, bool extend, IOutputMetaData *meta) = 0;
+    virtual void appendResultDeserialized(const char *name, unsigned sequence, size32_t count, byte **data, bool extend, IOutputMetaData *meta) = 0;
     virtual void appendResultRawContext(const char *name, unsigned sequence, int len, const void * data, int numRows, bool extend, bool saveInContext) = 0;
     virtual IWorkUnitRowReader *getWorkunitRowReader(const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, IEngineRowAllocator *rowAllocator, bool isGrouped) = 0;
     virtual roxiemem::IRowManager &queryRowManager() = 0;

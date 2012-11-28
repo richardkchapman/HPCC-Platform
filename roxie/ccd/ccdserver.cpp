@@ -19279,18 +19279,18 @@ public:
             rowSerializer.setown(rowAllocator->createRowSerializer(ctx->queryCodeContext()));
         }
         __int64 initialProcessed = processed;
-        ConstPointerArray *lResult = NULL;
+        RtlLinkedDatasetBuilder *builder = NULL;
         if (saveInContext)
-            lResult = new ConstPointerArray;
+            builder = new RtlLinkedDatasetBuilder(rowAllocator);
         loop
         {
             const void *row = input->nextInGroup();
-            if (lResult)
+            if (builder)
             {
                 if (row) 
                     LinkRoxieRow(row);
                 if (row || grouped)
-                    lResult->append(row);
+                    builder->append(row);
             }
             if (grouped && (processed != initialProcessed))
             {
@@ -19311,11 +19311,11 @@ public:
                 row = input->nextInGroup();
                 if (!row)
                     break;
-                if (lResult)
+                if (builder)
                 {
                     if (row) 
                         LinkRoxieRow(row);
-                    lResult->append(row);
+                    builder->append(row);
                 }
             }
             processed++;
@@ -19353,11 +19353,8 @@ public:
             }
             ReleaseRoxieRow(row);
         }
-#if 0
-        TBD
-        if (lResult)
-            serverContext->appendResultDeserialized(storedName, sequence, lResult, (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
-#endif
+        if (builder)
+            serverContext->appendResultDeserialized(storedName, sequence, builder->getcount(), builder->linkrows(), (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
         if (serverContext->outputResultsToWorkUnit())
             serverContext->appendResultRawContext(storedName, sequence, result.length(), result.toByteArray(), processed, (helper.getFlags() & POFextend) != 0, false); // MORE - shame to do extra copy...
     }
@@ -19434,7 +19431,7 @@ public:
             builder.appendOwn(row);
             processed++;
         }
-//        serverContext->appendResultDeserialized(storedName, sequence, lResult, (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
+        serverContext->appendResultDeserialized(storedName, sequence, builder.getcount(), builder.linkrows(), (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
     }
 };
 
@@ -28509,9 +28506,8 @@ public:
 
 };
 
-typedef const byte *row_t;
+typedef byte *row_t;
 typedef row_t * rowset_t;
-MAKEArrayOf(rowset_t, rowset_t, RowsetArray);
 
 class DeserializedDataReader : public CInterface, implements IWorkUnitRowReader
 {
@@ -28541,7 +28537,7 @@ public:
 
 class CDeserializedResultStore : public CInterface, implements IDeserializedResultStore 
 {
-    RowsetArray stored;
+    PointerArrayOf<row_t> stored;
     UnsignedArray counts;
     PointerIArrayOf<IOutputMetaData> metas;
     mutable SpinLock lock;
