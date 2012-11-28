@@ -31,7 +31,7 @@ typeof(color2codeEN) color2code := IF(lang='FR', color2codeFR, color2codeEN);
 
 integer pow10(integer val) := CASE(val, 0=>1, 1=>10, 2=>100, ERROR('Out of range'));
 
-bands := DATASET([], {string band}) : STORED('bands');
+bands := DATASET([{'Red'},{'Red'},{'Red'}], {string band}) : STORED('bands');
 
 getBandValue(string band) := IF(band IN color2code, color2Code[band].value, ERROR('Unrecognised band ' + band));
 
