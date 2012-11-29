@@ -814,6 +814,7 @@ enum ThorActivityKind
     TAKexternalsource,
     TAKexternalsink,
     TAKexternalprocess,
+    TAKworkunitwritedict,
 
     TAKlast
 };
