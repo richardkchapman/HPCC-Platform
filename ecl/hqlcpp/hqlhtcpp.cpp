@@ -5298,7 +5298,7 @@ void HqlCppTranslator::buildHashOfExprsClass(BuildCtx & ctx, const char * name, 
 }
 
 
-void HqlCppTranslator::buildDictionaryHashClass(BuildCtx &ctx, IHqlExpression *record, IHqlExpression *dictionary, StringBuffer &funcName)
+void HqlCppTranslator::buildDictionaryHashClass(IHqlExpression *record, IHqlExpression *dictionary, StringBuffer &funcName)
 {
     BuildCtx declarectx(*code, declareAtom);
     OwnedHqlExpr attr = createAttribute(lookupAtom, LINK(record));
@@ -5314,7 +5314,7 @@ void HqlCppTranslator::buildDictionaryHashClass(BuildCtx &ctx, IHqlExpression *r
         beginNestedClass(classctx, lookupHelperName, "IHThorHashLookupInfo");
         HqlExprArray keyedFields;
         IHqlExpression * payload = record->queryProperty(_payload_Atom);
-        unsigned payloadSize = payload ? getIntValue(payload->queryChild(0)) : 0;
+        unsigned payloadSize = payload ? (unsigned)getIntValue(payload->queryChild(0)) : 0;
         unsigned max = record->numChildren() - payloadSize;
         for (unsigned idx = 0; idx < max; idx++)
         {
@@ -6330,7 +6330,7 @@ ABoundActivity * HqlCppTranslator::buildActivity(BuildCtx & ctx, IHqlExpression 
                 result = doBuildActivitySelectNth(ctx, expr);
                 break;
             case no_selectmap:
-                UNIMPLEMENTED;
+                result = doBuildActivityCreateRow(ctx, expr, false);
                 break;
             case no_join:
             case no_selfjoin:
@@ -10820,7 +10820,7 @@ ABoundActivity * HqlCppTranslator::doBuildActivityDictionaryWorkunitWrite(BuildC
     Owned<ABoundActivity> boundDataset = buildCachedActivity(ctx, dataset);
 
     StringBuffer graphLabel;
-    Owned<ActivityInstance> instance = new ActivityInstance(*this, ctx, TAKworkunitwrite, expr, "WorkUnitWrite");
+    Owned<ActivityInstance> instance = new ActivityInstance(*this, ctx, TAKdictionaryworkunitwrite, expr, "DictionaryWorkUnitWrite");
 
     graphLabel.append(getActivityText(instance->kind)).append("\n");
     getStoredDescription(graphLabel, seq, name, true);
@@ -10843,9 +10843,20 @@ ABoundActivity * HqlCppTranslator::doBuildActivityDictionaryWorkunitWrite(BuildC
     }
 
     //Owned<IWUResult> result = createDatasetResultSchema(seq, name, record, true, false);
+    {
+        StringBuffer lookupHelperName;
+        OwnedHqlExpr dict = createDictionary(no_null, LINK(record));
+        buildDictionaryHashClass(record, dictionary, lookupHelperName);
+
+        BuildCtx funcctx(instance->createctx);
+        StringBuffer s;
+        s.append("virtual IHThorHashLookupInfo * queryHashLookupInfo() { return &").append(lookupHelperName).append("; }");
+        funcctx.addQuoted(s);
+    }
 
     if (flags.length())
         doBuildUnsignedFunction(instance->classctx, "getFlags", flags.str()+1);
+
 
     buildInstanceSuffix(instance);
 

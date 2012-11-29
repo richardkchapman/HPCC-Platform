@@ -11333,11 +11333,11 @@ IHqlExpression * HqlTreeNormalizer::createTransformedBody(IHqlExpression * expr)
     case no_constant:
         return LINK(expr);          // avoid creating an array in default code...
     case no_case:
-        if (isVoidOrDatasetOrList(expr))
+        if (isVoidOrDatasetOrList(expr) || expr->isDictionary())
             return transformCaseToChoose(expr);
         break;
     case no_map:
-        if (isVoidOrDatasetOrList(expr))
+        if (isVoidOrDatasetOrList(expr) || expr->isDictionary())
             return transformMap(expr);
         break;
     case no_transform:

@@ -2233,6 +2233,7 @@ protected:
             }
             break;
         case no_getgraphloopresult:
+        case no_newuserdictionary:
             noteDataset(expr, expr, true);
             return;
 
@@ -2255,7 +2256,7 @@ protected:
         }
 
         bool wasOkToSelect = okToSelect;
-        if (expr->isDataset() || expr->isDictionary())
+        if (expr->isDataset())
         {
             switch (expr->getOperator())
             {

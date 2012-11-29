@@ -2899,6 +2899,7 @@ IHqlExpression * ensureExprType(IHqlExpression * expr, ITypeInfo * type, node_op
     case type_groupedtable:
         if (recordTypesMatch(type, exprType))
             return LINK(expr);
+        assertex(!expr->isDictionary());
         break;
     case type_scope:
     case type_function:
