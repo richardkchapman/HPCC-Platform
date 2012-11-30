@@ -2899,6 +2899,7 @@ IHqlExpression * ensureExprType(IHqlExpression * expr, ITypeInfo * type, node_op
     case type_groupedtable:
         if (recordTypesMatch(type, exprType))
             return LINK(expr);
+        assertex(!expr->isDictionary());
         break;
     case type_scope:
     case type_function:
@@ -9971,6 +9972,7 @@ IHqlExpression *createDictionary(node_operator op, HqlExprArray & parms)
     case no_null:
     case no_fail:
     case no_anon:
+    case no_workunit_dataset:
     {
         IHqlExpression * record = &parms.item(0);
         IHqlExpression * metadata = queryProperty(_metadata_Atom, parms);

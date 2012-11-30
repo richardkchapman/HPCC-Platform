@@ -2274,6 +2274,12 @@ void HqlCppTranslator::buildDatasetAssign(BuildCtx & ctx, const CHqlBoundTarget 
     case no_sectioninput:
         buildDatasetAssign(ctx, target, expr->queryChild(0));
         return;
+    case no_if:
+        buildDatasetAssignIf(ctx, target, expr);
+        return;
+    case no_chooseds:
+        buildDatasetAssignChoose(ctx, target, expr);
+        return;
     case no_serialize:
         if (isDummySerializeDeserialize(expr))
             buildDatasetAssign(ctx, target, expr->queryChild(0)->queryChild(0));
@@ -2858,6 +2864,43 @@ void HqlCppTranslator::buildDatasetAssignChoose(BuildCtx & ctx, IHqlCppDatasetBu
 
         buildDatasetAssign(subctx, target, cur);
     }
+}
+
+
+void HqlCppTranslator::buildDatasetAssignChoose(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr)
+{
+    CHqlBoundExpr cond;
+    buildExpr(ctx, expr->queryChild(0), cond);
+
+    IHqlExpression * last = queryLastNonAttribute(expr);
+    BuildCtx subctx(ctx);
+    IHqlStmt * switchstmt = subctx.addSwitch(cond.expr);
+    ForEachChildFrom(i, expr, 1)
+    {
+        IHqlExpression * cur = expr->queryChild(i);
+        if (cur != last)
+        {
+            OwnedHqlExpr label = getSizetConstant(i);
+            subctx.addCase(switchstmt, label);
+        }
+        else
+            subctx.addDefault(switchstmt);
+
+        buildDatasetAssign(subctx, target, cur);
+    }
+}
+
+
+void HqlCppTranslator::buildDatasetAssignIf(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr)
+{
+    BuildCtx subctx(ctx);
+    IHqlStmt * filter = buildFilterViaExpr(subctx, expr->queryChild(0));
+    buildDatasetAssign(subctx, target, expr->queryChild(1));
+
+    IHqlExpression * elseExpr = expr->queryChild(2);
+    assertex(elseExpr);
+    subctx.selectElse(filter);
+    buildDatasetAssign(subctx, target, elseExpr);
 }
 
 
@@ -4354,7 +4397,7 @@ IReferenceSelector * HqlCppTranslator::buildDatasetSelectMap(BuildCtx & ctx, IHq
 
     OwnedHqlExpr dataset = normalizeAnyDatasetAliases(expr->queryChild(0));
     BoundRow * row = NULL;
-    assertex(canProcessInline(&ctx, expr));
+    //assertex(canProcessInline(&ctx, expr));
 
     if (!row)
     {

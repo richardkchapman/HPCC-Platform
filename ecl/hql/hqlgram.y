@@ -7285,7 +7285,6 @@ scopedDictionaryId
                                 $$.setExpr(e2);
                             }
                         }
-/*
     | dictionaryFunction '('
                         {
                             parser->beginFunctionCall($1);
@@ -7294,7 +7293,6 @@ scopedDictionaryId
                         {
                             $$.setExpr(parser->bindParameters($1, $4.getExpr()));
                         }
-*/
     ;
 
 globalScopedDictionaryId
@@ -10781,6 +10779,20 @@ datasetFunction
                             $$.setExpr($2.getExpr());
                         }
     | startCompoundExpression reqparmdef beginInlineFunctionToken optDefinitions RETURN dataSet ';' endInlineFunctionToken
+                        {
+                            Owned<ITypeInfo> retType = $1.getType();
+                            $$.setExpr(parser->leaveLamdaExpression($6), $8);
+                        }
+    ;
+
+dictionaryFunction
+    : DICTIONARY_FUNCTION
+    | moduleScopeDot DICTIONARY_FUNCTION leaveScope
+                        {
+                            $1.release();
+                            $$.setExpr($2.getExpr());
+                        }
+    | startCompoundExpression reqparmdef beginInlineFunctionToken optDefinitions RETURN dictionary ';' endInlineFunctionToken
                         {
                             Owned<ITypeInfo> retType = $1.getType();
                             $$.setExpr(parser->leaveLamdaExpression($6), $8);

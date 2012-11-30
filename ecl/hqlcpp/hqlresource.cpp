@@ -1223,7 +1223,10 @@ IHqlExpression * ResourcerInfo::createSpilledRead(IHqlExpression * spillReason)
         IHqlExpression * recordCountAttr = queryRecordCountInfo(original);
         if (recordCountAttr)
             args.append(*LINK(recordCountAttr));
-        dataset.setown(createDataset(no_workunit_dataset, args));
+        if (original->isDictionary())
+            dataset.setown(createDictionary(no_workunit_dataset, args));
+        else
+            dataset.setown(createDataset(no_workunit_dataset, args));
     }
     else
     {
@@ -1720,7 +1723,7 @@ bool ResourcerInfo::isSpilledWrite()
 
 IHqlExpression * ResourcerInfo::wrapRowOwn(IHqlExpression * expr)
 {
-    if (!original->isDataset())
+    if (!original->isDataset() && !original->isDictionary())
         expr = createRow(no_selectnth, expr, getSizetConstant(1));
     return expr;
 }
@@ -2167,7 +2170,7 @@ protected:
                     if (isCompoundAggregate(ds))
                         break;
 
-                    if (!expr->isDatarow() && !expr->isDataset())
+                    if (!expr->isDatarow() && !expr->isDataset() && !expr->isDictionary())
                     {
                         if (queryHoistDataset(ds))
                         {
@@ -2201,7 +2204,7 @@ protected:
             {
                 IHqlExpression * rhs = expr->queryChild(1);
                 //if rhs is a new, evaluatable, dataset then we want to add it
-                if (rhs->isDataset() && isEvaluateable(rhs))
+                if ((rhs->isDataset() || rhs->isDictionary()) && isEvaluateable(rhs))
                 {
                     if (queryNoteDataset(rhs))
                         return;
@@ -2215,7 +2218,7 @@ protected:
             return;
         case no_globalscope:
         case no_evalonce:
-            if (expr->isDataset() || expr->isDatarow())
+            if (expr->isDataset() || expr->isDatarow() || expr->isDictionary())
                 noteDataset(expr, expr->queryChild(0), true);
             else
                 noteScalar(expr, expr->queryChild(0));
@@ -2230,8 +2233,10 @@ protected:
             }
             break;
         case no_getgraphloopresult:
+        case no_newuserdictionary:
             noteDataset(expr, expr, true);
             return;
+
         case no_selectnth:
             if (expr->queryChild(1)->isConstant())
             {
@@ -2296,20 +2301,20 @@ protected:
             {
                 IHqlExpression * cond = expr->queryChild(0);
                 analyseExpr(cond);
-                if (expr->isDataset() || expr->isDatarow())
+                if (expr->isDataset() || expr->isDatarow())// || expr->isDictionary())
                     conditionalDepth++;
                 doAnalyseChildren(expr, 1);
-                if (expr->isDataset() || expr->isDatarow())
+                if (expr->isDataset() || expr->isDatarow())// || expr->isDictionary())
                     conditionalDepth--;
                 break;
             }
         case no_mapto:
             {
                 analyseExpr(expr->queryChild(0));
-                if (expr->isDataset() || expr->isDatarow())
+                if (expr->isDataset() || expr->isDatarow() || expr->isDictionary())
                     conditionalDepth++;
                 analyseExpr(expr->queryChild(1));
-                if (expr->isDataset() || expr->isDatarow())
+                if (expr->isDataset() || expr->isDatarow() || expr->isDictionary())
                     conditionalDepth--;
                 break;
             }
@@ -2407,6 +2412,9 @@ protected:
         //Don't hoist an alias - it could create unnecessary duplicate spills - hoist its input
         if (ds->getOperator() == no_dataset_alias)
             return false;
+
+        if (ds->getOperator() == no_newuserdictionary)
+            return true;
 
         //Not allowed to hoist
         if (isContextDependent(ds, (conditionalDepth == 0), true))
@@ -4184,7 +4192,7 @@ IHqlExpression * EclResourcer::replaceResourcedReferences(ResourcerInfo * info, 
                 replacement.setown(createResourced(&cur, NULL, false, false));
 
             IHqlExpression * original = &info->originalChildDependents.item(i);
-            if (!original->isDataset() && !original->isDatarow())
+            if (!original->isDataset() && !original->isDatarow() && !original->isDictionary())
                 replacement.setown(getScalarReplacement(original, replacement));
 
             replacements.append(*replacement.getClear());

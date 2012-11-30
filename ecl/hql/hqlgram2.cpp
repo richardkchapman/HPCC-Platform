@@ -3654,6 +3654,14 @@ ITypeInfo *HqlGram::checkPromoteIfType(attribute &a1, attribute &a2)
         checkDatarow(a2);
         return NULL;
     }
+    if (a1.isDictionary() || a2.isDictionary())
+    {
+        OwnedHqlExpr right = a2.getExpr();
+        a2.setExpr(checkEnsureRecordsMatch(a1.queryExpr(), right, a2, true));
+        checkDictionary(a1);
+        checkDictionary(a2);
+        return NULL;
+    }
 
     checkCompatible(a1.queryExprType(), a2.queryExprType(), a2);
     ITypeInfo *t1 = a1.queryExprType();
@@ -8987,6 +8995,7 @@ void HqlGram::defineSymbolProduction(attribute & nameattr, attribute & paramattr
                 case type_record:
                 case type_row:
                 case type_transform:
+                case type_dictionary:
                     break;
                 default:
                     expr.setown(forceEnsureExprType(expr, type));
