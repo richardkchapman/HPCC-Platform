@@ -19254,6 +19254,8 @@ public:
         }
     }
 
+    virtual bool needsAllocator() const { return true; }
+
     virtual void onExecute() 
     {
         int sequence = helper.getSequence();
@@ -19390,12 +19392,12 @@ IRoxieServerActivityFactory *createRoxieServerWorkUnitWriteActivityFactory(unsig
 
 class CRoxieServerWorkUnitWriteDictActivity : public CRoxieServerInternalSinkActivity
 {
-    IHThorWorkUnitWriteDictArg &helper;
+    IHThorDictionaryWorkUnitWriteArg &helper;
     IRoxieServerContext *serverContext;
 
 public:
     CRoxieServerWorkUnitWriteDictActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
-        : CRoxieServerInternalSinkActivity(_factory, _probeManager), helper((IHThorWorkUnitWriteDictArg &)basehelper)
+        : CRoxieServerInternalSinkActivity(_factory, _probeManager), helper((IHThorDictionaryWorkUnitWriteArg &)basehelper)
     {
         serverContext = NULL;
     }
@@ -19410,6 +19412,8 @@ public:
         }
     }
 
+    virtual bool needsAllocator() const { return true; }
+
     virtual void onExecute()
     {
         int sequence = helper.getSequence();
@@ -19418,7 +19422,7 @@ public:
         assertex(sequence < 0);
 
         __int64 initialProcessed = processed;
-        RtlLinkedDictionaryBuilder builder(rowAllocator, helper.queryHashInfo());
+        RtlLinkedDictionaryBuilder builder(rowAllocator, helper.queryHashLookupInfo());
         loop
         {
             const void *row = input->nextInGroup();
@@ -19442,7 +19446,7 @@ public:
     CRoxieServerWorkUnitWriteDictActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, unsigned _usageCount, bool _isRoot)
         : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _usageCount, _isRoot)
     {
-        Owned<IHThorWorkUnitWriteDictArg> helper = (IHThorWorkUnitWriteDictArg *) helperFactory();
+        Owned<IHThorDictionaryWorkUnitWriteArg> helper = (IHThorDictionaryWorkUnitWriteArg *) helperFactory();
         isInternal = (helper->getSequence()==ResultSequenceInternal);
     }
 
@@ -19455,7 +19459,7 @@ public:
 
 IRoxieServerActivityFactory *createRoxieServerWorkUnitWriteDictActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, unsigned _usageCount, bool _isRoot)
 {
-    return new CRoxieServerWorkUnitWriteActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _usageCount, _isRoot);
+    return new CRoxieServerWorkUnitWriteDictActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _usageCount, _isRoot);
 
 }
 

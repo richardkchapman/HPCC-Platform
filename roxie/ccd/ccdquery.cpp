@@ -412,7 +412,7 @@ protected:
             return createRoxieServerParseActivityFactory(id, subgraphId, *this, helperFactory, kind, this);
         case TAKworkunitwrite:
             return createRoxieServerWorkUnitWriteActivityFactory(id, subgraphId, *this, helperFactory, kind, usageCount(node), isRootAction(node));
-        case TAKworkunitwritedict:
+        case TAKdictionaryworkunitwrite:
             return createRoxieServerWorkUnitWriteDictActivityFactory(id, subgraphId, *this, helperFactory, kind, usageCount(node), isRootAction(node));
         case TAKpiperead:
             return createRoxieServerPipeReadActivityFactory(id, subgraphId, *this, helperFactory, kind);
