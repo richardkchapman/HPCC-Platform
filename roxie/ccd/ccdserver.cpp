@@ -28537,6 +28537,13 @@ public:
         }
         return NULL;
     }
+    virtual void getResultRowset(size32_t & tcount, byte * * & tgt)
+    {
+        tcount = count;
+        if (data)
+            rtlLinkRowset(data);
+        tgt = data;
+    }
 };
 
 class CDeserializedResultStore : public CInterface, implements IDeserializedResultStore 
@@ -29774,24 +29781,8 @@ public:
     {
         try
         {
-            bool atEOG = true;
             Owned<IWorkUnitRowReader> wuReader = getWorkunitRowReader(stepname, sequence, xmlTransformer, _rowAllocator, isGrouped);
-            RtlLinkedDatasetBuilder builder(_rowAllocator);
-            loop
-            {
-                const void *ret = wuReader->nextInGroup();
-                if (!ret)
-                {
-                    if (atEOG || !isGrouped)
-                        break;
-                    atEOG = true;
-                }
-                else
-                    atEOG = false;
-                builder.appendOwn(ret);
-            }
-            tcount = builder.getcount();
-            tgt = builder.linkrows();
+            wuReader->getResultRowset(tcount, tgt);
         }
         catch (IException * e)
         {
@@ -29848,7 +29839,43 @@ public:
         }
     }
 
-    class RawDataReader : public CInterface, implements IWorkUnitRowReader
+    class WorkUnitRowReaderBase : public CInterface, implements IWorkUnitRowReader
+    {
+    protected:
+        Linked<IEngineRowAllocator> rowAllocator;
+        bool isGrouped;
+
+    public:
+        IMPLEMENT_IINTERFACE;
+        WorkUnitRowReaderBase(IEngineRowAllocator *_rowAllocator, bool _isGrouped)
+            : rowAllocator(_rowAllocator), isGrouped(_isGrouped)
+        {
+
+        }
+
+        virtual void getResultRowset(size32_t & tcount, byte * * & tgt)
+        {
+            bool atEOG = true;
+            RtlLinkedDatasetBuilder builder(rowAllocator);
+            loop
+            {
+                const void *ret = nextInGroup();
+                if (!ret)
+                {
+                    if (atEOG || !isGrouped)
+                        break;
+                    atEOG = true;
+                }
+                else
+                    atEOG = false;
+                builder.appendOwn(ret);
+            }
+            tcount = builder.getcount();
+            tgt = builder.linkrows();
+        }
+    };
+
+    class RawDataReader : public WorkUnitRowReaderBase
     {
     protected:
         const IRoxieContextLogger &logctx;
@@ -29858,8 +29885,6 @@ public:
         CThorStreamDeserializerSource rowSource;
         bool eof;
         bool eogPending;
-        bool isGrouped;
-        Linked<IEngineRowAllocator> rowAllocator;
         Owned<IOutputRowDeserializer> rowDeserializer;
 
         virtual bool nextBlock(unsigned & tlen, void * & tgt, void * & base) = 0;
@@ -29877,9 +29902,8 @@ public:
         }
 
     public:
-        IMPLEMENT_IINTERFACE;
         RawDataReader(CRoxieServerContext *parent, IEngineRowAllocator *_rowAllocator, bool _isGrouped)
-            : logctx(*parent), rowAllocator(_rowAllocator), isGrouped(_isGrouped)
+            : WorkUnitRowReaderBase(_rowAllocator, _isGrouped), logctx(*parent)
         {
             eof = false;
             eogPending = false;
@@ -30022,17 +30046,16 @@ public:
         }
     };
 
-    class InlineXmlDataReader : public CInterface, implements IWorkUnitRowReader
+    class InlineXmlDataReader : public WorkUnitRowReaderBase
     {
         Linked<IPropertyTree> xml;
         Owned <XmlColumnProvider> columns;
         Owned<IPropertyTreeIterator> rows;
         IXmlToRowTransformer &rowTransformer;
-        Linked<IEngineRowAllocator> rowAllocator;
     public:
         IMPLEMENT_IINTERFACE;
-        InlineXmlDataReader(IXmlToRowTransformer &_rowTransformer, IPropertyTree *_xml, IEngineRowAllocator *_rowAllocator) 
-            : xml(_xml), rowTransformer(_rowTransformer), rowAllocator(_rowAllocator)
+        InlineXmlDataReader(IXmlToRowTransformer &_rowTransformer, IPropertyTree *_xml, IEngineRowAllocator *_rowAllocator, bool _isGrouped)
+            : WorkUnitRowReaderBase(_rowAllocator, _isGrouped), xml(_xml), rowTransformer(_rowTransformer)
         {
             columns.setown(new XmlDatasetColumnProvider);
             rows.setown(xml->getElements("Row")); // NOTE - the 'hack for Gordon' as found in thorxmlread is not implemented here. Does it need to be ?
@@ -30082,7 +30105,7 @@ public:
                     if (!format || strcmp(format, "xml") == 0)
                     {
                         if (xmlTransformer)
-                            return new InlineXmlDataReader(*xmlTransformer, val, rowAllocator);
+                            return new InlineXmlDataReader(*xmlTransformer, val, rowAllocator, isGrouped);
                     }
                     else if (strcmp(format, "raw") == 0)
                     {

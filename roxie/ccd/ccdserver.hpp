@@ -86,6 +86,7 @@ interface IRoxieServerLoopResultProcessor;
 interface IWorkUnitRowReader : public IInterface
 {
     virtual const void * nextInGroup() = 0;
+    virtual void getResultRowset(size32_t & tcount, byte * * & tgt) = 0;
 };
 
 interface IDeserializedResultStore : public IInterface
