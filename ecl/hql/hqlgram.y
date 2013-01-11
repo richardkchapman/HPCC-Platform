@@ -175,6 +175,7 @@ static void eclsyntaxerror(HqlGram * parser, const char * s, short yystate, int 
   ECLCRC
   ELSE
   ELSEIF
+  EMBED
   EMBEDDED
   _EMPTY_
   ENCODING
@@ -182,6 +183,7 @@ static void eclsyntaxerror(HqlGram * parser, const char * s, short yystate, int 
   ENCRYPTED
   END
   ENDCPP
+  ENDEMBED
   ENTH
   ENUM
   TOK_ERROR
@@ -1003,8 +1005,32 @@ macro
 
 cppBodyText
     : CPPBODY           {
+                            OwnedHqlExpr language = createConstant("c++");
                             OwnedHqlExpr cpp = $1.getExpr();
-                            $$.setExpr(parser->processCppBody($1, cpp), $1);
+                            $$.setExpr(parser->processCppBody($1, cpp, language), $1);
+                        }
+    | embedPrefix CPPBODY
+                        {
+                            parser->normalizeExpression($1, type_string, true);
+                            OwnedHqlExpr language = $1.getExpr();
+                            OwnedHqlExpr cpp = $2.getExpr();
+                            $$.setExpr(parser->processCppBody($2, cpp, language), $1);
+                        }
+    | EMBED '(' expression ',' expression ')'
+                        {
+                            parser->normalizeExpression($3, type_string, true);
+                            parser->normalizeExpression($5, type_string, true);
+                            OwnedHqlExpr language = $3.getExpr();
+                            OwnedHqlExpr cpp = $5.getExpr();
+                            $$.setExpr(parser->processCppBody($5, cpp, language), $1);
+                        }
+    ;
+
+embedPrefix
+    : EMBED '(' expression ')'
+                        {
+                            parser->getLexer()->enterEmbeddedMode();
+                            $$.inherit($3);
                         }
     ;
 
