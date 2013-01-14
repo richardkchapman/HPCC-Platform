@@ -804,6 +804,19 @@ const char * cppSystemText[]  = {
     "   _linkcounted_ row(dummyRecord) dictionaryLookup(boolean meta, _linkcounted_ dictionary dict, row key, _linkcounted_ row defaultrow) : eclrtl,include,pure,entrypoint='rtlDictionaryLookup';",
     "    boolean dictionaryLookupExists(boolean meta, _linkcounted_ dictionary dict, row key) : eclrtl,include,pure,entrypoint='rtlDictionaryLookupExists';",
 
+    // Marshalling parameters to external languages - the ctx here is actually NOT the codectx
+    "   bindSignedParam(const varstring name, integer val) : ctxmethod,entrypoint='bindSignedParam';",
+    "   bindUnsignedParam(const varstring name, unsigned val) : ctxmethod,entrypoint='bindUnsignedParam';",
+    "   bindStringParam(const varstring name, const string val) : ctxmethod,entrypoint='bindStringParam';",
+    "   bindVStringParam(const varstring name, const varstring val) : ctxmethod,entrypoint='bindvStringParam';",  // Not yet used
+    "   bindRealParam(const varstring name, real val) : ctxmethod,entrypoint='bindRealParam';",
+
+    "   real getRealResult() : ctxmethod,entrypoint='getRealResult';",
+    "   integer getSignedResult() : ctxmethod,entrypoint='getSignedResult';",
+    "   string getStringResult() : ctxmethod,entrypoint='getStringResult';",
+    "   unsigned getUnsignedResult() : ctxmethod,entrypoint='getUnsignedResult';",
+
+    "   compileEmbeddedScript(const varstring script) : ctxmethod,entrypoint='compileEmbeddedScript';",
     "   END;",
     NULL };
 

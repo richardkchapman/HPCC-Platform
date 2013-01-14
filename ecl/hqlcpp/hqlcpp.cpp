@@ -1089,15 +1089,16 @@ void buildClearPointer(BuildCtx & ctx, IHqlExpression * expr, CompilerType compi
     ctx.addQuoted(s);
 }
 
-void insertUniqueString(StringAttrArray & array, const char * text)
+bool insertUniqueString(StringAttrArray & array, const char * text)
 {
     ForEachItemIn(idx, array)
     {
         StringAttrItem & cur = array.item(idx);
         if (stricmp(cur.text, text) == 0)
-            return;
+            return false;
     }
     array.append(* new StringAttrItem(text));
+    return true;
 }
 
 HqlCppInstance::HqlCppInstance(IWorkUnit *_wu, const char * _wupathname)
@@ -1239,9 +1240,9 @@ void HqlCppInstance::useInclude(const char * include)
     insertUniqueString(includes, include);
 }
 
-void HqlCppInstance::useLibrary(const char * libname)
+bool HqlCppInstance::useLibrary(const char * libname)
 {
-    insertUniqueString(modules, libname);
+    return insertUniqueString(modules, libname);
 }
 
 void HqlCppInstance::addHint(const char * hintXml, ICodegenContextCallback * ctxCallback)
@@ -7241,6 +7242,9 @@ void HqlCppTranslator::doBuildExprCppBody(BuildCtx & ctx, IHqlExpression * expr,
         throwError(HQLERR_EmbeddedCppNotAllowed);
 
     processCppBodyDirectives(expr);
+    IHqlExpression *languageAttr = expr->queryProperty(languageAtom);
+    assertex(languageAttr != NULL);
+
     StringBuffer text;
     expr->queryChild(0)->queryValue()->getStringValue(text);
     text.setLength(cleanupEmbeddedCpp(text.length(), (char*)text.str()));
@@ -11254,6 +11258,45 @@ void HqlCppTranslator::expandFunctionPrototype(BuildCtx & ctx, IHqlExpression * 
 }
 
 //Replace no_param with whatever they will have been bound to
+static IHqlExpression *createActualFromFormal(IHqlExpression *param)
+{
+    StringBuffer paramNameText, temp;
+    ITypeInfo *paramType = param->queryType();
+    CHqlBoundExpr bound;
+
+    //Case is significant if these parameters are use for BEGINC++ sections
+    _ATOM paramName = param->queryName();
+    paramNameText.clear().append(paramName).toLowerCase();
+
+    Linked<ITypeInfo> type = paramType;
+    switch (paramType->getTypeCode())
+    {
+    case type_set:
+        {
+            appendCapital(temp.clear().append("isAll"), paramNameText);
+            bound.isAll.setown(createVariable(temp.str(), makeBoolType()));
+        }
+        //fall through
+    case type_string:
+    case type_qstring:
+    case type_data:
+    case type_unicode:
+    case type_utf8:
+    case type_dictionary:
+    case type_table:
+    case type_groupedtable:
+        if (paramType->getSize() == UNKNOWN_LENGTH)
+        {
+            appendCapital(temp.clear().append("len"), paramNameText);
+            bound.length.setown(createVariable(temp.str(), LINK(sizetType)));
+        }
+        type.setown(makeReferenceModifier(LINK(type)));
+        break;
+    }
+    bound.expr.setown(createVariable(paramNameText.str(), LINK(type)));
+    return bound.getTranslatedExpr();
+}
+
 static IHqlExpression * replaceInlineParameters(IHqlExpression * funcdef, IHqlExpression * expr)
 {
     IHqlExpression * body = funcdef->queryChild(0);
@@ -11265,41 +11308,7 @@ static IHqlExpression * replaceInlineParameters(IHqlExpression * funcdef, IHqlEx
     ForEachChild(i, formals)
     {
         IHqlExpression * param = formals->queryChild(i);
-        ITypeInfo *paramType = param->queryType();
-        CHqlBoundExpr bound;
-        
-        //Case is significant if these parameters are use for BEGINC++ sections
-        _ATOM paramName = param->queryName();
-        paramNameText.clear().append(paramName).toLowerCase();
-
-        Linked<ITypeInfo> type = paramType;
-        switch (paramType->getTypeCode())
-        {
-        case type_set:
-            {
-                appendCapital(temp.clear().append("isAll"), paramNameText);
-                bound.isAll.setown(createVariable(temp.str(), makeBoolType()));
-            }
-            //fall through
-        case type_string:
-        case type_qstring:
-        case type_data:
-        case type_unicode:
-        case type_utf8:
-        case type_dictionary:
-        case type_table:
-        case type_groupedtable:
-            if (paramType->getSize() == UNKNOWN_LENGTH)
-            {
-                appendCapital(temp.clear().append("len"), paramNameText);
-                bound.length.setown(createVariable(temp.str(), LINK(sizetType)));
-            }
-            type.setown(makeReferenceModifier(LINK(type)));
-            break;
-        } 
-        bound.expr.setown(createVariable(paramNameText.str(), LINK(type)));
-        OwnedHqlExpr replacement = bound.getTranslatedExpr();
-        simpleTransformer.setMapping(param, replacement);
+        simpleTransformer.setMapping(param, createActualFromFormal(param));
     }
 
     return simpleTransformer.transformRoot(expr);
@@ -11371,12 +11380,13 @@ void HqlCppTranslator::buildFunctionDefinition(IHqlExpression * funcdef)
         IHqlExpression * cppBody = bodyCode->queryChild(0);
         if (cppBody->getOperator() == no_record)
             cppBody = bodyCode->queryChild(1);
-
+        IHqlExpression *languageAttr = bodyCode->queryProperty(languageAtom);
+        assertex(languageAttr != NULL);
+        IHqlExpression *language = languageAttr->queryChild(0);
         StringBuffer text;
         cppBody->queryValue()->getStringValue(text);
         //remove #option, and remove /r so we don't end up with mixed format end of lines.
         text.setLength(cleanupEmbeddedCpp(text.length(), (char*)text.str()));
-
         const char * start = text.str();
         loop
         {
@@ -11387,29 +11397,100 @@ void HqlCppTranslator::buildFunctionDefinition(IHqlExpression * funcdef)
                 break;
             start++;
         }
-
         const char * body = start;
-        const char * cppSeparatorText = "#body";
-        const char * separator = strstr(body, cppSeparatorText);
-        if (separator)
+        bool isCpp = matchesConstantString(language, "c++", true);
+        if (isCpp)
         {
-            text.setCharAt(separator-text.str(), 0);
-            if (location)
-                funcctx.addLine(locationFilename, startLine);
-            funcctx.addQuoted(body);
-            if (location)
-                funcctx.addLine();
+            const char * cppSeparatorText = "#body";
+            const char * separator = strstr(body, cppSeparatorText);
+            if (separator)
+            {
+                text.setCharAt(separator-text.str(), 0);
+                if (location)
+                    funcctx.addLine(locationFilename, startLine);
+                funcctx.addQuoted(body);
+                if (location)
+                    funcctx.addLine();
 
-            body = separator + strlen(cppSeparatorText);
-            if (*body == '\r') body++;
-            if (*body == '\n') body++;
-            startLine += memcount(body-start, start, '\n');
+                body = separator + strlen(cppSeparatorText);
+                if (*body == '\r') body++;
+                if (*body == '\n') body++;
+                startLine += memcount(body-start, start, '\n');
+            }
         }
-
         funcctx.addQuotedCompound(s);
         if (location)
             funcctx.addLine(locationFilename, startLine);
-        funcctx.addQuoted(body);
+        if (isCpp)
+            funcctx.addQuoted(body);
+        else
+        {
+            StringBuffer languageName;
+            getStringValue(languageName, language, "");
+            languageName.toLowerCase().append("LanguageHelper");
+            code->addPlugin(languageName, "", false);
+            if (useLibrary(languageName))
+            {
+                BuildCtx protoctx(*code, options.spanMultipleCpp ? mainprototypesAtom : prototypeAtom);
+                VStringBuffer proto("namespace %s { extern IForeignPlugin* getPlugin(); };", languageName.str());
+                protoctx.addQuoted(proto.str());
+            }
+
+            VStringBuffer foreignCtx("IForeignFunctionContext *ctx = %s::getPlugin()->createCallContext();", languageName.str());
+            funcctx.addQuoted(foreignCtx.str());
+            HqlExprArray scriptArgs;
+            scriptArgs.append(*LINK(cppBody));
+            buildFunctionCall(funcctx, compileEmbeddedScriptAtom, scriptArgs);
+            IHqlExpression *formals = funcdef->queryChild(1);
+            ForEachChild(i, formals)
+            {
+                HqlExprArray args;
+                IHqlExpression * param = formals->queryChild(i);
+                ITypeInfo *paramType = param->queryType();
+                _ATOM paramName = param->queryName();
+                StringBuffer paramNameText;
+                paramNameText.append(paramName).toLowerCase();
+                args.append(*createConstant(paramNameText));
+                _ATOM bindFunc;
+                switch (paramType->getTypeCode())
+                {
+                case type_int:
+                    bindFunc = paramType->isSigned() ? bindSignedParamAtom : bindUnsignedParamAtom;
+                    break;
+                case type_varstring:
+                case type_string:
+                    bindFunc = bindStringParamAtom;
+                    break;
+                case type_real:
+                    bindFunc = bindRealParamAtom;
+                    break;
+                default:
+                    UNIMPLEMENTED;
+                }
+                args.append(*createActualFromFormal(param));
+                buildFunctionCall(funcctx, bindFunc, args);
+            }
+            funcctx.addQuoted("ctx->callFunction();");
+            _ATOM returnFunc;
+            switch (returnType->getTypeCode())
+            {
+            case type_int:
+                returnFunc = returnType->isSigned() ? getSignedResultAtom : getUnsignedResultAtom;
+                break;
+            case type_varstring:
+            case type_string:
+                returnFunc = getStringResultAtom;
+                break;
+            case type_real:
+                returnFunc = getRealResultAtom;
+                break;
+            default:
+                UNIMPLEMENTED;
+            }
+            HqlExprArray noargs;
+            OwnedHqlExpr call = bindFunctionCall(returnFunc, noargs);
+            doBuildUserFunctionReturn(funcctx, returnType, call);
+        }
         if (location)
             funcctx.addLine();
     }
@@ -11926,9 +12007,9 @@ void HqlCppTranslator::useFunction(IHqlExpression * func)
     code->useFunction(func);
 }
 
-void HqlCppTranslator::useLibrary(const char * libname)
+bool HqlCppTranslator::useLibrary(const char * libname)
 {
-    code->useLibrary(libname);
+    return code->useLibrary(libname);
 }
 
 //===========================================================================

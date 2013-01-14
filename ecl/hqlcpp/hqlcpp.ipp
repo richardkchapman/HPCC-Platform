@@ -138,7 +138,7 @@ public:
     
     bool useFunction(IHqlExpression * funcdef);
     void useInclude(const char * include);
-    void useLibrary(const char * libname);
+    bool useLibrary(const char * libname);
     unsigned addStringResource(unsigned len, const char * body);
     void addHint(const char * hintXml, ICodegenContextCallback * ctxCallback);
 
@@ -902,7 +902,7 @@ public:
     void reportErrorDirect(IHqlExpression * location, int code,const char *msg, bool alwaysAbort);
     void addWorkunitException(WUExceptionSeverity severity, unsigned code, const char * msg, IHqlExpression * location);
     void useFunction(IHqlExpression * funcdef);
-    void useLibrary(const char * libname);
+    bool useLibrary(const char * libname);
     void finalizeResources();
     void generateStatistics(const char * targetDir);
 

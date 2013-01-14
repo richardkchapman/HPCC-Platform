@@ -834,8 +834,8 @@ IHqlExpression * HqlGram::convertToOutOfLineFunction(const ECLlocation & errpos,
 IHqlExpression * HqlGram::processCppBody(const attribute & errpos, IHqlExpression * cpp, IHqlExpression * language)
 {
     HqlExprArray args;
-    cpp->unwindList(args, no_comma);  // Why? Can only be a single constant string expression, as far as I can see
-    args.append(*LINK(language));
+    cpp->unwindList(args, no_comma);
+    args.append(*createAttribute(languageAtom, LINK(language)));
 
     Linked<ITypeInfo> type = current_type;
     if (!type)
