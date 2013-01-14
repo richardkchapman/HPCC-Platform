@@ -731,7 +731,7 @@ ECLRTL_API bool rtlGPF();
 
 //-----------------------------------------------------------------------------
 
-interface IForeignFunctionContext
+interface IForeignFunctionContext : extends IInterface
 {
     virtual void bindRealParam(const char *name, double val) = 0;
     virtual void bindSignedParam(const char *name, __int64 val) = 0;
@@ -748,7 +748,7 @@ interface IForeignFunctionContext
     virtual void callFunction() = 0;
 };
 
-interface IForeignPlugin
+interface IForeignPlugin : extends IInterface
 {
     virtual IForeignFunctionContext *createCallContext() = 0;
     // MORE - add syntax checked here!

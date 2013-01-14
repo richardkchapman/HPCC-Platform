@@ -11435,9 +11435,9 @@ void HqlCppTranslator::buildFunctionDefinition(IHqlExpression * funcdef)
                 VStringBuffer proto("namespace %s { extern IForeignPlugin* getPlugin(); };", languageName.str());
                 protoctx.addQuoted(proto.str());
             }
-
-            VStringBuffer foreignCtx("IForeignFunctionContext *ctx = %s::getPlugin()->createCallContext();", languageName.str());
+            VStringBuffer foreignCtx("Owned<IForeignPlugin> __plugin = %s::getPlugin();", languageName.str());
             funcctx.addQuoted(foreignCtx.str());
+            funcctx.addQuoted("Owned<IForeignFunctionContext> ctx = __plugin->createCallContext();");
             HqlExprArray scriptArgs;
             scriptArgs.append(*LINK(cppBody));
             buildFunctionCall(funcctx, compileEmbeddedScriptAtom, scriptArgs);

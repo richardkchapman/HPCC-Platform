@@ -13,16 +13,39 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ################################################################################
-add_subdirectory (auditlib)
-add_subdirectory (debugservices)
-add_subdirectory (fileservices)
-add_subdirectory (logging)
-add_subdirectory (parselib)
-add_subdirectory (stringlib)
-add_subdirectory (unicodelib)
-add_subdirectory (workunitservices)
-if ("${BUILD_LEVEL}" STREQUAL "COMMUNITY")
-  add_subdirectory (proxies)
-endif ()
 
-add_subdirectory (javascriptLanguageHelper)
+
+# Component: javascriptLanguageHelper
+
+#####################################################
+# Description:
+# ------------
+#    Cmake Input File for javascriptLanguageHelper
+#####################################################
+
+set ( toolsdir "${HPCC_SOURCE_DIR}/tools" )
+
+
+project( javascriptLanguageHelper )
+
+set (    SRCS
+         javascriptLanguageHelper.cpp
+    )
+
+include_directories (
+         ./../../system/include
+         ./../../rtl/eclrtl
+         ./../../rtl/include
+         ./../../system/jlib
+    )
+
+ADD_DEFINITIONS( -D_USRDLL -DJAVASCRIPTLANGUAGEHELPER_EXPORTS )
+
+HPCC_ADD_LIBRARY( javascriptLanguageHelper SHARED ${SRCS} )
+install ( TARGETS javascriptLanguageHelper DESTINATION plugins )
+
+target_link_libraries ( javascriptLanguageHelper
+    v8
+    eclrtl
+    jlib
+    )
