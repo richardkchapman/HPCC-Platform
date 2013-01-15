@@ -19,6 +19,7 @@
 #include "v8.h"
 #include "eclrtl.hpp"
 #include "jexcept.hpp"
+#include "jthread.hpp"
 
 namespace javascriptLanguageHelper {
 
@@ -120,6 +121,16 @@ protected:
     v8::Persistent<v8::Value> result;
 };
 
+__thread V8JavascriptForeignContext * theContext;
+__thread ThreadTermFunc threadHookChain;
+
+static void releaseContext()
+{
+    ::Release(theContext);
+    if (threadHookChain)
+        (*threadHookChain)();
+}
+
 class V8JavascriptForeignPlugin : public CInterfaceOf<IForeignPlugin>
 {
 public:
@@ -129,9 +140,15 @@ public:
     }
     virtual IForeignFunctionContext *createCallContext()
     {
-        return new V8JavascriptForeignContext;
+        if (!theContext)
+        {
+            theContext = new V8JavascriptForeignContext;
+            threadHookChain = addThreadTermFunc(releaseContext);
+        }
+        return LINK(theContext);
     }
 } thePlugin;
+
 
 extern IForeignPlugin* getPlugin()
 {
