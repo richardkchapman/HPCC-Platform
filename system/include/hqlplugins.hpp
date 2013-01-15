@@ -20,10 +20,11 @@
 
 #define PLUGIN_VERSION 2
 
-#define PLUGIN_IMPLICIT_MODULE 1
-#define PLUGIN_DLL_MODULE      4
-#define PLUGIN_MULTIPLE_VERSIONS      8
-#define ZOMBIE_MODULE         32
+#define PLUGIN_IMPLICIT_MODULE    1
+#define PLUGIN_DLL_MODULE         4
+#define PLUGIN_MULTIPLE_VERSIONS  8
+#define PLUGIN_LANGUAGE_HELPER   16
+#define ZOMBIE_MODULE            32
 #define PLUGIN_SAVEMASK       0x0ff
 
 struct ECLPluginDefinitionBlock

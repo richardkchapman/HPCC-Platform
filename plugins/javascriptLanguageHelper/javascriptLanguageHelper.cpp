@@ -20,6 +20,37 @@
 #include "eclrtl.hpp"
 #include "jexcept.hpp"
 #include "jthread.hpp"
+#include "hqlplugins.hpp"
+
+#ifdef _WIN32
+#define EXPORT __declspec(dllexport)
+#else
+#define EXPORT
+#endif
+
+static const char * compatibleVersions[] = {
+    "JAVASCRIPT 1.0.0",
+    NULL };
+
+static const char *version = "V8JavaScriptHelper 1.1.14";
+
+extern "C" EXPORT bool getECLPluginDefinition(ECLPluginDefinitionBlock *pb)
+{
+    if (pb->size == sizeof(ECLPluginDefinitionBlockEx))
+    {
+        ECLPluginDefinitionBlockEx * pbx = (ECLPluginDefinitionBlockEx *) pb;
+        pbx->compatibleVersions = compatibleVersions;
+    }
+    else if (pb->size != sizeof(ECLPluginDefinitionBlock))
+        return false;
+    pb->magicVersion = PLUGIN_VERSION;
+    pb->version = version;
+    pb->moduleName = NULL;
+    pb->ECL = NULL;
+    pb->flags = PLUGIN_LANGUAGE_HELPER | PLUGIN_MULTIPLE_VERSIONS;
+    pb->description = "V8 Javascript language helper";
+    return true;
+}
 
 namespace javascriptLanguageHelper {
 
