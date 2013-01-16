@@ -282,7 +282,7 @@ void ViewTransformerRegistry::addFieldUnicodeTransformer(const char * name, unic
 
 void ViewTransformerRegistry::addPlugins(const char * name)
 {
-    loadedPlugins.setown(new SafePluginMap(&pluginCtx, true));
+    loadedPlugins.setown(new SafePluginMap(&pluginCtx, true, PLUGIN_DLL_MODULE));
     loadedPlugins->loadFromList(name);
 
     ThrowingErrorReceiver errors;

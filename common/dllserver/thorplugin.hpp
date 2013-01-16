@@ -61,10 +61,11 @@ class DLLSERVER_API SafePluginMap : public CInterface
     IPluginContextEx * pluginCtx;
     MapStringToMyClass<ILoadedDllEntry> map;
     CriticalSection crit;
+    unsigned flags;
     bool trace;
 public:
-    SafePluginMap(IPluginContextEx * _pluginCtx, bool _trace) 
-    : pluginCtx(_pluginCtx), map(true), trace(_trace)
+    SafePluginMap(IPluginContextEx * _pluginCtx, bool _trace, unsigned _flags)
+    : pluginCtx(_pluginCtx), map(true), trace(_trace), flags(_flags)
     {
         assertex(pluginCtx);
     }

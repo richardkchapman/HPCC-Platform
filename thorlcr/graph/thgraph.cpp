@@ -2334,7 +2334,7 @@ CJobBase::CJobBase(const char *_graphName) : graphName(_graphName)
     codeCtx = NULL;
     mpJobTag = TAG_NULL;
     timeReporter = createStdTimeReporter();
-    pluginMap = new SafePluginMap(&pluginCtx, true);
+    pluginMap = new SafePluginMap(&pluginCtx, true, PLUGIN_DLL_MODULE|PLUGIN_LANGUAGE_HELPER);
 
 // JCSMORE - Will pass down at job creation time...
     jobGroup.set(&::queryClusterGroup());

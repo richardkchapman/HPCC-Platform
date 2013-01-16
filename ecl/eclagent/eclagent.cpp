@@ -1823,7 +1823,7 @@ void EclAgent::loadDependencies(IConstWorkUnit * wu)
 
     if (pluginsList.length())
     {
-        pluginMap = new SafePluginMap(&PluginCtx, traceLevel > 0);
+        pluginMap = new SafePluginMap(&PluginCtx, traceLevel > 0, PLUGIN_DLL_MODULE|PLUGIN_LANGUAGE_HELPER);
         pluginMap->loadFromList(pluginsList.str());
     }
 }

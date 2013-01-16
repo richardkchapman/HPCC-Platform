@@ -2392,7 +2392,7 @@ extern void loadPlugins()
 {
     if (pluginDirectory.length() && isDirectory(pluginDirectory.str()))
     {
-        plugins = new SafePluginMap(&PluginCtx, traceLevel >= 1);
+        plugins = new SafePluginMap(&PluginCtx, traceLevel >= 1, PLUGIN_DLL_MODULE|PLUGIN_LANGUAGE_HELPER);
         plugins->loadFromDirectory(pluginDirectory);
     }
 }

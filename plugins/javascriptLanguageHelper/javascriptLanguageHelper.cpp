@@ -45,7 +45,7 @@ extern "C" EXPORT bool getECLPluginDefinition(ECLPluginDefinitionBlock *pb)
         return false;
     pb->magicVersion = PLUGIN_VERSION;
     pb->version = version;
-    pb->moduleName = NULL;
+    pb->moduleName = "javascript";
     pb->ECL = NULL;
     pb->flags = PLUGIN_LANGUAGE_HELPER | PLUGIN_MULTIPLE_VERSIONS;
     pb->description = "V8 Javascript language helper";

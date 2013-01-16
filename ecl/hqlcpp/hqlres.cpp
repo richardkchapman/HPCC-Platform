@@ -477,7 +477,7 @@ void ResourceManager::flush(const char *filename, bool flushText, bool target64b
         throwError1(HQLERR_ResourceCreateFailed, msg.str());
     }
 #else
-    UNIMPLEMENTED;
+ //   UNIMPLEMENTED;
 #endif
     if (flushText)
         flushAsText(filename);

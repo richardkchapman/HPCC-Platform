@@ -95,7 +95,7 @@ class PluginDll : public HelperDll
 public:
     PluginDll(const char *_name, const IFileIO *_dllFile) : HelperDll(_name, _dllFile) {}
 
-    bool init(IPluginContextEx * pluginCtx);
+    bool init(IPluginContextEx * pluginCtx, unsigned flags);
 
     virtual bool checkVersion(const char *expected);
     virtual void logLoaded();
@@ -264,7 +264,7 @@ extern bool getResourceFromFile(const char *filename, MemoryBuffer &data, const 
 
 //-------------------------------------------------------------------------------------------------------------------
 
-bool PluginDll::init(IPluginContextEx * pluginCtx)
+bool PluginDll::init(IPluginContextEx * pluginCtx, unsigned flags)
 {
     HINSTANCE h = getInstance();
     assertex(h != (HINSTANCE) -1);
@@ -290,6 +290,8 @@ bool PluginDll::init(IPluginContextEx * pluginCtx)
         pb.size = sizeof(ECLPluginDefinitionBlock);
         if (!p(&pb))
             return false;
+        if ((pb.flags & flags) == 0)
+            return false;   // wrong kind of plugin
     }
     return true;
 }
@@ -446,7 +448,7 @@ bool SafePluginMap::addPlugin(const char *path, const char *dllname)
         if (!dll)
         {
             Owned<PluginDll> n = new PluginDll(path, NULL);
-            if (!n->load(true, false) || !n->init(pluginCtx))
+            if (!n->load(true, false) || !n->init(pluginCtx, flags))
                 throw MakeStringException(0, "Failed to load plugin %s", path);
             if (trace)
                 n->logLoaded();
