@@ -144,9 +144,7 @@ public:
     virtual void getStringResult(size32_t &__len, char * &__result)
     {
         std::string str = ::Rcpp::as<std::string>(result);
-        __len = str.length();
-        __result = (char *)rtlMalloc(__len);
-        memcpy(__result, str.data(), __len);
+        rtlStrToStrX(__len, __result, str.length(), str.data());
     }
     virtual void getUTF8Result(size32_t &chars, char * &result)
     {

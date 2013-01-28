@@ -296,6 +296,7 @@ public:
     }
     virtual unsigned __int64 getUnsignedResult()
     {
+        assertex(result);
         return (__int64) PyLong_AsUnsignedLongLong(result);
     }
     virtual void getStringResult(size32_t &__len, char * &__result)
@@ -307,13 +308,25 @@ public:
         __result = (char *)rtlMalloc(__len);
         memcpy(__result, chars, __len);
     }
-    virtual void getUTF8Result(size32_t &chars, char * &result)
+    virtual void getUTF8Result(size32_t &__chars, char * &__result)
     {
-        UNIMPLEMENTED;
+        assertex(result);
+        OwnedPyObject utf8 = PyUnicode_AsUTF8String(result);
+        size_t lenBytes = PyString_Size(utf8);
+        const char * text =  PyString_AsString(utf8);
+        checkPythonError();
+        size32_t numchars = rtlUtf8Length(lenBytes, text);
+        rtlUtf8ToStrX(__chars, __result, numchars, text);
     }
-    virtual void getUnicodeResult(size32_t &chars, UChar * &result)
+    virtual void getUnicodeResult(size32_t &__chars, UChar * &__result)
     {
-        UNIMPLEMENTED;
+        assertex(result);
+        OwnedPyObject utf8 = PyUnicode_AsUTF8String(result);
+        size_t lenBytes = PyString_Size(utf8);
+        const char * text =  PyString_AsString(utf8);
+        checkPythonError();
+        size32_t numchars = rtlUtf8Length(lenBytes, text);
+        rtlUtf8ToUnicodeX(__chars, __result, numchars, text);
     }
 
 
@@ -367,11 +380,18 @@ public:
     }
     virtual void bindUTF8Param(const char *name, size32_t chars, const char *val)
     {
-        UNIMPLEMENTED;
+        OwnedPyObject vval = PyUnicode_FromStringAndSize(val, chars);   // MORE - is it in bytes or chars?
+        PyDict_SetItemString(locals, name, vval);
     }
     virtual void bindUnicodeParam(const char *name, size32_t chars, const UChar *val)
     {
-        UNIMPLEMENTED;
+        // You don't really know what size Py_UNICODE is (varies from system to system), so go via utf8
+        unsigned unicodeChars;
+        char *unicode;
+        rtlUnicodeToUtf8X(unicodeChars, unicode, chars, val);
+        OwnedPyObject vval = PyUnicode_FromStringAndSize(unicode, unicodeChars);   // MORE - is it in bytes or chars?
+        PyDict_SetItemString(locals, name, vval);
+        rtlFree(unicode);
     }
 
     virtual void importFunction(const char *text)

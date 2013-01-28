@@ -240,11 +240,28 @@ public:
     inline void getStringResult(jvalue &result, size32_t &__len, char * &__result)
     {
         jstring sresult = (jstring) result.l;
-        __len = JNIenv->GetStringUTFLength(sresult);
-        const char * chars =  JNIenv->GetStringUTFChars(sresult, NULL);
-        __result = (char *)rtlMalloc(__len);
-        memcpy(__result, chars, __len);
-        JNIenv->ReleaseStringUTFChars(sresult, chars);
+        size_t size = JNIenv->GetStringUTFLength(sresult);  // in bytes
+        const char *text =  JNIenv->GetStringUTFChars(sresult, NULL);
+        size32_t chars = rtlUtf8Length(size, text);
+        rtlUtf8ToStrX(__len, __result, chars, text);
+        JNIenv->ReleaseStringUTFChars(sresult, text);
+    }
+    inline void getUTF8Result(jvalue &result, size32_t &__chars, char * &__result)
+    {
+        jstring sresult = (jstring) result.l;
+        size_t size = JNIenv->GetStringUTFLength(sresult); // Returns length in bytes (not chars)
+        const char * text =  JNIenv->GetStringUTFChars(sresult, NULL);
+        rtlUtf8ToUtf8X(__chars, __result, rtlUtf8Length(size, text), text);
+        JNIenv->ReleaseStringUTFChars(sresult, text);
+    }
+    inline void getUnicodeResult(jvalue &result, size32_t &__chars, UChar * &__result)
+    {
+        jstring sresult = (jstring) result.l;
+        size_t size = JNIenv->GetStringUTFLength(sresult);  // in bytes
+        const char *text =  JNIenv->GetStringUTFChars(sresult, NULL);
+        size32_t chars = rtlUtf8Length(size, text);
+        rtlUtf8ToUnicodeX(__chars, __result, chars, text);
+        JNIenv->ReleaseStringUTFChars(sresult, text);
     }
 private:
     StringAttr returnType;
@@ -288,13 +305,13 @@ public:
     {
         sharedCtx->getStringResult(result, __len, __result);
     }
-    virtual void getUTF8Result(size32_t &chars, char * &result)
+    virtual void getUTF8Result(size32_t &__chars, char * &__result)
     {
-        UNIMPLEMENTED;
+        sharedCtx->getUTF8Result(result, __chars, __result);
     }
-    virtual void getUnicodeResult(size32_t &chars, UChar * &result)
+    virtual void getUnicodeResult(size32_t &__chars, UChar * &__result)
     {
-        UNIMPLEMENTED;
+        sharedCtx->getUnicodeResult(result, __chars, __result);
     }
 
 
@@ -322,24 +339,39 @@ public:
     }
     virtual void bindStringParam(const char *name, size32_t len, const char *val)
     {
-        StringBuffer s(len, val);
         jvalue v;
-        v.l = sharedCtx->JNIenv->NewStringUTF(s.str());
+        unsigned unicodeChars;
+        UChar *unicode;
+        rtlStrToUnicodeX(unicodeChars, unicode, len, val);
+        v.l = sharedCtx->JNIenv->NewString(unicode, unicodeChars);
+        rtlFree(unicode);
         addArg(v);
     }
     virtual void bindVStringParam(const char *name, const char *val)
     {
         jvalue v;
-        v.l = sharedCtx->JNIenv->NewStringUTF(val);
+        unsigned unicodeChars;
+        UChar *unicode;
+        rtlStrToUnicodeX(unicodeChars, unicode, strlen(val), val);
+        v.l = sharedCtx->JNIenv->NewString(unicode, unicodeChars);
+        rtlFree(unicode);
         addArg(v);
     }
-    virtual void bindUTF8Param(const char *name, size32_t chars, const char *val)
+    virtual void bindUTF8Param(const char *name, size32_t numchars, const char *val)
     {
-        UNIMPLEMENTED;
+        jvalue v;
+        unsigned unicodeChars;
+        UChar *unicode;
+        rtlUtf8ToUnicodeX(unicodeChars, unicode, numchars, val);
+        v.l = sharedCtx->JNIenv->NewString(unicode, unicodeChars);
+        rtlFree(unicode);
+        addArg(v);
     }
-    virtual void bindUnicodeParam(const char *name, size32_t chars, const UChar *val)
+    virtual void bindUnicodeParam(const char *name, size32_t numchars, const UChar *val)
     {
-        UNIMPLEMENTED;
+        jvalue v;
+        v.l = sharedCtx->JNIenv->NewString(val, numchars);
+        addArg(v);
     }
 
     virtual void importFunction(const char *text)
