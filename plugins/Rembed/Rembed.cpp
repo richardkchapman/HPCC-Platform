@@ -148,6 +148,14 @@ public:
         __result = (char *)rtlMalloc(__len);
         memcpy(__result, str.data(), __len);
     }
+    virtual void getUTF8Result(size32_t &chars, char * &result)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void getUnicodeResult(size32_t &chars, UChar * &result)
+    {
+        UNIMPLEMENTED;
+    }
 
     virtual void bindBooleanParam(const char *name, bool val)
     {
@@ -173,6 +181,14 @@ public:
     virtual void bindVStringParam(const char *name, const char *val)
     {
         R[name] = val;
+    }
+    virtual void bindUTF8Param(const char *name, size32_t chars, const char *val)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void bindUnicodeParam(const char *name, size32_t chars, const UChar *val)
+    {
+        UNIMPLEMENTED;
     }
 
     virtual void importFunction(const char *text)

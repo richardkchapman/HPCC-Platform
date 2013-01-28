@@ -811,12 +811,16 @@ const char * cppSystemText[]  = {
     "   bindUnsignedParam(const varstring name, unsigned val) : method,entrypoint='bindUnsignedParam';",
     "   bindStringParam(const varstring name, const string val) : method,entrypoint='bindStringParam';",
     "   bindVStringParam(const varstring name, const varstring val) : method,entrypoint='bindvStringParam';",  // Not yet used
+    "   bindUTF8Param(const varstring name, const utf8 val) : method,entrypoint='bindUTF8Param';",
+    "   bindUnicodeParam(const varstring name, const unicode val) : method,entrypoint='bindUnicodeParam';",
 
     "   boolean getBooleanResult() : method,entrypoint='getBooleanResult';",
     "   real getRealResult() : method,entrypoint='getRealResult';",
     "   integer getSignedResult() : method,entrypoint='getSignedResult';",
     "   string getStringResult() : method,entrypoint='getStringResult';",
     "   unsigned getUnsignedResult() : method,entrypoint='getUnsignedResult';",
+    "   utf8 getUF8Result() : method,entrypoint='getUTF8Result';",
+    "   unicode getUnicodeResult() : method,entrypoint='getUnicodeResult';",
 
     "   compileEmbeddedScript(const varstring script) : method,entrypoint='compileEmbeddedScript';",
     "   import(const varstring script) : method,entrypoint='importFunction';",

@@ -307,6 +307,15 @@ public:
         __result = (char *)rtlMalloc(__len);
         memcpy(__result, chars, __len);
     }
+    virtual void getUTF8Result(size32_t &chars, char * &result)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void getUnicodeResult(size32_t &chars, UChar * &result)
+    {
+        UNIMPLEMENTED;
+    }
+
 
 protected:
     PythonThreadContext *sharedCtx;
@@ -355,6 +364,14 @@ public:
     {
         OwnedPyObject vval = PyString_FromString(val);
         PyDict_SetItemString(locals, name, vval);
+    }
+    virtual void bindUTF8Param(const char *name, size32_t chars, const char *val)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void bindUnicodeParam(const char *name, size32_t chars, const UChar *val)
+    {
+        UNIMPLEMENTED;
     }
 
     virtual void importFunction(const char *text)
@@ -411,6 +428,14 @@ public:
     virtual void bindVStringParam(const char *name, const char *val)
     {
         addArg(PyString_FromString(val));
+    }
+    virtual void bindUTF8Param(const char *name, size32_t chars, const char *val)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void bindUnicodeParam(const char *name, size32_t chars, const UChar *val)
+    {
+        UNIMPLEMENTED;
     }
 
     virtual void importFunction(const char *text)

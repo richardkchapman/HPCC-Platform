@@ -115,6 +115,14 @@ public:
         v8::HandleScope handle_scope;
         context->Global()->Set(v8::String::New(name), v8::String::New(val));
     }
+    virtual void bindUTF8Param(const char *name, size32_t chars, const char *val)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void bindUnicodeParam(const char *name, size32_t chars, const UChar *val)
+    {
+        UNIMPLEMENTED;
+    }
 
     virtual bool getBooleanResult()
     {
@@ -149,6 +157,14 @@ public:
         __len = strlen(chars);
         __result = (char *)rtlMalloc(__len);
         memcpy(__result, chars, __len);
+    }
+    virtual void getUTF8Result(size32_t &chars, char * &result)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void getUnicodeResult(size32_t &chars, UChar * &result)
+    {
+        UNIMPLEMENTED;
     }
 
     virtual void compileEmbeddedScript(const char *text)
