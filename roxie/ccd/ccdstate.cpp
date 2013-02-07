@@ -1304,12 +1304,11 @@ private:
             ForEach(*ids)
             {
                 const char *id = ids->query().queryProp("@id");
-                if (!id)
-                    throw MakeStringException(ROXIE_MISSING_PARAMS, "Query name missing");
                 Owned<IQueryFactory> query = getQuery(id, logctx);
-                if (!query)
-                    throw MakeStringException(ROXIE_MISSING_PARAMS, "Query %s not found", id);
-                query->getQueryInfo(reply, full, logctx);
+                if (query)
+                    query->getQueryInfo(reply, full, logctx);
+                else
+                    reply.appendf(" <Query id=\"%s\" error=\"Query not found\"/>");
             }
         }
         else
