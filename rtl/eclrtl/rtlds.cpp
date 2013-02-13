@@ -665,6 +665,25 @@ extern ECLRTL_API byte *rtlDictionaryLookup(IHThorHashLookupInfo &hashInfo, size
     }
 }
 
+extern ECLRTL_API byte *rtlDictionaryLookupField(const IDictionarySearcher &searcher, size32_t tableSize, byte **table, byte *defaultRow)
+{
+    if (!tableSize)
+        return (byte *) rtlLinkRow(defaultRow);
+    unsigned rowidx = searcher.hash() % tableSize;
+    loop
+    {
+        const void *entry = table[rowidx];
+        if (!entry)
+            return (byte *) rtlLinkRow(defaultRow);
+        if (searcher.matches(entry))
+            return (byte *) rtlLinkRow(entry);
+        rowidx++;
+        if (rowidx==tableSize)
+            rowidx = 0;
+    }
+}
+
+
 extern ECLRTL_API bool rtlDictionaryLookupExists(IHThorHashLookupInfo &hashInfo, size32_t tableSize, byte **table, const byte *source)
 {
     if (!tableSize)

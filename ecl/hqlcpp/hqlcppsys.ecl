@@ -819,10 +819,11 @@ const char * cppSystemText[]  = {
     "   unsigned4 serializerBeginNested() : omethod,entrypoint='beginNested';",
     "   serializerEndNested(unsigned4 pos) : omethod,entrypoint='endNested';",
 
-    // Dictionary support
+// Dictionary support
     "    integer8 dictionaryCount(_linkcounted_ dictionary dict) : eclrtl,include,pure,entrypoint='rtlDictionaryCount';",
-    "   _linkcounted_ row(dummyRecord) dictionaryLookup(boolean meta, _linkcounted_ dictionary dict, row key, _linkcounted_ row defaultrow) : eclrtl,include,pure,entrypoint='rtlDictionaryLookup';",
-    "    boolean dictionaryLookupExists(boolean meta, _linkcounted_ dictionary dict, row key) : eclrtl,include,pure,entrypoint='rtlDictionaryLookupExists';",
+    "   _linkcounted_ row(dummyRecord) dictionaryLookup(IHThorHashLookupInfo meta, _linkcounted_ dictionary dict, row key, _linkcounted_ row defaultrow) : eclrtl,include,pure,entrypoint='rtlDictionaryLookup';",
+    "   _linkcounted_ row(dummyRecord) dictionaryLookupField(IDictionarySearcher search, _linkcounted_ dictionary dict, _linkcounted_ row defaultrow) : eclrtl,include,pure,entrypoint='rtlDictionaryLookupField';",
+    "    boolean dictionaryLookupExists(IHThorHashLookupInfo meta, _linkcounted_ dictionary dict, row key) : eclrtl,include,pure,entrypoint='rtlDictionaryLookupExists';",
     "    boolean dictionaryLookupExistsField(IDictionarySearcher search, _linkcounted_ dictionary dict) : eclrtl,include,pure,entrypoint='rtlDictionaryLookupExistsField';",
     "    boolean DictSearchString(string searchval) : eclrtl,include,pure,entrypoint='DictSearchString';",
     "    boolean DictSearchVString(string searchval) : eclrtl,include,pure,entrypoint='DictSearchVString';",
