@@ -724,39 +724,66 @@ extern ECLRTL_API bool rtlDictionaryLookupExistsField(const IDictionarySearcher 
     }
 }
 
-DictSearchString::DictSearchString(size32_t _searchLen, const char *_searchFor)
-: searchLen(_searchLen), searchFor(_searchFor)
+CDictionarySearch::CDictionarySearch(const CDictionarySearch *_nextField)
+: nextField(_nextField)
 {
 }
 
-unsigned DictSearchString::hash() const
+unsigned CDictionarySearch::hash() const
 {
-    return rtlHash32Data(rtlTrimStrLen(searchLen, searchFor), searchFor, HASH32_INIT);
+    unsigned myHash = doHash(HASH32_INIT);
+    for (const CDictionarySearch *finger = nextField; finger != NULL; finger = finger->nextField)
+        myHash = nextField->doHash(myHash);
+    return myHash;
 }
-bool DictSearchString::matches(const void * _right) const
+bool CDictionarySearch::matches(const void * right) const
 {
-    const char * right = (const char *) _right;
-    return rtlCompareStrStr(searchLen, searchFor, *(size32_t *)right, right+sizeof(size32_t))==0;
+    for (const CDictionarySearch *finger = this; finger != NULL; finger = finger->nextField)
+    {
+        if (!doMatches(right))
+            return false;
+    }
+    return true;
+};
+
+DictSearchString::DictSearchString(size32_t _searchLen, const char *_searchFor, const CDictionarySearch *_nextField)
+: CDictionarySearch(_nextField), searchLen(_searchLen), searchFor(_searchFor)
+{
 }
 
-DictSearchStringN::DictSearchStringN(size32_t _N, size32_t _searchLen, const char *_searchFor)
-: N(_N), DictSearchString(_searchLen, _searchFor)
+unsigned DictSearchString::doHash(unsigned init) const
 {
+    return rtlHash32Data(rtlTrimStrLen(searchLen, searchFor), searchFor, init);
 }
-bool DictSearchStringN::matches(const void * _right) const
+bool DictSearchString::doMatches(const void * &_right) const
 {
     const char * right = (const char *) _right;
+    size32_t len = *(size32_t *) right;
+    _right = right + len + sizeof(size32_t);
+    return rtlCompareStrStr(searchLen, searchFor, len, right+sizeof(size32_t))==0;
+}
+
+DictSearchStringN::DictSearchStringN(size32_t _N, size32_t _searchLen, const char *_searchFor, const CDictionarySearch *_nextField)
+: N(_N), DictSearchString(_searchLen, _searchFor, _nextField)
+{
+}
+bool DictSearchStringN::doMatches(const void * &_right) const
+{
+    const char * right = (const char *) _right;
+    _right = right + N;
     return rtlCompareStrStr(searchLen, searchFor, N, right)==0;
 }
 
-DictSearchVString::DictSearchVString(size32_t _searchLen, const char *_searchFor)
-: DictSearchString(_searchLen, _searchFor)
+DictSearchVString::DictSearchVString(size32_t _searchLen, const char *_searchFor, const CDictionarySearch *_nextField)
+: DictSearchString(_searchLen, _searchFor, _nextField)
 {
 }
-bool DictSearchVString::matches(const void * _right) const
+bool DictSearchVString::doMatches(const void * &_right) const
 {
     const char * right = (const char *) _right;
-    return rtlCompareStrStr(searchLen, searchFor, strlen(right), right)==0;
+    size32_t len = strlen(right);
+    _right = right + len + 1;
+    return rtlCompareStrStr(searchLen, searchFor, len, right)==0;
 }
 
 DictSearchUnicode::DictSearchUnicode(const char *_locale, size32_t _searchLenChars, const UChar *_searchFor)

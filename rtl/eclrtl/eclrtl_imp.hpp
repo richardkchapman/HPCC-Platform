@@ -316,13 +316,25 @@ interface IDictionarySearcher
     virtual bool matches(const void * right) const = 0;
 };
 
-class DictSearchString : implements IDictionarySearcher
+class CDictionarySearch : implements IDictionarySearcher
 {
 public:
-    DictSearchString(size32_t _searchLen, const char *_searchFor);
+    CDictionarySearch(const CDictionarySearch *_nextField);
     virtual unsigned hash() const;
-    virtual bool matches(const void * _right) const;
+    virtual bool matches(const void * right) const;
 protected:
+    virtual unsigned doHash(unsigned init) const = 0;
+    virtual bool doMatches(const void * &right) const = 0;
+    const CDictionarySearch *nextField;
+};
+
+class DictSearchString : public CDictionarySearch
+{
+public:
+    DictSearchString(size32_t _searchLen, const char *_searchFor, const CDictionarySearch *_nextField);
+protected:
+    virtual unsigned doHash(unsigned init) const;
+    virtual bool doMatches(const void * &right) const;
     size32_t searchLen;
     const char *searchFor;
 };
@@ -330,17 +342,18 @@ protected:
 class DictSearchStringN : public DictSearchString
 {
 public:
-    DictSearchStringN(size32_t _N, size32_t _searchLen, const char *_searchFor);
-    virtual bool matches(const void * _right) const;
+    DictSearchStringN(size32_t _N, size32_t _searchLen, const char *_searchFor, const CDictionarySearch *_nextField);
 protected:
+    virtual bool doMatches(const void * &right) const;
     size32_t N;
 };
 
 class DictSearchVString : public DictSearchString
 {
 public:
-    DictSearchVString(size32_t _searchLen, const char *_searchFor);
-    virtual bool matches(const void * _right) const;
+    DictSearchVString(size32_t _searchLen, const char *_searchFor, const CDictionarySearch *_nextField);
+protected:
+    virtual bool doMatches(const void * &right) const;
 };
 
 class DictSearchUnicode : implements IDictionarySearcher
