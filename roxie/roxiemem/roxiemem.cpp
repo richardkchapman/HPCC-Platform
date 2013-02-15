@@ -719,13 +719,14 @@ void HeapletBase::release(const void *ptr)
     }
 }
 
-void HeapletBase::link(const void *ptr)
+const void *HeapletBase::link(const void *ptr)
 {
     if (isValidRoxiePtr(ptr))
     {
         HeapletBase *h = findBase(ptr);
         h->noteLinked(ptr);
     }
+    return ptr;
 }
 
 bool HeapletBase::isShared(const void *ptr)

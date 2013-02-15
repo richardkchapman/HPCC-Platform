@@ -10968,7 +10968,6 @@ ABoundActivity * HqlCppTranslator::doBuildActivityDictionaryWorkunitWrite(BuildC
     IHqlExpression * name = queryResultName(expr);
     int sequence = (int)getIntValue(seq, ResultSequenceInternal);
 
-    assertex(dictionary->getOperator() == no_createdictionary);
     IHqlExpression * dataset = dictionary->queryChild(0);
 
     Owned<ABoundActivity> boundDataset = buildCachedActivity(ctx, dataset);

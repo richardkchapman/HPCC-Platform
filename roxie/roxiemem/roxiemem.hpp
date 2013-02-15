@@ -126,7 +126,7 @@ public:
 
     static void release(const void *ptr);
     static bool isShared(const void *ptr);
-    static void link(const void *ptr);
+    static const void *link(const void *ptr);
     static memsize_t capacity(const void *ptr);
 
     static void setDestructorFlag(const void *ptr);

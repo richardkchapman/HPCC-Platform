@@ -19219,18 +19219,12 @@ IRoxieServerActivityFactory *createRoxieServerParseActivityFactory(unsigned _id,
 
 //=====================================================================================================
 
-class CRoxieServerWorkUnitWriteActivity : public CRoxieServerInternalSinkActivity
+class CRoxieServerWorkUnitWriteBase : public CRoxieServerInternalSinkActivity
 {
-    IHThorWorkUnitWriteArg &helper;
-    bool isReread;
-    bool grouped;
-    IRoxieServerContext *serverContext;
-
 public:
-    CRoxieServerWorkUnitWriteActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _isReread)
-        : CRoxieServerInternalSinkActivity(_factory, _probeManager), helper((IHThorWorkUnitWriteArg &)basehelper), isReread(_isReread)
+    CRoxieServerWorkUnitWriteBase(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _isReread)
+        : CRoxieServerInternalSinkActivity(_factory, _probeManager), isReread(_isReread), grouped(false)
     {
-        grouped = (helper.getFlags() & POFgrouped) != 0;
         serverContext = NULL;
     }
 
@@ -19240,19 +19234,21 @@ public:
         serverContext = ctx->queryServerContext();
         if (!serverContext)
         {
-            throw MakeStringException(ROXIE_PIPE_ERROR, "Pipe output activity cannot be executed in slave context");
+            throw MakeStringException(ROXIE_PIPE_ERROR, "output activity cannot be executed in slave context");
         }
     }
 
     virtual bool needsAllocator() const { return true; }
 
-    virtual void onExecute() 
-    {
-        int sequence = helper.getSequence();
-        const char *storedName = helper.queryName();
-        if (!storedName)
-            storedName = "Dataset";
+protected:
+    bool isReread;
+    bool grouped;
+    IRoxieServerContext *serverContext;
 
+    virtual const void *getNextOutputRow(bool &done) = 0;
+
+    void processAllRows(int sequence, const char *name, bool extend)
+    {
         MemoryBuffer result;
         FlushingStringBuffer *response = NULL;
         bool saveInContext = (int) sequence < 0 || isReread;
@@ -19263,7 +19259,7 @@ public:
         {
             response = serverContext->queryResult(sequence);
             if (response)
-                response->startDataset("Dataset", helper.queryName(), sequence, (helper.getFlags() & POFextend) != 0);
+                response->startDataset("Dataset", name, sequence, extend);
         }
         if (serverContext->outputResultsToWorkUnit()||(response && response->isRaw))
         {
@@ -19272,9 +19268,12 @@ public:
         }
         __int64 initialProcessed = processed;
         RtlLinkedDatasetBuilder builder(rowAllocator);
+        bool done = false;
         loop
         {
-            const void *row = input->nextInGroup();
+            const void *row = getNextOutputRow(done);
+            if (done)
+                break;
             if (saveInContext)
             {
                 if (row || grouped)
@@ -19294,14 +19293,16 @@ public:
                     }
                 }
             }
-            if (!row)
+            while (!row)
             {
-                row = input->nextInGroup();
-                if (!row)
+                row = getNextOutputRow(done);
+                if (done)
                     break;
                 if (saveInContext)
                     builder.append(row);
             }
+            if (done)
+                break;
             processed++;
             if (serverContext->outputResultsToWorkUnit())
             {
@@ -19322,13 +19323,13 @@ public:
                 {
                     CommonXmlWriter xmlwrite(serverContext->getXmlFlags(), 1, response);
                     xmlwrite.outputBeginNested("Row", false);
-                    helper.serializeXml((byte *) row, xmlwrite);
+                    meta.toXML((byte *) row, xmlwrite);
                     xmlwrite.outputEndNested("Row");
                 }
                 else
                 {
                     SimpleOutputWriter x;
-                    helper.serializeXml((byte *) row, x);
+                    meta.toXML((byte *) row, x);
                     x.newline();
                     response->append(x.str());
                 }
@@ -19337,10 +19338,47 @@ public:
             }
             ReleaseRoxieRow(row);
         }
+        const char *storedName = name;
+        if (!storedName)
+            storedName = "Dataset";
         if (saveInContext)
-            serverContext->appendResultDeserialized(storedName, sequence, builder.getcount(), builder.linkrows(), (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
+            serverContext->appendResultDeserialized(storedName, sequence, builder.getcount(), builder.linkrows(), extend, LINK(meta.queryOriginal()));
         if (serverContext->outputResultsToWorkUnit())
-            serverContext->appendResultRawContext(storedName, sequence, result.length(), result.toByteArray(), processed, (helper.getFlags() & POFextend) != 0, false); // MORE - shame to do extra copy...
+            serverContext->appendResultRawContext(storedName, sequence, result.length(), result.toByteArray(), processed, extend, false); // MORE - shame to do extra copy...
+    }
+};
+
+class CRoxieServerWorkUnitWriteActivity : public CRoxieServerWorkUnitWriteBase
+{
+    IHThorWorkUnitWriteArg &helper;
+    bool eogseen;
+public:
+    CRoxieServerWorkUnitWriteActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _isReread)
+        : CRoxieServerWorkUnitWriteBase(_factory, _probeManager, _isReread), helper((IHThorWorkUnitWriteArg &)basehelper)
+    {
+        grouped = (helper.getFlags() & POFgrouped) != 0;
+        eogseen = false;
+    }
+
+    virtual void onExecute()
+    {
+        eogseen = false;
+        processAllRows(helper.getSequence(), helper.queryName(), (helper.getFlags() & POFextend) != 0);
+    }
+
+    virtual const void *getNextOutputRow(bool &done)
+    {
+        const void *next = input->nextInGroup();
+        if (!next)
+        {
+            if (eogseen)
+                done = true;
+            else
+                eogseen = true;
+        }
+        else
+            eogseen = false;
+        return next;
     }
 };
 
@@ -19372,38 +19410,38 @@ IRoxieServerActivityFactory *createRoxieServerWorkUnitWriteActivityFactory(unsig
 
 //=====================================================================================================
 
-class CRoxieServerWorkUnitWriteDictActivity : public CRoxieServerInternalSinkActivity
+class CRoxieServerWorkUnitWriteDictActivity : public CRoxieServerWorkUnitWriteBase
 {
     IHThorDictionaryWorkUnitWriteArg &helper;
-    IRoxieServerContext *serverContext;
+    RtlLinkedDictionaryBuilder *theBuilder;
+    size32_t idx;
 
 public:
     CRoxieServerWorkUnitWriteDictActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
-        : CRoxieServerInternalSinkActivity(_factory, _probeManager), helper((IHThorDictionaryWorkUnitWriteArg &)basehelper)
+        : CRoxieServerWorkUnitWriteBase(_factory, _probeManager, false), helper((IHThorDictionaryWorkUnitWriteArg &)basehelper)
     {
-        serverContext = NULL;
+        theBuilder = NULL;
+        idx = 0;
     }
 
-    virtual void onCreate(IRoxieSlaveContext *_ctx, IHThorArg *_colocalParent)
+    virtual const void *getNextOutputRow(bool &done)
     {
-        CRoxieServerInternalSinkActivity::onCreate(_ctx, _colocalParent);
-        serverContext = ctx->queryServerContext();
-        if (!serverContext)
-        {
-            throw MakeStringException(ROXIE_PIPE_ERROR, "Write Dictionary activity cannot be executed in slave context");
-        }
+        if (idx < theBuilder->getcount())
+            return LinkRoxieRow(theBuilder->queryrows()[idx++]);
+        done = true;
+        return NULL;
     }
-
-    virtual bool needsAllocator() const { return true; }
 
     virtual void onExecute()
     {
         int sequence = helper.getSequence();
         const char *storedName = helper.queryName();
-        assertex(storedName && *storedName);
-        assertex(sequence < 0);
+        if (!storedName)
+            storedName = "Dataset";
 
         RtlLinkedDictionaryBuilder builder(rowAllocator, helper.queryHashLookupInfo());
+        theBuilder = &builder;
+        idx = 0;
         loop
         {
             const void *row = input->nextInGroup();
@@ -19416,8 +19454,11 @@ public:
             builder.appendOwn(row);
             processed++;
         }
-        serverContext->appendResultDeserialized(storedName, sequence, builder.getcount(), builder.linkrows(), (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
-    }
+        if (sequence < 0)
+            serverContext->appendResultDeserialized(storedName, sequence, builder.getcount(), builder.linkrows(), false, LINK(meta.queryOriginal()));
+        else
+            processAllRows(helper.getSequence(), helper.queryName(), false);
+  }
 };
 
 class CRoxieServerWorkUnitWriteDictActivityFactory : public CRoxieServerInternalSinkFactory

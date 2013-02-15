@@ -5892,9 +5892,6 @@ CHThorDictionaryWorkUnitWriteActivity::CHThorDictionaryWorkUnitWriteActivity(IAg
 void CHThorDictionaryWorkUnitWriteActivity::execute()
 {
     int sequence = helper.getSequence();
-    const char *storedName = helper.queryName();
-    assertex(storedName && *storedName);
-    assertex(sequence < 0);
 
     RtlLinkedDictionaryBuilder builder(rowAllocator, helper.queryHashLookupInfo());
     loop
@@ -5911,30 +5908,82 @@ void CHThorDictionaryWorkUnitWriteActivity::execute()
     }
     size32_t usedCount = rtlDictionaryCount(builder.getcount(), builder.queryrows());
 
-    size32_t outputLimit = agent.queryWorkUnit()->getDebugValueInt("outputLimit", defaultWorkUnitWriteLimit) * 0x100000;
-    MemoryBuffer rowdata;
-    CThorDemoRowSerializer out(rowdata);
-    Owned<IOutputRowSerializer> serializer = input->queryOutputMeta()->createDiskSerializer(agent.queryCodeContext(), activityId);
-    rtlSerializeDictionary(out, serializer, builder.getcount(), builder.queryrows());
-    if(outputLimit && (rowdata.length()  > outputLimit))
+    if (sequence >= 0 && agent.queryWriteResultsToStdout())
     {
-        StringBuffer errMsg("Dictionary too large to output to workunit (limit ");
-        errMsg.append(outputLimit/0x100000).append(") megabytes, in result (");
-        const char *name = helper.queryName();
-        if (name)
-            errMsg.append("name=").append(name);
-        else
-            errMsg.append("sequence=").append(helper.getSequence());
-        errMsg.append(")");
-        throw MakeStringException(0, "%s", errMsg.str());
-    }
+        Owned<SimpleOutputWriter> writer = new SimpleOutputWriter;
 
-    WorkunitUpdate w = agent.updateWorkUnit();
-    Owned<IWUResult> result = updateWorkUnitResult(w, helper.queryName(), helper.getSequence());
-    result->setResultRaw(rowdata.length(), rowdata.toByteArray(), ResultFormatRaw);
-    result->setResultStatus(ResultStatusCalculated);
-    result->setResultRowCount(usedCount);
-    result->setResultTotalRowCount(usedCount); // Is this right??
+        if (agent.queryOutputFmt() == ofXML)
+        {
+            StringBuffer sb;
+            const char *name = helper.queryName();
+            if (name && *name)
+                sb.appendf("<Dataset name='%s'>\n", name);
+            else
+                sb.appendf("<Dataset name='Result %d'>\n", sequence+1);
+            agent.queryOutputSerializer()->fwrite(sequence, (const void*)sb.str(), 1, sb.length());
+        }
+
+        size32_t count = builder.getcount();
+        byte **rows = builder.queryrows();
+        for (int idx = 0; idx < count; idx++)
+        {
+            byte *next = rows[idx];
+            if (next)
+            {
+                if (agent.queryOutputFmt() == ofSTD)
+                {
+                    helper.queryOutputMeta()->toXML(next, *writer);
+                    writer->newline();
+                    agent.queryOutputSerializer()->fwrite(sequence, (const void*)writer->str(), 1, writer->length());
+                    writer->clear();
+                }
+                else if (agent.queryOutputFmt() == ofXML)
+                {
+                    CommonXmlWriter xmlwrite(0,1);
+                    xmlwrite.outputBeginNested("Row", false);
+                    helper.queryOutputMeta()->toXML(next, xmlwrite);
+                    xmlwrite.outputEndNested("Row");
+                    agent.queryOutputSerializer()->fwrite(sequence, (const void*)xmlwrite.str(), 1, xmlwrite.length());
+                }
+            }
+        }
+        if (agent.queryOutputFmt() == ofXML)
+        {
+            StringBuffer sb;
+            sb.appendf("</Dataset>\n");
+            agent.queryOutputSerializer()->fwrite(sequence, (const void*)sb.str(), 1, sb.length());
+        }
+        else if (agent.queryOutputFmt() != ofSTD)
+            agent.outputFormattedResult(helper.queryName(), sequence, false);
+
+    }
+    else
+    {
+        size32_t outputLimit = agent.queryWorkUnit()->getDebugValueInt("outputLimit", defaultWorkUnitWriteLimit) * 0x100000;
+        MemoryBuffer rowdata;
+        CThorDemoRowSerializer out(rowdata);
+        Owned<IOutputRowSerializer> serializer = input->queryOutputMeta()->createDiskSerializer(agent.queryCodeContext(), activityId);
+        rtlSerializeDictionary(out, serializer, builder.getcount(), builder.queryrows());
+        if(outputLimit && (rowdata.length()  > outputLimit))
+        {
+            StringBuffer errMsg("Dictionary too large to output to workunit (limit ");
+            errMsg.append(outputLimit/0x100000).append(") megabytes, in result (");
+            const char *name = helper.queryName();
+            if (name)
+                errMsg.append("name=").append(name);
+            else
+                errMsg.append("sequence=").append(helper.getSequence());
+            errMsg.append(")");
+            throw MakeStringException(0, "%s", errMsg.str());
+        }
+
+        WorkunitUpdate w = agent.updateWorkUnit();
+        Owned<IWUResult> result = updateWorkUnitResult(w, helper.queryName(), helper.getSequence());
+        result->setResultRaw(rowdata.length(), rowdata.toByteArray(), ResultFormatRaw);
+        result->setResultStatus(ResultStatusCalculated);
+        result->setResultRowCount(usedCount);
+        result->setResultTotalRowCount(usedCount); // Is this right??
+    }
 }
 
 //=====================================================================================================
