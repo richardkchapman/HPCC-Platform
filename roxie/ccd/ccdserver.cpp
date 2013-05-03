@@ -1164,12 +1164,44 @@ public:
 
     void executeDependencies(unsigned parentExtractSize, const byte *parentExtract, unsigned controlId)
     {
-        //MORE: Create a filtered list and then use asyncfor
+#if 1
+        class casyncfor: public CAsyncFor
+        {
+        public:
+            unsigned parentExtractSize;
+            const byte *parentExtract;
+            unsigned controlId;
+
+            casyncfor(IRoxieServerActivityCopyArray &_dependencies, IntArray &_dependencyControlIds,
+                       unsigned _parentExtractSize, const byte * _parentExtract, unsigned _controlId) :
+                dependencies(_dependencies), dependencyControlIds(_dependencyControlIds),
+                parentExtractSize(_parentExtractSize), parentExtract(_parentExtract), controlId(_controlId)
+            { }
+            void Do(unsigned idx)
+            {
+                try
+                {
+                    if (dependencyControlIds.item(idx) == controlId)
+                        dependencies.item(idx).execute(parentExtractSize, parentExtract);
+                }
+                catch (IException *E)
+                {
+                    // MORE parent.noteException(E);
+                    throw;
+                }
+            }
+        private:
+            IRoxieServerActivityCopyArray &dependencies;
+            IntArray &dependencyControlIds;
+        } afor(dependencies, dependencyControlIds, parentExtractSize, parentExtract, controlId);
+        afor.For(dependencies.ordinality(), 4);
+#else
         ForEachItemIn(idx, dependencies)
         {
             if (dependencyControlIds.item(idx) == controlId)
                 dependencies.item(idx).execute(parentExtractSize, parentExtract);
         }
+#endif
     }
 
     virtual unsigned __int64 queryTotalCycles() const
