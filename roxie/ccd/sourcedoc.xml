@@ -21,6 +21,114 @@
     <title>roxie/ccd</title>
 
     <para>
-        The roxie/ccd directory contains the sources for the roxie/ccd library.
+        The roxie/ccd directory contains the sources for the roxie/ccd library. This is the main 'meat'
+        of the Roxie engine, linked into standalone programs or called from the roxie executable for
+        Roxie server mode.
     </para>
+
+    <para>
+        The name 'ccd' is short for 'ChickCowDog', which comes from an attempt to explain the idea for the Roxie
+        technology to a former boss, who decided it sounded like a farmer trying to keep chickens, cows, and dogs,
+        and treat them all the same. Probably best not to try to think to hard about it...
+    </para>
+
+    <para>
+        The roxie platform's execution of ECL code can be divided into two major roles - the 'server' role, and the
+        'slave' or 'remote' role. The bulk of the logic of an ECL query executes on the server, with a few activities
+        (notably those that fetch data from disk) communicating to slave nodes (running on machines local to the data)
+        to fetch the data that the query requires. The slave code has the intelligence to filter the data so that only
+        the rows (and columns) actually required are returned to the server. While these roles are logically distinct,
+        and it is theoretically possible to set up a roxie system such that servers run on a distinct set of physical
+        machines from slaves, both roles are implemented by the same executable, and in a normal installation every
+        process is both a server and a slave.
+    </para>
+
+    <section>
+        <title>Channels</title>
+        <para>
+            A 'channel' can be thought of as a fraction of the entire data being handled by a Roxie system. Typically
+            the number of channels will be the same as the number of nodes in the cluster, but this does not have to
+            be the case. When a Roxie server communicates with a slave to retrieve data, it first determines the channel
+            that can provide the data it is after - it does this by a simple modulus operation on the file part - and
+            then sends a request to the indicated channel knowing that any slave that is set to process that channel
+            can provide the data. Similarly, when a slave is determining what files to open, it will determine from the
+            channel it has been assigned to which file parts are relevant.
+        </para>
+
+        <para>
+            Typically a given Roxie process operating on a node will actually be listening on more than one channel, but
+            it should be noted that the channels operate independently on such a slave, and that a query requesting data
+            for one channel will only receive data for that channel.
+        </para>
+    </section>
+    <section>
+        <title>Roxie ECL execution</title>
+        <para>
+            Roxie is normally expected to load a query once, and then execute it many times with different inputs.
+            Query execution is therefore split into what can be done at load time (as much as possible) and what has
+            to be done at execution time (as little as possible). At load time, a factory data structure
+            (implementing IQueryFactory) is created.  Within this structure, factories for each activity in the query
+            will have been created - server activity factories (implementing IRoxieServerActivityFactory) for every activity,
+            and slave activity factories (implementing ISlaveActivityFactory) for any activity with a slave component, one
+            per channel that this node is supporting.
+        </para>
+        <para>
+            When a query is received by the server, the corresponding IQueryFactory is located, and the method IQueryFactory::createContext
+            is called to create the execution context for this query. The execution context (implementing IRoxieServerContext)
+            manages the state of the query as it executes, and stores the incoming parameters of the query to be retrieved as needed
+            by the ECL code.
+        </para>
+        <para>
+            To execute a query, the (generated) factory method IEclProcess* createProcess is called, and the IEclProcess::perform method
+            of the resulting object called, passing in the execution context mentioned above. Typically, that method will make one or more
+            calls to ctx->executeGraph(). This causes the following steps:
+            <orderedlist>
+            <listitem>A set of server activities are created by the corresponding server activity factories</listitem>
+            <listitem>The inputs of each activity is set to point to the appropriate source activity</listitem>
+            <listitem>The 'sink' activities (those with no activity below them consuming their output) are executed, in
+                      parallel, using a thread per sink, by calling the 'execute' method.</listitem>
+            </orderedlist>
+        </para>
+    </section>
+    <section>
+        <title>Lifecycle of a Roxie activity</title>
+        <para>
+            A Roxie server activity object goes through the following states (with corresponding values for the state member variable):
+        </para>
+        <section>
+            <title>STATEreset</title>
+            <para>
+                An activity in the STATEreset state is ready to be started to operate on another set of input records. For an activity
+                in a child graph, the state should be reset before the start of each execution of the child graph. It is important that
+                the reset method resets all member variables of the object (other than those keeping housekeeping statistics, or any)
+                that are constant over all child query executions, for child quey support to operate correctly.
+            </para>
+            <para>
+                This is also the state of a freshly-created activity object, and should be the state of an activity object when it is
+                destroyed.
+            </para>
+        </section>
+        <section>
+            <title>STATEstarting</title>
+            <para>
+                The starting state is used by the spliter activity (which provides the input for multiple activities, some of which may
+                not actually require that input).
+            </para>
+        </section>
+        <section>
+            <title>STATEstarted</title>
+            <para>
+                An activity is placed into the STATEstarted state by calling the start() method. This will ensure that any activities on
+                which this one is dependent have been executed, and that any activities whose input this one reads have been started.
+            </para>
+        </section>
+        <section>
+            <title>STATEstopped</title>
+            <para></para>
+        </section>
+        <section>
+            <title>Destruction</title>
+            <para></para>
+        </section>
+    </section>
 </section>
