@@ -21152,6 +21152,7 @@ public:
                 lookahead  = maxSeekLookahead;
             seeks->ensureFilled(seek, numFields, lookahead);
 
+            out.append(lookahead != seeks->ordinality()); // seeksAreEof flag
             unsigned serialized = 1; // rawseek is always serialized...
             unsigned patchLength = out.length();
             out.append(serialized);  // NOTE - we come back and patch with the actual value...
@@ -21187,6 +21188,7 @@ public:
         }
         else
         {
+            out.append(false);
             out.append(1);
             out.append(seekLen, rawSeek);
         }

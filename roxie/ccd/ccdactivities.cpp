@@ -3169,6 +3169,7 @@ protected:
     unsigned steppingLength;
     unsigned short numSkipFields;
     unsigned numSeeks;
+    bool seeksAreEof;
     bool lastRowCompleteMatch;
     CIndexTransformCallback callback;
 
@@ -3235,6 +3236,7 @@ public:
         keyprocessed = 0;
         numSkipFields = 0;
         lastRowCompleteMatch = true; // default is we only return complete matches....
+        seeksAreEof = false;
         steppingLength = 0;
         steppingRow = NULL;
         numSeeks = 0;
@@ -3247,21 +3249,24 @@ public:
             smartStepInfoValue += sizeof(unsigned short);
             unsigned flags = * (unsigned short *) smartStepInfoValue;
             smartStepInfoValue += sizeof(unsigned short);
+            seeksAreEof = * (bool *) smartStepInfoValue;
+            smartStepInfoValue += sizeof(bool);
             numSeeks = * (unsigned *) smartStepInfoValue;
             smartStepInfoValue += sizeof(unsigned);
             assertex(numSeeks); // Given that we put the first seek in here to there should always be at least one!
             steppingRow = smartStepInfoValue; // the first of them...
             stepExtra.set(flags, NULL);
-#ifdef _DEBUG
-            logctx.CTXLOG("%d seek rows provided", numSeeks);
-            for (unsigned i = 0; i < numSeeks; i++)
+            if (logctx.queryTraceLevel() > 10)
             {
-                StringBuffer b;
-                for (unsigned j = 0; j < steppingLength; j++)
-                    b.appendf("%02x ", steppingRow[i*steppingLength + j]);
-                logctx.CTXLOG("Seek row %d: %s", i+1, b.str());
+                logctx.CTXLOG("%d seek rows provided", numSeeks);
+                for (unsigned i = 0; i < numSeeks; i++)
+                {
+                    StringBuffer b;
+                    for (unsigned j = 0; j < steppingLength; j++)
+                        b.appendf("%02x ", steppingRow[i*steppingLength + j]);
+                    logctx.CTXLOG("Seek row %d: %s", i+1, b.str());
+                }
             }
-#endif
         }
     }
 
@@ -3508,11 +3513,24 @@ public:
                         }
                         if (diff >= 0)
                         {
+                            if (diff > 0 && seeksAreEof)
+                            {
+                                assertex(!steppingRow);
+                                break;
+                            }
                             rowBuilder.ensureRow();
                             transformedSize = readHelper->transform(rowBuilder, keyRow);
                             callback.finishedRow();
                             if (transformedSize)
                             {
+                                if (logctx.queryTraceLevel() > 10)
+                                {
+                                    StringBuffer b;
+                                    for (unsigned j = 0; j < steppingLength; j++)
+                                        b.appendf("%02x ", keyRow[steppingOffset + j]);
+                                    logctx.CTXLOG("Returning seek row %s", b.str());
+                                }
+
                                 // Did get a match
                                 processed++;
                                 if (limit && processed > limit)
