@@ -29,5 +29,4 @@ i2 := STEPPED(TS_searchIndex(kind=1 AND word='walls'), doc);
 i3 := STEPPED(TS_searchIndex(kind=1 AND word='jericho'), doc);
 
 j := MERGEJOIN([i1, i2, i3], STEPPED(LEFT.doc =RIGHT.doc ), SORTED(doc), INTERNAL(0x40000000));
-output(TABLE(j, {src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc)); 
-
+output(TABLE(j, {src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc));

@@ -28,6 +28,6 @@ i1 := STEPPED(TS_searchIndex(kind=1 AND word='the'), doc, PRIORITY(3),HINT(maxse
 i2 := STEPPED(TS_searchIndex(kind=1 AND word='walls'), doc, PRIORITY(2),HINT(maxseeklookahead(50)));
 i3 := STEPPED(TS_searchIndex(kind=1 AND word='jericho'), doc, PRIORITY(2),HINT(maxseeklookahead(50)));
 
-output(COUNT(TABLE(i1, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc))); 
-output(COUNT(TABLE(i2, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc))); 
-output(COUNT(TABLE(i3, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc))); 
+output(COUNT(TABLE(i1, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc)));
+output(COUNT(TABLE(i2, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc)));
+output(COUNT(TABLE(i3, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc)));

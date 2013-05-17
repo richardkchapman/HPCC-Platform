@@ -28,4 +28,4 @@ i1 := STEPPED(TS_searchIndex(kind=1 AND word='the'), doc, PRIORITY(2),HINT(maxse
 i2 := STEPPED(TS_searchIndex(kind=1 AND word='walls'), doc, PRIORITY(3),HINT(maxseeklookahead(50)));
 
 j1 := MERGEJOIN([i1, i2], STEPPED(LEFT.doc =RIGHT.doc ), SORTED(doc));
-output(TABLE(j1, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc)); 
+output(TABLE(j1, { src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc));

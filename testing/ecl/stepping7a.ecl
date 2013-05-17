@@ -24,10 +24,10 @@
 
 //Multi level smart stepping, with priorities in the correct order
 
-i3 := STEPPED(TS_searchIndex(kind=1 AND word='the'), doc, PRIORITY(3),HINT(maxseeklookahead(10)));
-i2 := STEPPED(TS_searchIndex(kind=1 AND word='walls'), doc, PRIORITY(2),HINT(maxseeklookahead(10)));
-i1 := STEPPED(TS_searchIndex(kind=1 AND word='jericho'), doc, PRIORITY(1),HINT(maxseeklookahead(10)));
+i3 := STEPPED(TS_searchIndex(kind=1 AND word='the'), doc, PRIORITY(3),HINT(maxseeklookahead(50)));
+i2 := STEPPED(TS_searchIndex(kind=1 AND word='walls'), doc, PRIORITY(2),HINT(maxseeklookahead(50)));
+i1 := STEPPED(TS_searchIndex(kind=1 AND word='jericho'), doc, PRIORITY(1),HINT(maxseeklookahead(50)));
 
 j1 := MERGEJOIN([i1, i2], STEPPED(LEFT.doc =RIGHT.doc ), SORTED(doc));
 j2 := MERGEJOIN([j1, i3], STEPPED(LEFT.doc =RIGHT.doc ), SORTED(doc));
-output(TABLE(j2, {src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc)); 
+output(TABLE(j2, {src := TS_docid2source(doc); UNSIGNED doc := TS_docid2doc(doc), cnt := COUNT(GROUP)},doc));
