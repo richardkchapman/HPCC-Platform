@@ -6017,6 +6017,18 @@ public:
         //helper already initialised from the gratherIterationUsage() call.
         iter.set(processor.connectIterationOutput(helper.querySequence(), probeManager, probes, this, 0));
     }
+
+    virtual IInputSteppingMeta * querySteppingMeta()
+    {
+        assertex(iter);
+        return iter->querySteppingMeta();
+    }
+
+    virtual const void * nextSteppedGE(const void * seek, unsigned numFields, bool &wasCompleteMatch, const SmartStepExtra & stepExtra)
+    {
+        assertex(iter);
+        return iter->nextSteppedGE(seek, numFields, wasCompleteMatch, stepExtra);
+    }
 };
 
 

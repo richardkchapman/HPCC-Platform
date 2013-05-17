@@ -3261,12 +3261,15 @@ public:
                 logctx.CTXLOG("%d seek rows provided. mismatch(%d) readahead(%d) onlyfirst(%d)", numSeeks,
                              (int)stepExtra.returnMismatches(), (int)stepExtra.readAheadManyResults(), (int)stepExtra.onlyReturnFirstSeekMatch());
 
-                for (unsigned i = 0; i < numSeeks; i++)
+                if (logctx.queryTraceLevel() > 15)
                 {
-                    StringBuffer b;
-                    for (unsigned j = 0; j < steppingLength; j++)
-                        b.appendf("%02x ", steppingRow[i*steppingLength + j]);
-                    logctx.CTXLOG("Seek row %d: %s", i+1, b.str());
+                    for (unsigned i = 0; i < numSeeks; i++)
+                    {
+                        StringBuffer b;
+                        for (unsigned j = 0; j < steppingLength; j++)
+                            b.appendf("%02x ", steppingRow[i*steppingLength + j]);
+                        logctx.CTXLOG("Seek row %d: %s", i+1, b.str());
+                    }
                 }
             }
         }
@@ -3404,8 +3407,6 @@ public:
         readHelper = (IHThorIndexReadArg *) basehelper;
         if (resent)
             readContinuationInfo();
-        else
-            DBGLOG("Not a continuation");
     }
 
     virtual StringBuffer &toString(StringBuffer &ret) const
@@ -3532,7 +3533,7 @@ public:
                             callback.finishedRow();
                             if (transformedSize)
                             {
-                                if (logctx.queryTraceLevel() > 10)
+                                if (logctx.queryTraceLevel() > 15)
                                 {
                                     StringBuffer b;
                                     for (unsigned j = 0; j < (steppingLength ? steppingLength : 6); j++)
