@@ -3825,7 +3825,7 @@ public:
 
     const void * nextSteppedGE(const void *seek, const void *rawSeek, unsigned numFields, unsigned seekLen, bool &wasCompleteMatch, const SmartStepExtra & stepExtra)
     {
-        if (activity.queryLogCtx().queryTraceLevel() > 10)
+        if (activity.queryLogCtx().queryTraceLevel() > 20)
         {
             StringBuffer recstr;
             unsigned i;

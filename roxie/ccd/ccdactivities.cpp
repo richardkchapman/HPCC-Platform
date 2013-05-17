@@ -3258,7 +3258,7 @@ public:
             stepExtra.set(flags, NULL);
             if (logctx.queryTraceLevel() > 10)
             {
-                logctx.CTXLOG("%d seek rows provided", numSeeks);
+                logctx.CTXLOG("%d seek rows provided, steppingLength %d, seeksAreEof %d", numSeeks, steppingLength, (int) seeksAreEof);
                 for (unsigned i = 0; i < numSeeks; i++)
                 {
                     StringBuffer b;
@@ -3397,6 +3397,8 @@ public:
         readHelper = (IHThorIndexReadArg *) basehelper;
         if (resent)
             readContinuationInfo();
+        else
+            DBGLOG("Not a continuation");
     }
 
     virtual StringBuffer &toString(StringBuffer &ret) const
@@ -3526,7 +3528,7 @@ public:
                                 if (logctx.queryTraceLevel() > 10)
                                 {
                                     StringBuffer b;
-                                    for (unsigned j = 0; j < steppingLength; j++)
+                                    for (unsigned j = 0; j < (steppingLength ? steppingLength : 6); j++)
                                         b.appendf("%02x ", keyRow[steppingOffset + j]);
                                     logctx.CTXLOG("Returning seek row %s", b.str());
                                 }
@@ -3610,7 +3612,11 @@ public:
         if (tlk) // a very early abort can mean it is NULL.... MORE is this the right place to put it or should it be inside the loop??
         {
             if (logctx.queryTraceLevel() > 10 && !aborted)
+            {
                 logctx.CTXLOG("Indexread returning result set %d rows from %d seeks, %d scans, %d skips", processed-processedBefore, tlk->querySeeks(), tlk->queryScans(), tlk->querySkips());
+                if (steppingOffset)
+                    logctx.CTXLOG("Indexread return: steppingOffset %d, steppingRow %p, stepExtra.returnMismatches() %d",steppingOffset, steppingRow, (int) stepExtra.returnMismatches());
+            }
             logctx.noteStatistic(STATS_ACCEPTED, processed-processedBefore, 1);
             logctx.noteStatistic(STATS_REJECTED, skipped, 1);
         }
