@@ -3258,7 +3258,9 @@ public:
             stepExtra.set(flags, NULL);
             if (logctx.queryTraceLevel() > 10)
             {
-                logctx.CTXLOG("%d seek rows provided, steppingLength %d, seeksAreEof %d", numSeeks, steppingLength, (int) seeksAreEof);
+                logctx.CTXLOG("%d seek rows provided. mismatch(%d) readahead(%d) onlyfirst(%d)", numSeeks,
+                             (int)stepExtra.returnMismatches(), (int)stepExtra.readAheadManyResults(), (int)stepExtra.onlyReturnFirstSeekMatch());
+
                 for (unsigned i = 0; i < numSeeks; i++)
                 {
                     StringBuffer b;
@@ -3267,6 +3269,11 @@ public:
                     logctx.CTXLOG("Seek row %d: %s", i+1, b.str());
                 }
             }
+        }
+        else
+        {
+            if (logctx.queryTraceLevel() > 10)
+                logctx.CTXLOG("0 seek rows provided.");
         }
     }
 
