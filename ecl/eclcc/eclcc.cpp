@@ -1048,12 +1048,20 @@ void EclCC::processSingleQuery(EclCompileInstance & instance,
                     instance.archive->setProp("Query/@originalFilename", sourcePathname);
                 }
             }
-
             gatherWarnings(ctx.errs, instance.query);
 
             if (instance.query && !syntaxChecking && !optGenerateMeta && !optEvaluateResult)
                 instance.query.setown(convertAttributeToQuery(instance.query, ctx));
-
+        }
+        catch (IException *e)
+        {
+            StringBuffer s;
+            e->errorMessage(s);
+            errs->reportError(3, s.toCharArray(), defaultErrorPathname, 1, 0, 0);
+            e->Release();
+        }
+        try
+        {
             instance.stats.parseTime = msTick()-startTime;
 
             if (instance.wu->getDebugValueBool("addTimingToWorkunit", true))
