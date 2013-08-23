@@ -9856,7 +9856,7 @@ IHqlExpression * HqlGram::resolveImportModule(const attribute & errpos, IHqlExpr
                         lexObject->get_yyPosition());
             return NULL;
         }
-
+        importMatch->queryScope()->ensureSymbolsDefined(lookupCtx);
         return importMatch.getClear();
     }
 
@@ -9879,6 +9879,7 @@ IHqlExpression * HqlGram::resolveImportModule(const attribute & errpos, IHqlExpr
         reportError(ERR_OBJ_NOSUCHFIELD, errpos, "'%s' is not a module", childName->str());
         return NULL;
     }
+    resolved->queryScope()->ensureSymbolsDefined(lookupCtx);
     return resolved.getClear();
 }
 

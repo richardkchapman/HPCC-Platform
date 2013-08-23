@@ -145,7 +145,7 @@ void expandSymbolMeta(IPropertyTree * metaTree, IHqlExpression * expr)
             setNonZeroPropInt(def, "@end", symbol->getEndPos());
         }
 
-        if (expr->isScope() && !isImport(expr))
+        if (expr->isScope())
         {
             expandScopeSymbolsMeta(def, expr->queryScope());
         }

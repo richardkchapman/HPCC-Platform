@@ -997,7 +997,7 @@ void EclCC::processSingleQuery(EclCompileInstance & instance,
             options.onlyGatherRoot = instance.wu->getDebugValueBool("metaIncludeMainOnly", false);
             options.includeImports = instance.wu->getDebugValueBool("metaIncludeImports", true);
             options.includeExternalUses = instance.wu->getDebugValueBool("metaIncludeExternalUse", true);
-            options.includeExternalUses = instance.wu->getDebugValueBool("metaIncludeExternalUse", true);
+            options.includeInternalUses = instance.wu->getDebugValueBool("metaIncludeInternalUse", true);
             options.includeLocations = instance.wu->getDebugValueBool("metaIncludeLocations", true);
             options.includeJavadoc = instance.wu->getDebugValueBool("metaIncludeJavadoc", true);
             parseCtx.setGatherMeta(options);
