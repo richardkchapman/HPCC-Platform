@@ -32,13 +32,15 @@ public:
     const void *dequeue()
     {
 //        CriticalBlock b(lock);
-        if (head != tail)
+        unsigned _tail = tail;
+        if (head != _tail)
         {
-            const void *ret = buffer[tail];
-            tail++;
-            if (tail==capacity)
-                tail = 0;
+            const void *ret = buffer[_tail];
+            _tail++;
+            if (_tail==capacity)
+                _tail = 0;
 //            space.signal();
+            tail = _tail;
             return ret;
         }
         return NULL;
