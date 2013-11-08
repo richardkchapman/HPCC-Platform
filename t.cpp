@@ -1,10 +1,11 @@
 #include "jthread.hpp"
 #include "jqueue.tpp"
 
-unsigned iterations = 1000000;
+#define MAX_PRODUCERS 4
+unsigned iterations = 5000000;
 //#define SINGLETHREAD
 
-class FixedSizeCircularBuffer
+class FixedSizeCircularBuffer : public CInterface
 {
 public:
     FixedSizeCircularBuffer(unsigned _capacity)
@@ -22,6 +23,16 @@ public:
     {
 //        space.wait();
         CriticalBlock b(lock);
+        unsigned _head = head;
+        buffer[_head] = item;
+        _head++;
+        if (_head==capacity)
+            _head = 0;
+        head = _head;
+    }
+    void fastenqueue(const void *item)
+    {
+//        space.wait();
         unsigned _head = head;
         buffer[_head] = item;
         _head++;
@@ -59,28 +70,38 @@ private:
 };
 
 //static SafeQueueOf<int, true> queue;
-static FixedSizeCircularBuffer queue(4000000+2);
+
+static FixedSizeCircularBuffer queue(MAX_PRODUCERS * iterations + 2);
+static int numProducers = 4;
+static CIArrayOf<FixedSizeCircularBuffer> queues;
 static atomic_t producer_count;
 static atomic_t consumer_count;
-static Semaphore available;
+static FastSemaphore available;
 static volatile bool done;
 static bool useAvailable = false;
+static bool sharedQueue = true;
 
 class Producer : public Thread
 {
 public:
+    Producer(FixedSizeCircularBuffer & _queue) : queue(_queue) {}
+
     virtual int run()
     {
         bool _useAvailable = useAvailable;
         for (int i = 0; i != iterations; ++i)
         {
-            queue.enqueue(NULL);
+            if (sharedQueue)
+                queue.enqueue(NULL);
+            else
+                queue.fastenqueue(NULL);
             if (_useAvailable)
                 available.signal();
         }
         atomic_add(&producer_count, iterations);
         return 0;
     }
+    FixedSizeCircularBuffer & queue;
 };
 
 class Consumer : public Thread
@@ -90,14 +111,47 @@ public:
     {
         unsigned lcount = 0;
         bool _useAvailable = useAvailable;
-        loop
+        if (sharedQueue)
         {
-            if (_useAvailable)
-                available.wait();
-            if (done && !queue.ordinality())
-                break;
-            queue.dequeue();
-            lcount++;
+            loop
+            {
+                if (_useAvailable)
+                    available.wait();
+                if (done && !queue.ordinality())
+                    break;
+                queue.dequeue();
+                lcount++;
+            }
+        }
+        else
+        {
+            unsigned next=0;
+            FixedSizeCircularBuffer * * allqueues = queues.getArray();
+            loop
+            {
+                if (_useAvailable)
+                    available.wait();
+                bool got = false;
+                for (unsigned j=0; j < numProducers; j++)
+                {
+                    FixedSizeCircularBuffer * queue = allqueues[next];
+                    assertex(queue);
+                    if (queue->ordinality())
+                    {
+                        queue->dequeue();
+                        got = true;
+                        break;
+                    }
+                    next++;
+                    if (next == numProducers)
+                        next = 0;
+                }
+
+                if (done && !got)
+                    break;
+                if (got)
+                    lcount++;
+            }
         }
         atomic_add(&consumer_count, lcount);
         return 0;
@@ -106,7 +160,6 @@ public:
 
 static bool singleThread = false;
 static bool consumeConcurrently = true;
-static int numProducers = 4;
 
 int main(int argc, const char**argv)
 {
@@ -116,6 +169,8 @@ int main(int argc, const char**argv)
             useAvailable = true;
         else if (strcmp(argv[arg], "-s")==0)
             singleThread = true;
+        else if (strcmp(argv[arg], "-q")==0)
+            sharedQueue = false;
         else if (strcmp(argv[arg], "-c")==0)
             consumeConcurrently = false;
         else if (strncmp(argv[arg], "-n", 2)==0)
@@ -129,11 +184,26 @@ int main(int argc, const char**argv)
     unsigned start = msTick();
     IArrayOf<Producer> producers;
     Consumer consumer;
+
+    if (!sharedQueue)
+    {
+        for (unsigned i = 0; i < numProducers; i++)
+        {
+            FixedSizeCircularBuffer * newqueue = new FixedSizeCircularBuffer(iterations+2);
+            queues.append(*newqueue);
+        }
+    }
+
     if (consumeConcurrently && !singleThread)
         consumer.start();
     for (unsigned i = 0; i < numProducers; i++)
     {
-        Producer *producer = new Producer;
+        Producer *producer;
+        if (sharedQueue)
+            producer = new Producer(queue);
+        else
+            producer = new Producer(queues.item(i));
+
         if (singleThread)
             producer->run();
         else
