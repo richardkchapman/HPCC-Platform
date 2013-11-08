@@ -24,7 +24,7 @@
 #ifndef _WIN32
 
 #include <sys/time.h>
-
+#include <semaphore.h>
 
 Semaphore::Semaphore(unsigned initialCount)
 {
@@ -114,6 +114,67 @@ void Semaphore::signal(unsigned n)
     }
     count += n;
     pthread_mutex_unlock(&mx);
+}
+
+FastSemaphore::FastSemaphore(unsigned initialCount)
+{
+    init(initialCount);
+}
+
+FastSemaphore::~FastSemaphore()
+{
+    sem_destroy(&sem);
+}
+
+void FastSemaphore::init(unsigned count)
+{
+    sem_init(&sem, 0, count);
+}
+
+void FastSemaphore::reinit(unsigned initialCount)
+{
+    sem_destroy(&sem);
+    init(initialCount);
+}
+
+void FastSemaphore::wait()
+{
+    sem_wait(&sem);
+}
+
+bool FastSemaphore::wait(unsigned timeout)
+{
+    if (timeout==(unsigned)-1) {
+        wait();
+        return true;
+    }
+
+    timespec abs;
+    timeval cur;
+    gettimeofday(&cur, NULL);
+    abs.tv_sec = cur.tv_sec + timeout/1000;
+    abs.tv_nsec = (cur.tv_usec + timeout%1000*1000)*1000;
+    if (abs.tv_nsec>=1000000000) {
+        abs.tv_nsec-=1000000000;
+        abs.tv_sec++;
+    }
+    int ret = sem_timedwait(&sem, &abs);
+    if (ret < 0)
+        return false;
+    return true;
+}
+
+
+
+void FastSemaphore::signal()
+{
+    sem_post(&sem);
+}
+
+void FastSemaphore::signal(unsigned n)
+{
+    for (unsigned i=0; i < n; i++)
+        sem_post(&sem);
 }
 
 #endif

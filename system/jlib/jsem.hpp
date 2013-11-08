@@ -138,6 +138,24 @@ protected:
 };
 
 
+#include <semaphore.h>
+
+class jlib_decl FastSemaphore
+{
+public:
+    FastSemaphore(unsigned initialCount=0U);
+    ~FastSemaphore();
+    void wait();
+    bool wait(unsigned timeout);
+    void signal();
+    void signal(unsigned count);
+    void reinit(unsigned initialCount=0U);
+protected:
+    void init(unsigned count);
+protected:
+    sem_t sem;
+};
+
 #endif
 
 #endif
