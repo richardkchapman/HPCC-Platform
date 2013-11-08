@@ -2,6 +2,7 @@
 #include "jqueue.tpp"
 
 unsigned iterations = 1000000;
+//#define SINGLETHREAD
 
 class FixedSizeCircularBuffer
 {
@@ -92,26 +93,46 @@ public:
     }
 };
 
+static bool singleThread = false;
+static bool consumeConcurrently = true;
 
 int main(int argc, const char**argv)
 {
+    if (argc > 1)
+    {
+        if (strcmp(argv[1], "-s")==0)
+            singleThread = true;
+        else if (strcmp(argv[1], "-c")==0)
+            consumeConcurrently = false;
+    }
     unsigned start = msTick();
     IArrayOf<Producer> producers;
     Consumer consumer;
-//    consumer.start();
+    if (consumeConcurrently && !singleThread)
+        consumer.start();
     for (unsigned i = 0; i < 4; i++)
     {
         Producer *producer = new Producer;
-        producer->start();
+        if (singleThread)
+            producer->run();
+        else
+            producer->start();
         producers.append(*producer);
     }
 //    consumer.start();
-    for (unsigned idx = 0; idx < 4; idx++)
-        producers.item(idx).join();
+    if (!singleThread)
+        for (unsigned idx = 0; idx < 4; idx++)
+            producers.item(idx).join();
     done = true;
     available.signal();
-    consumer.start();
-    consumer.join();
+    if (singleThread)
+        consumer.run();
+    else
+    {
+        if (!consumeConcurrently)
+            consumer.start();
+        consumer.join();
+    }
     printf ("%d produced\n", atomic_read(&producer_count));
     printf ("%d consumed\n", atomic_read(&consumer_count));
     printf ("%d elapsed\n", msTick() - start);
