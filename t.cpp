@@ -22,10 +22,12 @@ public:
     {
 //        space.wait();
         CriticalBlock b(lock);
-        buffer[head] = item;
-        head++;
-        if (head==capacity)
-            head = 0;
+        unsigned _head = head;
+        buffer[_head] = item;
+        _head++;
+        if (_head==capacity)
+            _head = 0;
+        head = _head;
     }
     const void *dequeue()
     {
@@ -41,7 +43,7 @@ public:
         }
         return NULL;
     }
-    unsigned ordinality()
+    inline unsigned ordinality()
     {
         return head - tail;  // Cheat by asserting meaningless if people still adding to it
     }
@@ -59,19 +61,22 @@ static FixedSizeCircularBuffer queue(4000000+2);
 static atomic_t producer_count;
 static atomic_t consumer_count;
 static Semaphore available;
-static bool done;
+static volatile bool done;
+static bool useAvailable = false;
 
 class Producer : public Thread
 {
 public:
     virtual int run()
     {
+        bool _useAvailable = useAvailable;
         for (int i = 0; i != iterations; ++i)
         {
-            atomic_inc(&producer_count);
             queue.enqueue(NULL);
-            available.signal();
+            if (_useAvailable)
+                available.signal();
         }
+        atomic_add(&producer_count, iterations);
         return 0;
     }
 };
@@ -81,36 +86,50 @@ class Consumer : public Thread
 public:
     virtual int run()
     {
+        unsigned lcount = 0;
+        bool _useAvailable = useAvailable;
         loop
         {
-//            available.wait();
+            if (_useAvailable)
+                available.wait();
             if (done && !queue.ordinality())
                 break;
             queue.dequeue();
-            atomic_inc(&consumer_count);
+            lcount++;
         }
+        atomic_add(&consumer_count, lcount);
         return 0;
     }
 };
 
 static bool singleThread = false;
 static bool consumeConcurrently = true;
+static int numProducers = 4;
 
 int main(int argc, const char**argv)
 {
-    if (argc > 1)
+    for (int arg = 1; arg < argc; arg++)
     {
-        if (strcmp(argv[1], "-s")==0)
+        if (strcmp(argv[arg], "-a")==0)
+            useAvailable = true;
+        else if (strcmp(argv[arg], "-s")==0)
             singleThread = true;
-        else if (strcmp(argv[1], "-c")==0)
+        else if (strcmp(argv[arg], "-c")==0)
             consumeConcurrently = false;
+        else if (strncmp(argv[arg], "-n", 2)==0)
+            numProducers = atoi(argv[arg]+2);
+        else
+        {
+            printf("Unrecognized arg %s", argv[arg]);
+            exit(2);
+        }
     }
     unsigned start = msTick();
     IArrayOf<Producer> producers;
     Consumer consumer;
     if (consumeConcurrently && !singleThread)
         consumer.start();
-    for (unsigned i = 0; i < 4; i++)
+    for (unsigned i = 0; i < numProducers; i++)
     {
         Producer *producer = new Producer;
         if (singleThread)
@@ -121,7 +140,7 @@ int main(int argc, const char**argv)
     }
 //    consumer.start();
     if (!singleThread)
-        for (unsigned idx = 0; idx < 4; idx++)
+        for (unsigned idx = 0; idx < numProducers; idx++)
             producers.item(idx).join();
     done = true;
     available.signal();
