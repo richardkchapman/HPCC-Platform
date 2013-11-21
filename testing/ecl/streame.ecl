@@ -35,6 +35,7 @@ ENDEMBED;
 
 titles := dataset(['', 'Mr. ', 'Rev. '], { string title });
 
-output(normalize(titles, blockedNames(left.title), transform(right)));
-output(normalize(titles, linkedNames(left.title), transform(right)));
-output(normalize(titles, streamedNames(left.title), transform(right)));
+//output(normalize(titles, blockedNames(left.title), transform(right)));
+//output(normalize(titles, linkedNames(left.title), transform(right)));
+//output(normalize(titles, streamedNames(left.title), transform(right)));
+output(streamedNames('mr'));
