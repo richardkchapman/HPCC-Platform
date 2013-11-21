@@ -11620,6 +11620,12 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
         retargs.append(*createIntConstant(returnType->queryChildType()->getSize()));
         break;
     }
+    case type_table:
+    {
+        returnFunc = getDatasetResultId;
+        break;
+    }
+
     default:
         StringBuffer typeText;
         getFriendlyTypeStr(returnType, typeText);
