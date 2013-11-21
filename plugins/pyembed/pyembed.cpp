@@ -21,8 +21,10 @@
 #include "jthread.hpp"
 #include "hqlplugins.hpp"
 #include "deftype.hpp"
+#include "eclhelper.hpp"
 #include "eclrtl.hpp"
 #include "eclrtl_imp.hpp"
+#include "rtlds_imp.hpp"
 
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
@@ -308,11 +310,13 @@ protected:
 // This takes care of ensuring that the Python GIL is locked while we are executing python code,
 // and released when we are not
 
-class Python27EmbedContextBase : public CInterfaceOf<IEmbedFunctionContext>
+class Python27EmbedContextBase : public CInterface, implements IEmbedFunctionContext, implements IRowStream
 {
 public:
+    IMPLEMENT_IINTERFACE;
+
     Python27EmbedContextBase(PythonThreadContext *_sharedCtx)
-    : sharedCtx(_sharedCtx)
+    : sharedCtx(_sharedCtx), typeInfo(NULL), nextResult(0), numResults(0)
     {
         PyEval_RestoreThread(sharedCtx->threadState);
         locals.setown(PyDict_New());
@@ -551,6 +555,31 @@ public:
         __resultBytes = outBytes;
         __result = out.detachdata();
     }
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator, const RtlTypeInfo *_typeInfo)
+    {
+        assertex(result && result != Py_None);
+        if (!PyList_Check(result))
+            rtlFail(0, "pyembed: type mismatch - return value was not a list");
+        numResults = PyList_Size(result);
+        nextResult = 0;
+        resultAllocator.set(_resultAllocator);
+        typeInfo = _typeInfo;
+        return LINK(this);
+    }
+    virtual const void *nextRow()
+    {
+        assertex(resultAllocator);
+        if (nextResult == numResults)
+            return NULL;
+        PyObject *elem = PyList_GetItem(result, nextResult); // note - borrowed reference
+        RtlDynamicRowBuilder rowBuilder(resultAllocator);
+
+        return NULL; // MORE!
+    }
+    virtual void stop()
+    {
+        UNIMPLEMENTED;
+    }
 
     virtual void bindBooleanParam(const char *name, bool val)
     {
@@ -694,6 +723,11 @@ protected:
     OwnedPyObject globals;
     OwnedPyObject result;
     OwnedPyObject script;
+
+    Linked<IEngineRowAllocator> resultAllocator;
+    const RtlTypeInfo *typeInfo;
+    Py_ssize_t numResults;
+    Py_ssize_t nextResult;
 };
 
 class Python27EmbedScriptContext : public Python27EmbedContextBase

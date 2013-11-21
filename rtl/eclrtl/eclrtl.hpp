@@ -762,6 +762,8 @@ ECLRTL_API unsigned rtlDelayReturn(unsigned value, unsigned sleepTime);
 ECLRTL_API bool rtlGPF();
 
 //-----------------------------------------------------------------------------
+interface IRowStream;
+struct RtlTypeInfo;
 
 interface IEmbedFunctionContext : extends IInterface
 {
@@ -790,6 +792,9 @@ interface IEmbedFunctionContext : extends IInterface
     virtual void importFunction(size32_t len, const char *function) = 0;
     virtual void compileEmbeddedScript(size32_t len, const char *script) = 0;
     virtual void callFunction() = 0;
+
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator, const RtlTypeInfo *_typeInfo) = 0;
+
 };
 
 interface IEmbedContext : extends IInterface

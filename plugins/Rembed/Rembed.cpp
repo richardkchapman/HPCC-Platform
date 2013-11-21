@@ -366,6 +366,11 @@ public:
         }
     }
 
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator, const RtlTypeInfo *_typeInfo)
+    {
+        UNIMPLEMENTED;
+    }
+
     virtual void bindBooleanParam(const char *name, bool val)
     {
         R[name] = val;
