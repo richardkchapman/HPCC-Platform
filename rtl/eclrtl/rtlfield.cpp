@@ -939,13 +939,10 @@ size32_t RtlRecordTypeInfo::toXML(const byte * self, const byte * selfrow, const
 
 size32_t RtlRecordTypeInfo::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
 {
-    if (source.processBeginRow(field))
-    {
-        offset = processFields(fields, builder, offset, source);
-        source.processEndRow(field);
-        return offset;
-    }
-    throwUnexpected();  // MORE - this means it failed - builder didn't like the format - not really unexpected. Should builder be throwing exception from processBeginRow?
+    source.processBeginRow(field);
+    offset = processFields(fields, builder, offset, source);
+    source.processEndRow(field);
+    return offset;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -958,35 +955,31 @@ size32_t RtlSetTypeInfo::size(const byte * self, const byte * selfrow) const
 size32_t RtlSetTypeInfo::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
 {
     bool isAll;
-    size32_t numElements;
-    if (source.processBeginSet(field, isAll, numElements))
+    size32_t numElements = source.processBeginSet(field, isAll);
+    size32_t sizeInBytes = sizeof(bool) + sizeof(size32_t);
+    builder.ensureCapacity(offset+sizeInBytes, field->name->str());
+    byte *dest = builder.getSelf()+offset;
+    if (isAll)
     {
-        size32_t sizeInBytes = sizeof(bool) + sizeof(size32_t);
-        builder.ensureCapacity(offset+sizeInBytes, field->name->str());
-        byte *dest = builder.getSelf()+offset;
-        if (isAll)
-        {
-            * (bool *) dest = true;
-            rtlWriteInt4(dest+1, 0);
-            offset += sizeInBytes;
-        }
-        else
-        {
-            * (bool *) dest = false;
-            size32_t newOffset = offset + sizeInBytes;
-            RtlFieldStrInfo dummyField("<set element>", NULL, child);
-            while (numElements--)
-            {
-                newOffset = child->build(builder, newOffset, &dummyField, source);
-            }
-            // Go back in and patch the size, remembering it may have moved
-            rtlWriteInt4(builder.getSelf()+offset+1, newOffset - (offset+sizeInBytes));
-            offset = newOffset;
-        }
-        source.processEndSet(field);
-        return offset;
+        * (bool *) dest = true;
+        rtlWriteInt4(dest+1, 0);
+        offset += sizeInBytes;
     }
-    throwUnexpected();  // MORE - this means it failed - builder didn't like the format - not really unexpected. Should builder be throwing exception from processBeginRow?
+    else
+    {
+        * (bool *) dest = false;
+        size32_t newOffset = offset + sizeInBytes;
+        RtlFieldStrInfo dummyField("<set element>", NULL, child);
+        while (numElements--)
+        {
+            newOffset = child->build(builder, newOffset, &dummyField, source);
+        }
+        // Go back in and patch the size, remembering it may have moved
+        rtlWriteInt4(builder.getSelf()+offset+1, newOffset - (offset+sizeInBytes));
+        offset = newOffset;
+    }
+    source.processEndSet(field);
+    return offset;
 }
 
 size32_t RtlSetTypeInfo::process(const byte * self, const byte * selfrow, const RtlFieldInfo * field, IFieldProcessor & target) const

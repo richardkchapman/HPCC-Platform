@@ -627,25 +627,25 @@ public:
         nextField();
     }
 
-    virtual bool processBeginSet(const RtlFieldInfo * field, bool &isAll, size32_t &numElements)
+    virtual size32_t processBeginSet(const RtlFieldInfo * field, bool &isAll)
     {
         isAll = false;  // No concept of an 'all' set in Python
         assertex(elem && elem != Py_None);
         if (!PyList_Check(elem))
             rtlFail(0, "pyembed: type mismatch - list expected");
-        numElements = PyList_Size(elem);
+        size32_t numElements = PyList_Size(elem);  // MORE - might be better to avoid keeping asking... Even better would be to avoid needing to know.
         stack.append(parent);
         indexes.append(childIndex);
         parent = elem;
         childIndex = 0;
         nextField();
-        return true;
+        return numElements;
     }
-    virtual bool processBeginDataset(const RtlFieldInfo * field)
+    virtual void processBeginDataset(const RtlFieldInfo * field)
     {
         UNIMPLEMENTED;
     }
-    virtual bool processBeginRow(const RtlFieldInfo * field)
+    virtual void processBeginRow(const RtlFieldInfo * field)
     {
         // Expect to see a tuple here, or possibly (if the ECL record has a single field), an arbitrary scalar object
         // If it's a tuple, we push it onto our stack as the active object
@@ -656,17 +656,14 @@ public:
             parent = elem;
             childIndex = 0;
             nextField();
-            return true;
         }
         else if (countFields(field->type->queryFields())==1)
         {
             parent = NULL;
-            return true;
         }
         else
         {
-            // All bets are off - caller should not ask for any more
-            return false;
+            rtlFail(0, "pyembed: type mismatch - tuple expected");
         }
     }
     virtual void processEndSet(const RtlFieldInfo * field)
