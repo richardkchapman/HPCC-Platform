@@ -627,10 +627,18 @@ public:
         nextField();
     }
 
-    virtual bool processBeginSet(const RtlFieldInfo * field, bool &isAll)
+    virtual bool processBeginSet(const RtlFieldInfo * field, bool &isAll, size32_t &numElements)
     {
         isAll = false;  // No concept of an 'all' set in Python
-        UNIMPLEMENTED;
+        assertex(elem && elem != Py_None);
+        if (!PyList_Check(elem))
+            rtlFail(0, "pyembed: type mismatch - list expected");
+        numElements = PyList_Size(elem);
+        stack.append(parent);
+        indexes.append(childIndex);
+        parent = elem;
+        childIndex = 0;
+        nextField();
         return true;
     }
     virtual bool processBeginDataset(const RtlFieldInfo * field)
@@ -663,7 +671,9 @@ public:
     }
     virtual void processEndSet(const RtlFieldInfo * field)
     {
-        UNIMPLEMENTED;
+        parent = (PyObject *) stack.pop();
+        childIndex = indexes.pop();
+        nextField();
     }
     virtual void processEndDataset(const RtlFieldInfo * field)
     {
@@ -678,13 +688,13 @@ public:
 protected:
     void nextField()
     {
-        if (parent && PyTuple_Size(parent) > childIndex)
-        {
+        if (parent && PyList_Check(parent) && PyList_Size(parent) > childIndex)
+            elem = PyList_GetItem(parent, childIndex++);
+        else if (parent && PyTuple_Check(parent) && PyTuple_Size(parent) > childIndex)
             elem = PyTuple_GetItem(parent, childIndex++);
-            checkPythonError();
-        }
         else
             elem = NULL;
+        checkPythonError();
     }
     PyObject *elem;
     PyObject *parent;
