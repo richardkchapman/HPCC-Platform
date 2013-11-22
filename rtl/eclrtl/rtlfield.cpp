@@ -210,18 +210,22 @@ size32_t RtlStringTypeInfo::build(ARowBuilder &builder, size32_t offset, const R
     size32_t size;
     char *value;
     source.getStringResult(size, value);
-    size32_t needed = size;
-    if (!isFixedSize())
-        needed += sizeof(size32_t);
-    builder.ensureCapacity(needed, field->name->str());
-    byte *self = builder.getSelf();
+    byte *dest = builder.getSelf()+offset;
+    if (isEbcdic())
+        UNIMPLEMENTED;
     if (!isFixedSize())
     {
-        rtlWriteInt4(self+offset, size);
-        offset += sizeof(size32_t);
+        builder.ensureCapacity(size+sizeof(size32_t), field->name->str());
+        rtlWriteInt4(dest, size);
+        memcpy(dest+sizeof(size32_t), value, size);
+        offset += size+sizeof(size32_t);
     }
-    memcpy(self+offset, value, size);
-    offset += size;
+    else
+    {
+        builder.ensureCapacity(length, field->name->str());
+        rtlStrToStr(length, dest, size, value);
+        offset += length;
+    }
     rtlFree(value);
     return offset;
 }

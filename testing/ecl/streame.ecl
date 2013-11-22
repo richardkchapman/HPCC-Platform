@@ -18,7 +18,8 @@
 IMPORT Python;
 
 namesRecord := RECORD
-    STRING name;
+    STRING name1;
+    STRING10 name2
 END;
 
 dataset(namesRecord) blockedNames(string prefix) := EMBED(Python)
@@ -30,7 +31,7 @@ _linkcounted_ dataset(namesRecord) linkedNames(string prefix) := EMBED(Python)
 ENDEMBED;
 
 streamed dataset(namesRecord) streamedNames(string prefix) := EMBED(Python)
-  return ["Gavin","John","Bart"]
+  return [("Gavin", "Halliday"),("John", "Smith"),("Bart", "Samson")]
 ENDEMBED;
 
 titles := dataset(['', 'Mr. ', 'Rev. '], { string title });

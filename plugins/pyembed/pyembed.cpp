@@ -324,8 +324,8 @@ static int countFields(const RtlFieldInfo * const * fields)
 class PythonRowBuilder : public CInterfaceOf<IFieldSource>
 {
 public:
-    PythonRowBuilder(PyObject *_elem)
-    : elem(_elem)
+    PythonRowBuilder(PyObject *_row)
+    : parent(NULL), childIndex(0), elem(_row)
     {
     }
     virtual void getStringResult(size32_t &__chars, char * &__result)
@@ -340,6 +340,7 @@ public:
         }
         else
             rtlFail(0, "pyembed: type mismatch - field was not a string");
+        nextField();
     }
 
     virtual bool processBeginSet(const RtlFieldInfo * field)
@@ -354,11 +355,25 @@ public:
     {
         // Expect to see a tuple here, or possibly (if the ECL record has a single field), an arbitrary scalar object
         // If it's a tuple, we push it onto our stack as the active object
+        stack.append(parent);
+        indexes.append(childIndex);
         if (PyTuple_Check(elem))
         {
+            parent = elem;
+            childIndex = 0;
+            nextField();
             return true;
         }
-        return (countFields(field->type->queryFields())==1);
+        else if (countFields(field->type->queryFields())==1)
+        {
+            parent = NULL;
+            return true;
+        }
+        else
+        {
+            // All bets are off - caller should not ask for any more
+            return false;
+        }
     }
     virtual void processEndSet(const RtlFieldInfo * field)
     {
@@ -370,10 +385,26 @@ public:
     }
     virtual void processEndRow(const RtlFieldInfo * field)
     {
-        // Unwind whatever processBeginRow did
+        parent = (PyObject *) stack.pop();
+        childIndex = indexes.pop();
+        nextField();
     }
 protected:
+    void nextField()
+    {
+        if (parent && PyTuple_Size(parent) > childIndex)
+        {
+            elem = PyTuple_GetItem(parent, childIndex++);
+            checkPythonError();
+        }
+        else
+            elem = NULL;
+    }
     PyObject *elem;
+    PyObject *parent;
+    PointerArray stack;
+    UnsignedArray indexes;
+    unsigned childIndex;
 };
 
 // Each call to a Python function will use a new Python27EmbedFunctionContext object
