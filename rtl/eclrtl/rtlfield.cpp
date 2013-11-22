@@ -23,6 +23,7 @@
 #include "eclhelper.hpp"
 #include "eclrtl_imp.hpp"
 #include "rtlfield_imp.hpp"
+#include "rtlds_imp.hpp"
 
 static const char * queryXPath(const RtlFieldInfo * field)
 {
@@ -73,7 +74,13 @@ size32_t RtlTypeInfoBase::toXML(const byte * self, const byte * selfrow, const R
     rtlFailUnexpected();
     return 0;
 }
-
+/*
+size32_t RtlTypeInfoBase::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
+{
+    rtlFailUnexpected();
+    return 0;
+}
+*/
 const char * RtlTypeInfoBase::queryLocale() const 
 {
     return NULL; 
@@ -196,6 +203,27 @@ size32_t RtlStringTypeInfo::size(const byte * self, const byte * selfrow) const
     if (isFixedSize())
         return length;
     return sizeof(size32_t) + rtlReadUInt4(self);
+}
+
+size32_t RtlStringTypeInfo::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
+{
+    size32_t size;
+    char *value;
+    source.getStringResult(size, value);
+    size32_t needed = size;
+    if (!isFixedSize())
+        needed += sizeof(size32_t);
+    builder.ensureCapacity(needed, field->name->str());
+    byte *self = builder.getSelf();
+    if (!isFixedSize())
+    {
+        rtlWriteInt4(self+offset, size);
+        offset += sizeof(size32_t);
+    }
+    memcpy(self+offset, value, size);
+    offset += size;
+    rtlFree(value);
+    return offset;
 }
 
 size32_t RtlStringTypeInfo::process(const byte * self, const byte * selfrow, const RtlFieldInfo * field, IFieldProcessor & target) const
@@ -628,6 +656,20 @@ inline size32_t processFields(const RtlFieldInfo * const * cur, const byte * sel
     return offset;
 }
 
+inline size32_t processFields(const RtlFieldInfo * const * cur, ARowBuilder &builder, size32_t offset, IFieldSource &source)
+{
+    loop
+    {
+        const RtlFieldInfo * child = *cur;
+        if (!child)
+            break;
+        offset = child->build(builder, offset, source);
+        cur++;
+    }
+    return offset;
+}
+
+
 inline size32_t toXMLFields(const RtlFieldInfo * const * cur, const byte * self, const byte * selfrow, IXmlWriter & target)
 {
     size32_t offset = 0;
@@ -674,6 +716,17 @@ size32_t RtlRecordTypeInfo::toXML(const byte * self, const byte * selfrow, const
         target.outputEndNested(xpath);
 
     return thisSize;
+}
+
+size32_t RtlRecordTypeInfo::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
+{
+    if (source.processBeginRow(field))
+    {
+        offset = processFields(fields, builder, offset, source);
+        source.processEndRow(field);
+        return offset;
+    }
+    throwUnexpected();  // MORE - this means it failed - builder didn't like the format - not really unexpected. Should builder be throwing exception from processBeginRow?
 }
 
 //-------------------------------------------------------------------------------------------------------------------

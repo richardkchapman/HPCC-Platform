@@ -199,6 +199,22 @@ public:
     virtual void processEndRow(const RtlFieldInfo * field) = 0;
 };
 
+class RtlDynamicRowBuilder;
+
+interface IFieldSource : public IInterface
+{
+public:
+    virtual void getStringResult(size32_t &__chars, char * &__result) = 0;
+
+    //The following are used process the structured fields
+    virtual bool processBeginSet(const RtlFieldInfo * field) = 0;
+    virtual bool processBeginDataset(const RtlFieldInfo * field) = 0;
+    virtual bool processBeginRow(const RtlFieldInfo * field) = 0;           // either in a dataset, or nested
+    virtual void processEndSet(const RtlFieldInfo * field) = 0;
+    virtual void processEndDataset(const RtlFieldInfo * field) = 0;
+    virtual void processEndRow(const RtlFieldInfo * field) = 0;
+};
+
 // Functions for processing rows - creating, serializing, destroying etc.
 interface IOutputRowSerializer;
 interface IOutputRowDeserializer;
@@ -309,6 +325,7 @@ interface RtlITypeInfo
     virtual size32_t size(const byte * self, const byte * selfrow) const = 0;
     virtual size32_t process(const byte * self, const byte * selfrow, const RtlFieldInfo * field, IFieldProcessor & target) const = 0;  // returns the size
     virtual size32_t toXML(const byte * self, const byte * selfrow, const RtlFieldInfo * field, IXmlWriter & out) const = 0;
+    virtual size32_t build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const = 0;
 
     virtual const char * queryLocale() const = 0;
     virtual const RtlFieldInfo * const * queryFields() const = 0;               // null terminated list
@@ -340,6 +357,7 @@ public:
                                     // if RFTMunknownsize then maxlength (records) [maxcount(datasets)]
 };
 
+
 //Core struct used for representing meta for a field.
 struct RtlFieldInfo
 {
@@ -356,6 +374,10 @@ struct RtlFieldInfo
     inline size32_t size(const byte * self, const byte * selfrow) const 
     { 
         return type->size(self, selfrow); 
+    }
+    inline size32_t build(ARowBuilder &builder, size32_t offset, IFieldSource & source) const
+    {
+        return type->build(builder, offset, this, source);
     }
     inline size32_t process(const byte * self, const byte * selfrow, IFieldProcessor & target) const 
     {

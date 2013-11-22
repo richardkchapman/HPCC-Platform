@@ -435,7 +435,7 @@ public:
         __result = out.detachdata();
     }
 
-    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator, const RtlTypeInfo *_typeInfo)
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator)
     {
         UNIMPLEMENTED;
     }

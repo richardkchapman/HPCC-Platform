@@ -793,7 +793,7 @@ interface IEmbedFunctionContext : extends IInterface
     virtual void compileEmbeddedScript(size32_t len, const char *script) = 0;
     virtual void callFunction() = 0;
 
-    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator, const RtlTypeInfo *_typeInfo) = 0;
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator) = 0;
 
 };
 

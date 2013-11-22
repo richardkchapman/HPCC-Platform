@@ -25,6 +25,7 @@
 #include "eclrtl.hpp"
 #include "eclrtl_imp.hpp"
 #include "rtlds_imp.hpp"
+#include "rtlfield_imp.hpp"
 
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
@@ -306,6 +307,75 @@ protected:
     HINSTANCE pythonLibrary;
 } globalState;
 
+// A PythonRowBuilder object is used to construct an ECL row from a python object
+
+static int countFields(const RtlFieldInfo * const * fields)
+{
+    unsigned count = 0;
+    loop
+    {
+        if (!*fields)
+            return count;
+        fields++;
+        count++;
+    }
+}
+
+class PythonRowBuilder : public CInterfaceOf<IFieldSource>
+{
+public:
+    PythonRowBuilder(PyObject *_elem)
+    : elem(_elem)
+    {
+    }
+    virtual void getStringResult(size32_t &__chars, char * &__result)
+    {
+        assertex(elem && elem != Py_None);
+        if (PyString_Check(elem))
+        {
+            const char * text =  PyString_AsString(elem);
+            checkPythonError();
+            size_t lenBytes = PyString_Size(elem);
+            rtlStrToStrX(__chars, __result, lenBytes, text);
+        }
+        else
+            rtlFail(0, "pyembed: type mismatch - field was not a string");
+    }
+
+    virtual bool processBeginSet(const RtlFieldInfo * field)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual bool processBeginDataset(const RtlFieldInfo * field)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual bool processBeginRow(const RtlFieldInfo * field)
+    {
+        // Expect to see a tuple here, or possibly (if the ECL record has a single field), an arbitrary scalar object
+        // If it's a tuple, we push it onto our stack as the active object
+        if (PyTuple_Check(elem))
+        {
+            return true;
+        }
+        return (countFields(field->type->queryFields())==1);
+    }
+    virtual void processEndSet(const RtlFieldInfo * field)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void processEndDataset(const RtlFieldInfo * field)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void processEndRow(const RtlFieldInfo * field)
+    {
+        // Unwind whatever processBeginRow did
+    }
+protected:
+    PyObject *elem;
+};
+
 // Each call to a Python function will use a new Python27EmbedFunctionContext object
 // This takes care of ensuring that the Python GIL is locked while we are executing python code,
 // and released when we are not
@@ -316,7 +386,7 @@ public:
     IMPLEMENT_IINTERFACE;
 
     Python27EmbedContextBase(PythonThreadContext *_sharedCtx)
-    : sharedCtx(_sharedCtx), typeInfo(NULL), nextResult(0), numResults(0)
+    : sharedCtx(_sharedCtx), nextResult(0), numResults(0)
     {
         PyEval_RestoreThread(sharedCtx->threadState);
         locals.setown(PyDict_New());
@@ -543,6 +613,7 @@ public:
             }
             default:
                 rtlFail(0, "pyembed: type mismatch - unsupported return type");
+                break;
             }
             checkPythonError();
             if (elemSize != UNKNOWN_LENGTH)
@@ -555,7 +626,7 @@ public:
         __resultBytes = outBytes;
         __result = out.detachdata();
     }
-    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator, const RtlTypeInfo *_typeInfo)
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator)
     {
         assertex(result && result != Py_None);
         if (!PyList_Check(result))
@@ -563,7 +634,6 @@ public:
         numResults = PyList_Size(result);
         nextResult = 0;
         resultAllocator.set(_resultAllocator);
-        typeInfo = _typeInfo;
         return LINK(this);
     }
     virtual const void *nextRow()
@@ -572,13 +642,18 @@ public:
         if (nextResult == numResults)
             return NULL;
         PyObject *elem = PyList_GetItem(result, nextResult); // note - borrowed reference
+        nextResult++;
         RtlDynamicRowBuilder rowBuilder(resultAllocator);
-
-        return NULL; // MORE!
+        PythonRowBuilder pyRowBuilder(elem);
+        const RtlTypeInfo *typeInfo = resultAllocator->queryOutputMeta()->queryTypeInfo();
+        assertex(typeInfo);
+        RtlFieldStrInfo dummyField("", NULL, typeInfo);
+        size32_t len = typeInfo->build(rowBuilder, 0, &dummyField, pyRowBuilder);
+        return rowBuilder.finalizeRowClear(len);
     }
     virtual void stop()
     {
-        UNIMPLEMENTED;
+        resultAllocator.clear();
     }
 
     virtual void bindBooleanParam(const char *name, bool val)
@@ -725,7 +800,6 @@ protected:
     OwnedPyObject script;
 
     Linked<IEngineRowAllocator> resultAllocator;
-    const RtlTypeInfo *typeInfo;
     Py_ssize_t numResults;
     Py_ssize_t nextResult;
 };

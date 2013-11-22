@@ -723,7 +723,7 @@ public:
     {
         sharedCtx->getSetResult(result, __isAllResult, __resultBytes, __result, elemType, elemSize);
     }
-    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator, const RtlTypeInfo *_typeInfo)
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator)
     {
         UNIMPLEMENTED;
     }
