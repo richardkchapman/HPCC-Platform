@@ -19,7 +19,16 @@ IMPORT Python;
 
 namesRecord := RECORD
     STRING name1;
-    STRING10 name2
+    STRING10 name2;
+    VARSTRING name3;
+    unsigned1 val1;
+    integer1   val2;
+    UTF8 u1;
+    UNICODE u2;
+    UNICODE8 u3;
+    BIG_ENDIAN unsigned6 val3;
+    DATA d;
+    BOOLEAN b;
 END;
 
 dataset(namesRecord) blockedNames(string prefix) := EMBED(Python)
@@ -30,13 +39,10 @@ _linkcounted_ dataset(namesRecord) linkedNames(string prefix) := EMBED(Python)
   return ["Gavin","John","Bart"]
 ENDEMBED;
 
-streamed dataset(namesRecord) streamedNames(string prefix) := EMBED(Python)
-  return [("Gavin", "Halliday"),("John", "Smith"),("Bart", "Samson")]
+streamed dataset(namesRecord) streamedNames(data d, utf8 u) := EMBED(Python)
+  return [  \
+     ("Gavin", "Halliday", "Jr", 250, -1,  U'là',  U'là',  U'là', 1234566, d, False), \
+     ("John", "Smith", "", 250, -1,  U'là',  U'là',  u, 1234566, d, True)]
 ENDEMBED;
 
-titles := dataset(['', 'Mr. ', 'Rev. '], { string title });
-
-//output(normalize(titles, blockedNames(left.title), transform(right)));
-//output(normalize(titles, linkedNames(left.title), transform(right)));
-//output(normalize(titles, streamedNames(left.title), transform(right)));
-output(streamedNames('mr'));
+output(streamedNames(d'AA', u'là'));

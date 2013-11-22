@@ -450,10 +450,15 @@ ECLRTL_API unsigned __int64 rtlReadSwapUInt7(const void * data);
 ECLRTL_API unsigned __int64 rtlReadSwapUInt8(const void * data);
 ECLRTL_API unsigned __int64 rtlReadSwapUInt(const void * data, unsigned length);
 
+inline void rtlWriteSwapInt1(void * data, unsigned value) { *(unsigned char *)data = value; }
+ECLRTL_API void rtlWriteSwapInt2(void * data, unsigned value);
 ECLRTL_API void rtlWriteSwapInt3(void * data, unsigned value);
+ECLRTL_API void rtlWriteSwapInt4(void * data, unsigned value);
 ECLRTL_API void rtlWriteSwapInt5(void * data, unsigned __int64 value);
 ECLRTL_API void rtlWriteSwapInt6(void * data, unsigned __int64 value);
 ECLRTL_API void rtlWriteSwapInt7(void * data, unsigned __int64 value);
+ECLRTL_API void rtlWriteSwapInt8(void * data, unsigned __int64 value);
+ECLRTL_API void rtlWriteSwapInt(void * self, __int64 val, unsigned length);
 
 ECLRTL_API short rtlRevInt2(const void * data);
 ECLRTL_API int rtlRevInt3(const void * data);

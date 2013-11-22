@@ -62,6 +62,7 @@ interface IException;
 class MemoryBuffer;
 class StringBuffer;
 class rtlRowBuilder;
+class Decimal;
 struct RtlFieldInfo;
 struct RtlTypeInfo;
 
@@ -204,10 +205,18 @@ class RtlDynamicRowBuilder;
 interface IFieldSource : public IInterface
 {
 public:
-    virtual void getStringResult(size32_t &__chars, char * &__result) = 0;
+    virtual bool getBooleanResult() = 0;
+    virtual void getDataResult(size32_t &len, void * &result) = 0;
+    virtual double getRealResult() = 0;
+    virtual __int64 getSignedResult() = 0;
+    virtual unsigned __int64 getUnsignedResult() = 0;
+    virtual void getStringResult(size32_t &len, char * &result) = 0;
+    virtual void getUTF8Result(size32_t &chars, char * &result) = 0;
+    virtual void getUnicodeResult(size32_t &chars, UChar * &result) = 0;
+    virtual void getDecimalResult(Decimal &value) = 0;
 
     //The following are used process the structured fields
-    virtual bool processBeginSet(const RtlFieldInfo * field) = 0;
+    virtual bool processBeginSet(const RtlFieldInfo * field, bool &isAll) = 0;
     virtual bool processBeginDataset(const RtlFieldInfo * field) = 0;
     virtual bool processBeginRow(const RtlFieldInfo * field) = 0;           // either in a dataset, or nested
     virtual void processEndSet(const RtlFieldInfo * field) = 0;
@@ -325,11 +334,12 @@ interface RtlITypeInfo
     virtual size32_t size(const byte * self, const byte * selfrow) const = 0;
     virtual size32_t process(const byte * self, const byte * selfrow, const RtlFieldInfo * field, IFieldProcessor & target) const = 0;  // returns the size
     virtual size32_t toXML(const byte * self, const byte * selfrow, const RtlFieldInfo * field, IXmlWriter & out) const = 0;
-    virtual size32_t build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const = 0;
 
     virtual const char * queryLocale() const = 0;
     virtual const RtlFieldInfo * const * queryFields() const = 0;               // null terminated list
     virtual const RtlTypeInfo * queryChildType() const = 0;
+
+    virtual size32_t build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const = 0;
 };
 
 
