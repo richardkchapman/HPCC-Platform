@@ -73,6 +73,7 @@ public:
     inline OwnedPyObject(PyObject *_ptr) : ptr(_ptr) {}
     inline ~OwnedPyObject()                { if (ptr) Py_DECREF(ptr); }
     inline PyObject * get() const           { return ptr; }
+    inline PyObject * getClear()            { PyObject *ret = ptr; ptr = NULL; return ret; }
     inline PyObject * operator -> () const { return ptr; }
     inline operator PyObject *() const    { return ptr; }
     inline void clear()                     { if (ptr) Py_DECREF(ptr); ptr = NULL; }
@@ -633,8 +634,8 @@ public:
         assertex(elem && elem != Py_None);
         if (!PyList_Check(elem) && !PySet_Check(elem))
             rtlFail(0, "pyembed: type mismatch - list or set expected");
-        iterStack.append(iter);
-        iter = PyObject_GetIter(elem);
+        iterStack.append(iter.getClear());
+        iter.setown(PyObject_GetIter(elem));
         nextField();
     }
     virtual bool processNextSet(const RtlFieldInfo * field)
@@ -649,15 +650,16 @@ public:
     {
         // Expect to see a tuple here, or possibly (if the ECL record has a single field), an arbitrary scalar object
         // If it's a tuple, we push it onto our stack as the active object
-        iterStack.append(iter);
+        iterStack.append(iter.getClear());
         if (PyTuple_Check(elem))
         {
-            iter = PyObject_GetIter(elem);
+            iter.setown(PyObject_GetIter(elem));
             nextField();
         }
         else if (countFields(field->type->queryFields())==1)
         {
-            iter = NULL;
+            // iter is NULL;
+            // NOTE - we don't call nextField here. There is a single field. Debatable whether supporting this is helpful?
         }
         else
         {
@@ -666,7 +668,7 @@ public:
     }
     virtual void processEndSet(const RtlFieldInfo * field)
     {
-        iter = (PyObject *) iterStack.pop();
+        iter.setown((PyObject *) iterStack.pop());
         nextField();
     }
     virtual void processEndDataset(const RtlFieldInfo * field)
@@ -675,20 +677,20 @@ public:
     }
     virtual void processEndRow(const RtlFieldInfo * field)
     {
-        iter = (PyObject *) iterStack.pop();
+        iter.setown((PyObject *) iterStack.pop());
         nextField();
     }
 protected:
     void nextField()
     {
         if (iter)
-            elem = PyIter_Next(iter);
+            elem.setown(PyIter_Next(iter));
         else
             elem = NULL;
         checkPythonError();
     }
-    PyObject *iter;
-    PyObject *elem;
+    OwnedPyObject iter;
+    OwnedPyObject elem;
     PointerArray iterStack;
 };
 
@@ -702,7 +704,7 @@ public:
     IMPLEMENT_IINTERFACE;
 
     Python27EmbedContextBase(PythonThreadContext *_sharedCtx)
-    : sharedCtx(_sharedCtx), nextResult(0), numResults(0)
+    : sharedCtx(_sharedCtx), resultIterator(NULL)
     {
         PyEval_RestoreThread(sharedCtx->threadState);
         locals.setown(PyDict_New());
@@ -760,20 +762,19 @@ public:
         assertex(result && result != Py_None);
         if (!PyList_Check(result))
             rtlFail(0, "pyembed: type mismatch - return value was not a list");
-        numResults = PyList_Size(result);
-        nextResult = 0;
+        resultIterator = PyObject_GetIter(result);
         resultAllocator.set(_resultAllocator);
         return LINK(this);
     }
     virtual const void *nextRow()
     {
         assertex(resultAllocator);
-        if (nextResult == numResults)
+        assertex(resultIterator);
+        OwnedPyObject row = PyIter_Next(resultIterator);
+        if (!row)
             return NULL;
-        PyObject *elem = PyList_GetItem(result, nextResult); // note - borrowed reference
-        nextResult++;
         RtlDynamicRowBuilder rowBuilder(resultAllocator);
-        PythonRowBuilder pyRowBuilder(elem);
+        PythonRowBuilder pyRowBuilder(row);
         const RtlTypeInfo *typeInfo = resultAllocator->queryOutputMeta()->queryTypeInfo();
         assertex(typeInfo);
         RtlFieldStrInfo dummyField("", NULL, typeInfo);
@@ -929,8 +930,7 @@ protected:
     OwnedPyObject script;
 
     Linked<IEngineRowAllocator> resultAllocator;
-    Py_ssize_t numResults;
-    Py_ssize_t nextResult;
+    PyObject *resultIterator;
 };
 
 class Python27EmbedScriptContext : public Python27EmbedContextBase
