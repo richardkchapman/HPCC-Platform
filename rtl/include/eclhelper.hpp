@@ -216,9 +216,10 @@ public:
     virtual void getDecimalResult(Decimal &value) = 0;
 
     //The following are used process the structured fields
-    virtual size32_t processBeginSet(const RtlFieldInfo * field, bool &isAll) = 0;
+    virtual void processBeginSet(const RtlFieldInfo * field, bool &isAll) = 0;
     virtual void processBeginDataset(const RtlFieldInfo * field) = 0;
     virtual void processBeginRow(const RtlFieldInfo * field) = 0;
+    virtual bool processNextSet(const RtlFieldInfo * field) = 0;
     virtual void processEndSet(const RtlFieldInfo * field) = 0;
     virtual void processEndDataset(const RtlFieldInfo * field) = 0;
     virtual void processEndRow(const RtlFieldInfo * field) = 0;

@@ -573,7 +573,7 @@ class PythonRowBuilder : public CInterfaceOf<IFieldSource>
 {
 public:
     PythonRowBuilder(PyObject *_row)
-    : parent(NULL), childIndex(0), elem(_row)
+    : iter(NULL), elem(_row)
     {
     }
     virtual bool getBooleanResult()
@@ -627,19 +627,19 @@ public:
         nextField();
     }
 
-    virtual size32_t processBeginSet(const RtlFieldInfo * field, bool &isAll)
+    virtual void processBeginSet(const RtlFieldInfo * field, bool &isAll)
     {
         isAll = false;  // No concept of an 'all' set in Python
         assertex(elem && elem != Py_None);
-        if (!PyList_Check(elem))
-            rtlFail(0, "pyembed: type mismatch - list expected");
-        size32_t numElements = PyList_Size(elem);  // MORE - might be better to avoid keeping asking... Even better would be to avoid needing to know.
-        stack.append(parent);
-        indexes.append(childIndex);
-        parent = elem;
-        childIndex = 0;
+        if (!PyList_Check(elem) && !PySet_Check(elem))
+            rtlFail(0, "pyembed: type mismatch - list or set expected");
+        iterStack.append(iter);
+        iter = PyObject_GetIter(elem);
         nextField();
-        return numElements;
+    }
+    virtual bool processNextSet(const RtlFieldInfo * field)
+    {
+        return elem != NULL;
     }
     virtual void processBeginDataset(const RtlFieldInfo * field)
     {
@@ -649,17 +649,15 @@ public:
     {
         // Expect to see a tuple here, or possibly (if the ECL record has a single field), an arbitrary scalar object
         // If it's a tuple, we push it onto our stack as the active object
-        stack.append(parent);
-        indexes.append(childIndex);
+        iterStack.append(iter);
         if (PyTuple_Check(elem))
         {
-            parent = elem;
-            childIndex = 0;
+            iter = PyObject_GetIter(elem);
             nextField();
         }
         else if (countFields(field->type->queryFields())==1)
         {
-            parent = NULL;
+            iter = NULL;
         }
         else
         {
@@ -668,8 +666,7 @@ public:
     }
     virtual void processEndSet(const RtlFieldInfo * field)
     {
-        parent = (PyObject *) stack.pop();
-        childIndex = indexes.pop();
+        iter = (PyObject *) iterStack.pop();
         nextField();
     }
     virtual void processEndDataset(const RtlFieldInfo * field)
@@ -678,26 +675,21 @@ public:
     }
     virtual void processEndRow(const RtlFieldInfo * field)
     {
-        parent = (PyObject *) stack.pop();
-        childIndex = indexes.pop();
+        iter = (PyObject *) iterStack.pop();
         nextField();
     }
 protected:
     void nextField()
     {
-        if (parent && PyList_Check(parent) && PyList_Size(parent) > childIndex)
-            elem = PyList_GetItem(parent, childIndex++);
-        else if (parent && PyTuple_Check(parent) && PyTuple_Size(parent) > childIndex)
-            elem = PyTuple_GetItem(parent, childIndex++);
+        if (iter)
+            elem = PyIter_Next(iter);
         else
             elem = NULL;
         checkPythonError();
     }
+    PyObject *iter;
     PyObject *elem;
-    PyObject *parent;
-    PointerArray stack;
-    UnsignedArray indexes;
-    unsigned childIndex;
+    PointerArray iterStack;
 };
 
 // Each call to a Python function will use a new Python27EmbedFunctionContext object

@@ -955,7 +955,7 @@ size32_t RtlSetTypeInfo::size(const byte * self, const byte * selfrow) const
 size32_t RtlSetTypeInfo::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
 {
     bool isAll;
-    size32_t numElements = source.processBeginSet(field, isAll);
+    source.processBeginSet(field, isAll);
     size32_t sizeInBytes = sizeof(bool) + sizeof(size32_t);
     builder.ensureCapacity(offset+sizeInBytes, field->name->str());
     byte *dest = builder.getSelf()+offset;
@@ -970,7 +970,7 @@ size32_t RtlSetTypeInfo::build(ARowBuilder &builder, size32_t offset, const RtlF
         * (bool *) dest = false;
         size32_t newOffset = offset + sizeInBytes;
         RtlFieldStrInfo dummyField("<set element>", NULL, child);
-        while (numElements--)
+        while (source.processNextSet(field))
         {
             newOffset = child->build(builder, newOffset, &dummyField, source);
         }
