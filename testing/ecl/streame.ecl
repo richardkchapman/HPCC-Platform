@@ -17,10 +17,13 @@
 
 IMPORT Python;
 
+childrec := RECORD
+   string name;
+END;
 namesRecord := RECORD
     STRING name1;
     STRING10 name2;
-    VARSTRING name3;
+    _LINKCOUNTED_ DATASET(childrec) childnames;
     unsigned1 val1;
     integer1   val2;
     UTF8 u1;
@@ -40,10 +43,10 @@ _linkcounted_ dataset(namesRecord) linkedNames(string prefix) := EMBED(Python)
   return ["Gavin","John","Bart"]
 ENDEMBED;
 
-streamed dataset(namesRecord) streamedNames(data d, utf8 u) := EMBED(Python)
+STREAMED dataset(namesRecord) streamedNames(data d, utf8 u) := EMBED(Python)
   return [  \
-     ("Gavin", "Halliday", "Jr", 250, -1,  U'là',  U'là',  U'là', 1234566, d, False, {"1","2"}), \
-     ("John", "Smith", "", 250, -1,  U'là',  U'là',  u, 1234566, d, True, [])]
+     ("Gavin", "Halliday", [("Jr"),("Sr")], 250, -1,  U'là',  U'là',  U'là', 1234566, d, False, {"1","2"}), \
+     ("John", "Smith", [], 250, -1,  U'là',  U'là',  u, 1234566, d, True, [])]
 ENDEMBED;
 
 output(streamedNames(d'AA', u'là'));

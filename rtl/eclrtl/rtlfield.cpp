@@ -1076,6 +1076,42 @@ size32_t RtlDatasetTypeInfo::size(const byte * self, const byte * selfrow) const
     return sizeof(size32_t) + rtlReadUInt4(self);
 }
 
+size32_t RtlDatasetTypeInfo::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
+{
+    source.processBeginDataset(field);
+    if (isLinkCounted())
+    {
+        // a 32-bit record count, and a pointer to an array of record pointers
+        size32_t sizeInBytes = sizeof(size32_t) + sizeof(void *);
+        builder.ensureCapacity(offset+sizeInBytes, field->name->str());
+        size32_t newOffset = offset + sizeInBytes;
+        size32_t numRows = 0;
+
+        // MORE - read all the child rows
+
+        // Go back in and patch the count, remembering it may have moved
+        rtlWriteInt4(builder.getSelf()+offset, numRows);
+        // * ( void * * ) (builder.getSelf()+offset+sizeof(size32_t)) = rows;
+        offset = newOffset;
+    }
+    else
+    {
+        // a 32-bit size, then rows inline
+        size32_t sizeInBytes = sizeof(size32_t);
+        builder.ensureCapacity(offset+sizeInBytes, field->name->str());
+        size32_t newOffset = offset + sizeInBytes;
+        RtlFieldStrInfo dummyField("", NULL, child);
+        while (source.processNextRow(field))
+            newOffset = child->build(builder, newOffset, &dummyField, source);
+        // Go back in and patch the size, remembering it may have moved
+        rtlWriteInt4(builder.getSelf()+offset, newOffset - (offset+sizeInBytes));
+        offset = newOffset;
+    }
+    source.processEndDataset(field);
+    return offset;
+
+}
+
 size32_t RtlDatasetTypeInfo::process(const byte * self, const byte * selfrow, const RtlFieldInfo * field, IFieldProcessor & target) const
 {
     if (isLinkCounted())

@@ -315,10 +315,11 @@ static int countFields(const RtlFieldInfo * const * fields)
     loop
     {
         if (!*fields)
-            return count;
+            break;
         fields++;
         count++;
     }
+    return count;
 }
 
 // Conversions from Python objects to ECL data
@@ -408,20 +409,21 @@ static void getSetResult(PyObject *obj, bool & isAllResult, size32_t & resultByt
 {
     // MORE - should probably recode to use the getResultDataset mechanism
     assertex(obj && obj != Py_None);
-    if (!PyList_Check(obj))
-        rtlFail(0, "pyembed: type mismatch - list expected");
-    Py_ssize_t numResults = PyList_Size(obj);
+    if (!PyList_Check(obj) && !PySet_Check(obj))
+        rtlFail(0, "pyembed: type mismatch - list or set expected");
     rtlRowBuilder out;
-    byte *outData = NULL;
     size32_t outBytes = 0;
-    if (elemSize != UNKNOWN_LENGTH)
+    byte *outData = NULL;
+    OwnedPyObject iter = PyObject_GetIter(obj);
+    OwnedPyObject elem;
+    for (elem.setown(PyIter_Next(iter)); elem != NULL; elem.setown(PyIter_Next(iter)))
     {
-        out.ensureAvailable(numResults * elemSize); // MORE - check for overflow?
-        outData = out.getbytes();
-    }
-    for (int i = 0; i < numResults; i++)
-    {
-        PyObject *elem = PyList_GetItem(obj, i); // note - borrowed reference
+        if (elemSize != UNKNOWN_LENGTH)
+        {
+            out.ensureAvailable(outBytes + elemSize);
+            outData = out.getbytes() + outBytes;
+            outBytes += elemSize;
+        }
         switch ((type_t) elemType)
         {
         case type_int:
@@ -540,11 +542,6 @@ static void getSetResult(PyObject *obj, bool & isAllResult, size32_t & resultByt
             break;
         }
         checkPythonError();
-        if (elemSize != UNKNOWN_LENGTH)
-        {
-            outData += elemSize;
-            outBytes += elemSize;
-        }
     }
     isAllResult = false;
     resultBytes = outBytes;
@@ -644,7 +641,15 @@ public:
     }
     virtual void processBeginDataset(const RtlFieldInfo * field)
     {
-        UNIMPLEMENTED;
+        if (PyList_Check(elem))
+        {
+            iterStack.append(iter.getClear());
+            iter.setown(PyObject_GetIter(elem));
+            nextField();
+        }
+        else
+            rtlFail(0, "pyembed: type mismatch - list expected");
+
     }
     virtual void processBeginRow(const RtlFieldInfo * field)
     {
@@ -666,6 +671,10 @@ public:
             rtlFail(0, "pyembed: type mismatch - tuple expected");
         }
     }
+    virtual bool processNextRow(const RtlFieldInfo * field)
+    {
+        return elem != NULL;
+    }
     virtual void processEndSet(const RtlFieldInfo * field)
     {
         iter.setown((PyObject *) iterStack.pop());
@@ -673,7 +682,8 @@ public:
     }
     virtual void processEndDataset(const RtlFieldInfo * field)
     {
-        UNIMPLEMENTED;
+        iter.setown((PyObject *) iterStack.pop());
+        nextField();
     }
     virtual void processEndRow(const RtlFieldInfo * field)
     {
