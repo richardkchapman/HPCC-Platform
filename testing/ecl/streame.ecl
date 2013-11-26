@@ -24,7 +24,7 @@ END;
 namesRecord := RECORD
     STRING name1;
     STRING10 name2;
-    DATASET(childrec) childnames{linkcounted};
+    LINKCOUNTED DATASET(childrec) childnames;
 //    DICTIONARY(childrec) childdict;
     childrec r;
     unsigned1 val1;
@@ -46,7 +46,7 @@ _linkcounted_ dataset(namesRecord) linkedNames(string prefix) := EMBED(Python)
   return ["Gavin","John","Bart"]
 ENDEMBED;
 
-STREAMED dataset(namesRecord) streamedNames(data d, utf8 u) := EMBED(Python)
+dataset(namesRecord) streamedNames(data d, utf8 u) := EMBED(Python)
   return [  \
      ("Gavin", "Halliday", [("a", 1)], ("b", 2), 250, -1,  U'là',  U'là',  U'là', 0x01000000, d, False, {"1","2"}), \
      ("John", "Smith", [], ("c", 3), 250, -1,  U'là',  U'là',  u, 0x02000000, d, True, [])]
