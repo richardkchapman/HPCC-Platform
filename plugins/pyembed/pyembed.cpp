@@ -324,31 +324,41 @@ static int countFields(const RtlFieldInfo * const * fields)
 
 // Conversions from Python objects to ECL data
 
-static bool getBooleanResult(PyObject *obj)
+static void typeError(const char *expected, const RtlFieldInfo *field) __attribute__((noreturn));
+
+static void typeError(const char *expected, const RtlFieldInfo *field)
+{
+    VStringBuffer msg("pyembed: type mismatch - %s expected", expected);
+    if (field)
+        msg.appendf(" for field %s", field->name->str());
+    rtlFail(0, msg.str());
+}
+
+static bool getBooleanResult(const RtlFieldInfo *field, PyObject *obj)
 {
     assertex(obj && obj != Py_None);
     if (!PyBool_Check(obj))
-        rtlFail(0, "pyembed: Type mismatch - boolean expected");
+        typeError("boolean", field);
     return obj == Py_True;
 }
 
-static void getDataResult(PyObject *obj, size32_t &chars, void * &result)
+static void getDataResult(const RtlFieldInfo *field, PyObject *obj, size32_t &chars, void * &result)
 {
     assertex(obj && obj != Py_None);
     if (!PyByteArray_Check(obj))
-        rtlFail(0, "pyembed: Type mismatch - bytearray expected");
+        typeError("bytearray", field);
     rtlStrToDataX(chars, result, PyByteArray_Size(obj), PyByteArray_AsString(obj));
 }
 
-static double getRealResult(PyObject *obj)
+static double getRealResult(const RtlFieldInfo *field, PyObject *obj)
 {
     assertex(obj && obj != Py_None);
     if (!PyFloat_Check(obj))
-        rtlFail(0, "pyembed: Type mismatch - real expected");
+        typeError("real", field);
     return PyFloat_AsDouble(obj);
 }
 
-static __int64 getSignedResult(PyObject *obj)
+static __int64 getSignedResult(const RtlFieldInfo *field, PyObject *obj)
 {
     assertex(obj && obj != Py_None);
     __int64 ret;
@@ -357,11 +367,11 @@ static __int64 getSignedResult(PyObject *obj)
     else if (PyLong_Check(obj))
         ret = (__int64) PyLong_AsLongLong(obj);
     else
-        rtlFail(0, "pyembed: type mismatch - integer expected");
+        typeError("integer", field);
     return ret;
 }
 
-static unsigned __int64 getUnsignedResult(PyObject *obj)
+static unsigned __int64 getUnsignedResult(const RtlFieldInfo *field, PyObject *obj)
 {
     assertex(obj && obj != Py_None);
     unsigned __int64 ret;
@@ -370,11 +380,11 @@ static unsigned __int64 getUnsignedResult(PyObject *obj)
     else if (PyLong_Check(obj))
         ret =  (unsigned __int64) PyLong_AsUnsignedLongLong(obj);
     else
-        rtlFail(0, "pyembed: type mismatch - integer expected");
+        typeError("integer", field);
     return ret;
 }
 
-static void getStringResult(PyObject *obj, size32_t &chars, char * &result)
+static void getStringResult(const RtlFieldInfo *field, PyObject *obj, size32_t &chars, char * &result)
 {
     assertex(obj && obj != Py_None);
     if (PyString_Check(obj))
@@ -385,10 +395,10 @@ static void getStringResult(PyObject *obj, size32_t &chars, char * &result)
         rtlStrToStrX(chars, result, lenBytes, text);
     }
     else
-        rtlFail(0, "pyembed: type mismatch - string expected");
+        typeError("string", field);
 }
 
-static void getUTF8Result(PyObject *obj, size32_t &chars, char * &result)
+static void getUTF8Result(const RtlFieldInfo *field, PyObject *obj, size32_t &chars, char * &result)
 {
     assertex(obj && obj != Py_None);
     if (PyUnicode_Check(obj))
@@ -402,7 +412,7 @@ static void getUTF8Result(PyObject *obj, size32_t &chars, char * &result)
         rtlUtf8ToUtf8X(chars, result, numchars, text);
     }
     else
-        rtlFail(0, "pyembed: type mismatch - unicode string expected");
+        typeError("unicode string", field);
 }
 
 static void getSetResult(PyObject *obj, bool & isAllResult, size32_t & resultBytes, void * & result, int elemType, size32_t elemSize)
@@ -427,23 +437,23 @@ static void getSetResult(PyObject *obj, bool & isAllResult, size32_t & resultByt
         switch ((type_t) elemType)
         {
         case type_int:
-            rtlWriteInt(outData, pyembed::getSignedResult(elem), elemSize);
+            rtlWriteInt(outData, pyembed::getSignedResult(NULL, elem), elemSize);
             break;
         case type_unsigned:
-            rtlWriteInt(outData, pyembed::getUnsignedResult(elem), elemSize);
+            rtlWriteInt(outData, pyembed::getUnsignedResult(NULL, elem), elemSize);
             break;
         case type_real:
             if (elemSize == sizeof(double))
-                * (double *) outData = (double) pyembed::getRealResult(elem);
+                * (double *) outData = (double) pyembed::getRealResult(NULL, elem);
             else
             {
                 assertex(elemSize == sizeof(float));
-                * (float *) outData = (float) pyembed::getRealResult(elem);
+                * (float *) outData = (float) pyembed::getRealResult(NULL, elem);
             }
             break;
         case type_boolean:
             assertex(elemSize == sizeof(bool));
-            * (bool *) outData = pyembed::getBooleanResult(elem);
+            * (bool *) outData = pyembed::getBooleanResult(NULL, elem);
             break;
         case type_string:
         case type_varstring:
@@ -548,7 +558,7 @@ static void getSetResult(PyObject *obj, bool & isAllResult, size32_t & resultByt
     result = out.detachdata();
 }
 
-static void getUnicodeResult(PyObject *obj, size32_t &chars, UChar * &result)
+static void getUnicodeResult(const RtlFieldInfo *field, PyObject *obj, size32_t &chars, UChar * &result)
 {
     assertex(obj && obj != Py_None);
     if (PyUnicode_Check(obj))
@@ -562,7 +572,7 @@ static void getUnicodeResult(PyObject *obj, size32_t &chars, UChar * &result)
         rtlUtf8ToUnicodeX(chars, result, numchars, text);
     }
     else
-        rtlFail(0, "pyembed: type mismatch - return value was not a unicode string");
+        typeError("unicode string", field);
 }
 
 // A PythonRowBuilder object is used to construct an ECL row from a python object
@@ -574,53 +584,53 @@ public:
     : iter(NULL), elem(_row)
     {
     }
-    virtual bool getBooleanResult()
+    virtual bool getBooleanResult(const RtlFieldInfo *field)
     {
-        bool ret = pyembed::getBooleanResult(elem);
+        bool ret = pyembed::getBooleanResult(field, elem);
         nextField();
         return ret;
     }
-    virtual void getDataResult(size32_t &len, void * &result)
+    virtual void getDataResult(const RtlFieldInfo *field, size32_t &len, void * &result)
     {
-        pyembed::getDataResult(elem, len, result);
+        pyembed::getDataResult(field, elem, len, result);
         nextField();
     }
-    virtual double getRealResult()
+    virtual double getRealResult(const RtlFieldInfo *field)
     {
-        double ret = pyembed::getRealResult(elem);
-        nextField();
-        return ret;
-    }
-    virtual __int64 getSignedResult()
-    {
-        __int64 ret = pyembed::getSignedResult(elem);
+        double ret = pyembed::getRealResult(field, elem);
         nextField();
         return ret;
     }
-    virtual unsigned __int64 getUnsignedResult()
+    virtual __int64 getSignedResult(const RtlFieldInfo *field)
     {
-        unsigned __int64 ret = pyembed::getUnsignedResult(elem);
+        __int64 ret = pyembed::getSignedResult(field, elem);
         nextField();
         return ret;
     }
-    virtual void getStringResult(size32_t &chars, char * &result)
+    virtual unsigned __int64 getUnsignedResult(const RtlFieldInfo *field)
     {
-        pyembed::getStringResult(elem, chars, result);
+        unsigned __int64 ret = pyembed::getUnsignedResult(field, elem);
+        nextField();
+        return ret;
+    }
+    virtual void getStringResult(const RtlFieldInfo *field, size32_t &chars, char * &result)
+    {
+        pyembed::getStringResult(field, elem, chars, result);
         nextField();
     }
-    virtual void getUTF8Result(size32_t &chars, char * &result)
+    virtual void getUTF8Result(const RtlFieldInfo *field, size32_t &chars, char * &result)
     {
-        pyembed::getUTF8Result(elem, chars, result);
+        pyembed::getUTF8Result(field, elem, chars, result);
         nextField();
     }
-    virtual void getUnicodeResult(size32_t &chars, UChar * &result)
+    virtual void getUnicodeResult(const RtlFieldInfo *field, size32_t &chars, UChar * &result)
     {
-        pyembed::getUnicodeResult(elem, chars, result);
+        pyembed::getUnicodeResult(field, elem, chars, result);
         nextField();
     }
-    virtual void getDecimalResult(Decimal &value)
+    virtual void getDecimalResult(const RtlFieldInfo *field, Decimal &value)
     {
-        double ret = pyembed::getRealResult(elem);
+        double ret = pyembed::getRealResult(field, elem);
         value.setReal(ret);
         nextField();
     }
@@ -630,7 +640,7 @@ public:
         isAll = false;  // No concept of an 'all' set in Python
         assertex(elem && elem != Py_None);
         if (!PyList_Check(elem) && !PySet_Check(elem))
-            rtlFail(0, "pyembed: type mismatch - list or set expected");
+            typeError("list or set", field);
         iterStack.append(iter.getClear());
         iter.setown(PyObject_GetIter(elem));
         nextField();
@@ -648,8 +658,7 @@ public:
             nextField();
         }
         else
-            rtlFail(0, "pyembed: type mismatch - list expected");
-
+            typeError("list", field);
     }
     virtual void processBeginRow(const RtlFieldInfo * field)
     {
@@ -668,7 +677,7 @@ public:
         }
         else
         {
-            rtlFail(0, "pyembed: type mismatch - tuple expected");
+            typeError("tuple", field);
         }
     }
     virtual bool processNextRow(const RtlFieldInfo * field)
@@ -733,35 +742,35 @@ public:
 
     virtual bool getBooleanResult()
     {
-        return pyembed::getBooleanResult(result);
+        return pyembed::getBooleanResult(NULL, result);
     }
     virtual void getDataResult(size32_t &__chars, void * &__result)
     {
-        pyembed::getDataResult(result, __chars, __result);
+        pyembed::getDataResult(NULL, result, __chars, __result);
     }
     virtual double getRealResult()
     {
-        return pyembed::getRealResult(result);
+        return pyembed::getRealResult(NULL, result);
     }
     virtual __int64 getSignedResult()
     {
-        return pyembed::getSignedResult(result);
+        return pyembed::getSignedResult(NULL, result);
     }
     virtual unsigned __int64 getUnsignedResult()
     {
-        return pyembed::getUnsignedResult(result);
+        return pyembed::getUnsignedResult(NULL, result);
     }
     virtual void getStringResult(size32_t &__chars, char * &__result)
     {
-        pyembed::getStringResult(result, __chars, __result);
+        pyembed::getStringResult(NULL, result, __chars, __result);
     }
     virtual void getUTF8Result(size32_t &__chars, char * &__result)
     {
-        pyembed::getUTF8Result(result, __chars, __result);
+        pyembed::getUTF8Result(NULL, result, __chars, __result);
     }
     virtual void getUnicodeResult(size32_t &__chars, UChar * &__result)
     {
-        pyembed::getUnicodeResult(result, __chars, __result);
+        pyembed::getUnicodeResult(NULL, result, __chars, __result);
     }
     virtual void getSetResult(bool & __isAllResult, size32_t & __resultBytes, void * & __result, int elemType, size32_t elemSize)
     {
@@ -771,7 +780,7 @@ public:
     {
         assertex(result && result != Py_None);
         if (!PyList_Check(result))
-            rtlFail(0, "pyembed: type mismatch - return value was not a list");
+            typeError("list", NULL);
         resultIterator = PyObject_GetIter(result);
         resultAllocator.set(_resultAllocator);
         return LINK(this);
@@ -787,7 +796,7 @@ public:
         PythonRowBuilder pyRowBuilder(row);
         const RtlTypeInfo *typeInfo = resultAllocator->queryOutputMeta()->queryTypeInfo();
         assertex(typeInfo);
-        RtlFieldStrInfo dummyField("", NULL, typeInfo);
+        RtlFieldStrInfo dummyField("<row>", NULL, typeInfo);
         size32_t len = typeInfo->build(rowBuilder, 0, &dummyField, pyRowBuilder);
         return rowBuilder.finalizeRowClear(len);
     }

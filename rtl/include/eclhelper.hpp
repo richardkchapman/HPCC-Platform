@@ -205,15 +205,15 @@ class RtlDynamicRowBuilder;
 interface IFieldSource : public IInterface
 {
 public:
-    virtual bool getBooleanResult() = 0;
-    virtual void getDataResult(size32_t &len, void * &result) = 0;
-    virtual double getRealResult() = 0;
-    virtual __int64 getSignedResult() = 0;
-    virtual unsigned __int64 getUnsignedResult() = 0;
-    virtual void getStringResult(size32_t &len, char * &result) = 0;
-    virtual void getUTF8Result(size32_t &chars, char * &result) = 0;
-    virtual void getUnicodeResult(size32_t &chars, UChar * &result) = 0;
-    virtual void getDecimalResult(Decimal &value) = 0;
+    virtual bool getBooleanResult(const RtlFieldInfo *field) = 0;
+    virtual void getDataResult(const RtlFieldInfo *field, size32_t &len, void * &result) = 0;
+    virtual double getRealResult(const RtlFieldInfo *field) = 0;
+    virtual __int64 getSignedResult(const RtlFieldInfo *field) = 0;
+    virtual unsigned __int64 getUnsignedResult(const RtlFieldInfo *field) = 0;
+    virtual void getStringResult(const RtlFieldInfo *field, size32_t &len, char * &result) = 0;
+    virtual void getUTF8Result(const RtlFieldInfo *field, size32_t &chars, char * &result) = 0;
+    virtual void getUnicodeResult(const RtlFieldInfo *field, size32_t &chars, UChar * &result) = 0;
+    virtual void getDecimalResult(const RtlFieldInfo *field, Decimal &value) = 0;
 
     //The following are used process the structured fields
     virtual void processBeginSet(const RtlFieldInfo * field, bool &isAll) = 0;
