@@ -75,13 +75,13 @@ size32_t RtlTypeInfoBase::toXML(const byte * self, const byte * selfrow, const R
     rtlFailUnexpected();
     return 0;
 }
-/*
+
 size32_t RtlTypeInfoBase::build(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, IFieldSource &source) const
 {
     rtlFailUnexpected();
     return 0;
 }
-*/
+
 const char * RtlTypeInfoBase::queryLocale() const 
 {
     return NULL; 
