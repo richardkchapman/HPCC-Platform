@@ -11565,6 +11565,9 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
         case type_data:
             bindFunc = bindDataParamId;
             break;
+        case type_row:
+            bindFunc = bindRowParamId; // more
+            break;
         case type_set:
         {
             bindFunc = bindSetParamId;
@@ -11624,6 +11627,9 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
         retargs.append(*createIntConstant(returnType->queryChildType()->getSize()));
         break;
     }
+    case type_row:
+        returnFunc = getRowResultId;
+        break;
     case type_table:
         {
             returnFunc = getDatasetResultId;
