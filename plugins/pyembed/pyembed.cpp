@@ -581,8 +581,9 @@ class PythonRowBuilder : public CInterfaceOf<IFieldSource>
 {
 public:
     PythonRowBuilder(PyObject *_row)
-    : iter(NULL), elem(NULL), pushback(_row), named(false)
+    : iter(NULL), elem(NULL), named(false)
     {
+        pushback.set(_row);
     }
     virtual bool getBooleanResult(const RtlFieldInfo *field)
     {
@@ -705,6 +706,7 @@ protected:
         parent.set(elem);
         iter.setown(PyObject_GetIter(elem));
         named = isNamedTuple(elem);
+        elem.clear();
     }
     bool isNamedTuple(PyObject *obj)
     {
