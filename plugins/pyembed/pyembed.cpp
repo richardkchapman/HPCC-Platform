@@ -734,6 +734,15 @@ protected:
     BoolArray namedStack;
 };
 
+static size32_t getRowResult(PyObject *result, ARowBuilder &builder)
+{
+    PythonRowBuilder pyRowBuilder(result);
+    const RtlTypeInfo *typeInfo = builder.queryAllocator()->queryOutputMeta()->queryTypeInfo();
+    assertex(typeInfo);
+    RtlFieldStrInfo dummyField("<row>", NULL, typeInfo);
+    return typeInfo->build(builder, 0, &dummyField, pyRowBuilder);
+}
+
 // GILBlock ensures the we hold the Python "Global interpreter lock" for the appropriate duration
 
 class GILBlock
@@ -778,11 +787,7 @@ public:
         if (!row)
             return NULL;
         RtlDynamicRowBuilder rowBuilder(resultAllocator);
-        PythonRowBuilder pyRowBuilder(row);
-        const RtlTypeInfo *typeInfo = resultAllocator->queryOutputMeta()->queryTypeInfo();
-        assertex(typeInfo);
-        RtlFieldStrInfo dummyField("<row>", NULL, typeInfo);
-        size32_t len = typeInfo->build(rowBuilder, 0, &dummyField, pyRowBuilder);
+        size32_t len = pyembed::getRowResult(row, rowBuilder);
         return rowBuilder.finalizeRowClear(len);
     }
     virtual void stop()
@@ -864,11 +869,13 @@ public:
     }
     virtual byte * getRowResult(IEngineRowAllocator * _resultAllocator)
     {
-        UNIMPLEMENTED;
+        RtlDynamicRowBuilder rowBuilder(_resultAllocator);
+        size32_t len = pyembed::getRowResult(result, rowBuilder);
+        return (byte *) rowBuilder.finalizeRowClear(len);
     }
     virtual size32_t getTransformResult(ARowBuilder & builder)
     {
-        UNIMPLEMENTED;
+        return pyembed::getRowResult(result, builder);
     }
     virtual void bindBooleanParam(const char *name, bool val)
     {
