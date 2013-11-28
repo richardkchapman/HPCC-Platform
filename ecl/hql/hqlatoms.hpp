@@ -43,6 +43,7 @@ extern HQL_API IIdAtom * getRowResultId;
 extern HQL_API IIdAtom * getSetResultId;
 extern HQL_API IIdAtom * getSignedResultId;
 extern HQL_API IIdAtom * getStringResultId;
+extern HQL_API IIdAtom * getTransformResultId;
 extern HQL_API IIdAtom * getUnicodeResultId;
 extern HQL_API IIdAtom * getUnsignedResultId;
 extern HQL_API IIdAtom * getUTF8ResultId;

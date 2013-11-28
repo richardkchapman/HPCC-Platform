@@ -59,6 +59,11 @@ childrec testRowReturn(unsigned lim) := EMBED(Python)
   return ("Hello", lim)
 ENDEMBED;
 
+// Test defining a transform
+transform(childrec) testTransform(unsigned lim) := EMBED(Python)
+  return ("Hello", lim)
+ENDEMBED;
+
 
 //output (testGenerator(10));
 //output (testNamedTuple(10));
@@ -66,3 +71,4 @@ ENDEMBED;
 //output (testMissingTuple2(10));
 
 output(testRowReturn(10));
+//output(row(testTransform(10)));

@@ -41,6 +41,7 @@ IIdAtom * getRowResultId;
 IIdAtom * getSetResultId;
 IIdAtom * getSignedResultId;
 IIdAtom * getStringResultId;
+IIdAtom * getTransformResultId;
 IIdAtom * getUnicodeResultId;
 IIdAtom * getUnsignedResultId;
 IIdAtom * getUTF8ResultId;
@@ -449,6 +450,7 @@ MODULE_INIT(INIT_PRIORITY_HQLATOM)
     MAKEID(getSetResult);
     MAKEID(getSignedResult);
     MAKEID(getStringResult);
+    MAKEID(getTransformResult);
     MAKEID(getUnicodeResult);
     MAKEID(getUnsignedResult);
     MAKEID(getUTF8Result);
