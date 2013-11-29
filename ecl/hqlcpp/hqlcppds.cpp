@@ -1991,10 +1991,23 @@ void HqlCppTranslator::buildDeserializedDataset(BuildCtx & ctx, ITypeInfo * type
 void HqlCppTranslator::ensureDatasetFormat(BuildCtx & ctx, ITypeInfo * type, CHqlBoundExpr & tgt, ExpressionFormat format)
 {
     IAtom * serializeForm = internalAtom; // The format of serialized expressions in memory must match the internal serialization format
+    ITypeInfo * tgtType = tgt.queryType();
     switch (format)
     {
+    case FormatStreamedDataset:
+        if (!hasStreamedModifier(tgtType))
+        {
+            ensureDatasetFormat(ctx, type, tgt, FormatLinkedDataset);
+            HqlExprArray args;
+            args.append(*tgt.getTranslatedExpr());
+            OwnedITypeInfo streamedType = setStreamedAttr(type, true);
+            OwnedHqlExpr call = bindFunctionCall(createRowStreamId, args, streamedType);
+            buildTempExpr(ctx, call, tgt);
+            return;
+        }
+        break;
     case FormatBlockedDataset:
-        if (isArrayRowset(tgt.queryType()))
+        if (isArrayRowset(tgtType))
         {
             OwnedHqlExpr deserializedExpr = tgt.getTranslatedExpr();
             LinkedHqlExpr savedCount = tgt.count;
@@ -2006,10 +2019,10 @@ void HqlCppTranslator::ensureDatasetFormat(BuildCtx & ctx, ITypeInfo * type, CHq
         }
         break;
     case FormatLinkedDataset:
-        if (!hasLinkCountedModifier(tgt.queryType()))
+        if (!hasLinkCountedModifier(tgtType))
         {
             OwnedHqlExpr serializedExpr = tgt.getTranslatedExpr();
-            if (recordTypesMatch(type, tgt.queryType()))
+            if (recordTypesMatch(type, tgtType))
             {
                 //source is an array of rows, or a simple dataset that doesn't need any transformation
                 buildTempExpr(ctx, serializedExpr, tgt, FormatLinkedDataset);
@@ -2020,7 +2033,7 @@ void HqlCppTranslator::ensureDatasetFormat(BuildCtx & ctx, ITypeInfo * type, CHq
         }
         break;
     case FormatArrayDataset:
-        if (!isArrayRowset(tgt.queryType()))
+        if (!isArrayRowset(tgtType))
         {
             OwnedHqlExpr serializedExpr = tgt.getTranslatedExpr();
             buildDeserializedDataset(ctx, type, serializedExpr, tgt, serializeForm);
@@ -2385,12 +2398,8 @@ void HqlCppTranslator::buildDatasetAssign(BuildCtx & ctx, const CHqlBoundTarget 
         return;
     case no_call:
     case no_externalcall:
-        if (!hasStreamedModifier(expr->queryType()))
-        {
-            doBuildCall(ctx, &target, expr, NULL);
-            return;
-        }
-        break;
+        doBuildCall(ctx, &target, expr, NULL);
+        return;
     case no_getgraphresult:
         doBuildAssignGetGraphResult(ctx, target, expr);
         return;

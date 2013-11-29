@@ -13511,9 +13511,7 @@ ABoundActivity * HqlCppTranslator::doBuildActivityStreamedCall(BuildCtx & ctx, I
 
     BuildCtx createctx(instance->startctx);
     createctx.addQuotedCompound("virtual IRowStream * createInput()");
-    CHqlBoundExpr bound;
-    doBuildExprCall(createctx, expr, bound);
-    createctx.addReturn(bound.expr);
+    buildReturn(createctx, expr);
 
     buildInstanceSuffix(instance);
     return instance->getBoundActivity();

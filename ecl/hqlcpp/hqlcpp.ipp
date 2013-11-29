@@ -65,6 +65,7 @@ enum ExpressionFormat {
     FormatBlockedDataset, 
     FormatLinkedDataset,
     FormatArrayDataset,
+    FormatStreamedDataset,
     FormatMax,
 };
 
