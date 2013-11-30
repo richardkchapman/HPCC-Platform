@@ -176,85 +176,12 @@ public:
         return script.getLink();
     }
 
-    inline PyObject *compileEmbeddedScript(size32_t lenChars, const char *utf)
-    {
-        size32_t bytes = rtlUtf8Size(lenChars, utf);
-        StringBuffer text(bytes, utf);
-        if (!prevtext || strcmp(text, prevtext) != 0)
-        {
-            prevtext.clear();
-            // Try compiling as a eval first... if that fails, try as a script.
-            text.stripChar('\r');
-            script.setown(Py_CompileString(text, "", Py_eval_input));
-            if (!script)
-            {
-                PyErr_Clear();
-                StringBuffer wrapped;
-                wrapPythonText(wrapped, text);
-                script.setown(Py_CompileString(wrapped, "<embed>", Py_file_input));
-            }
-            checkPythonError();
-            prevtext.set(utf, bytes);
-        }
-        return script.getLink();
-    }
-    PyObject *getNamedTupleType(const RtlTypeInfo *type)
-    {
-        // MORE - should use a proper hash table of for these. It seems the customized namedtuple types leak, and they are slow to create
-        // which is the main motivation for reusing them. If we really want to be safe from leaks, we would have to make sure we shared them
-        // across threads (which might be tricky) and across workunits (ditto)
-        if (lru && (type==lrutype))
-            return lru.getLink();
-
-        if (!namedtuple)
-        {
-            OwnedPyObject pName = PyString_FromString("collections");
-            OwnedPyObject collections = PyImport_Import(pName);
-            checkPythonError();
-            namedtuple.setown(PyObject_GetAttrString(collections, "namedtuple"));
-            checkPythonError();
-            assertex(PyCallable_Check(namedtuple));
-        }
-
-        const RtlFieldInfo * const *fields = type->queryFields();
-        OwnedPyObject names = PyList_New(0);
-        while (*fields)
-        {
-            const RtlFieldInfo *field = *fields;
-            OwnedPyObject name = PyString_FromString(field->name->str());
-            PyList_Append(names, name);
-            fields++;
-        }
-        checkPythonError();
-
-        OwnedPyObject namesTuple = PyList_AsTuple(names);
-        OwnedPyObject recname = PyString_FromString("namerec");  // MORE - what should "namerec" be?
-        OwnedPyObject ntargs = PyTuple_Pack(2, recname.get(), namesTuple.get());
-        OwnedPyObject mynamedtupletype = PyObject_CallObject(namedtuple, ntargs);
-        checkPythonError();
-        assertex(PyCallable_Check(mynamedtupletype));
-        lru.set(mynamedtupletype);
-        lrutype = type;
-        return mynamedtupletype.getClear();
-    }
+    PyObject *compileEmbeddedScript(size32_t lenChars, const char *utf);
+    PyObject *getNamedTupleType(const RtlTypeInfo *type);
 private:
-    static StringBuffer &wrapPythonText(StringBuffer &out, const char *in)
-    {
-        out.append("def __user__():\n  ");
-        char c;
-        while ((c = *in++) != '\0')
-        {
-            out.append(c);
-            if (c=='\n')
-                out.append("  ");
-        }
-        out.append("\n__result__ = __user__()\n");
-        return out;
-    }
     GILstateWrapper GILState;
     OwnedPyObject module;
     OwnedPyObject script;
-    OwnedPyObject namedtuple;
     OwnedPyObject lru;
     const RtlTypeInfo *lrutype;
     StringAttr prevtext;
@@ -337,6 +264,9 @@ public:
         {
             PyEval_RestoreThread(tstate);
             // Finish the Python Interpreter
+            namedtuple.clear();
+            namedtupleTypes.clear();
+            compiledScripts.clear();
             Py_Finalize();
         }
         if (pythonLibrary)
@@ -346,11 +276,114 @@ public:
     {
         return initialized;
     }
+    PyObject *getNamedTupleType(const RtlTypeInfo *type)
+    {
+        // It seems the customized namedtuple types leak, and they are slow to create, so take care to reuse
+        CriticalBlock b(lock);  // Not sure if this is really needed, as we have effectively locked out other threads using the GIL
+        if (!namedtuple)
+        {
+            namedtupleTypes.setown(PyDict_New());
+            OwnedPyObject pName = PyString_FromString("collections");
+            OwnedPyObject collections = PyImport_Import(pName);
+            checkPythonError();
+            namedtuple.setown(PyObject_GetAttrString(collections, "namedtuple"));
+            checkPythonError();
+            assertex(PyCallable_Check(namedtuple));
+        }
+
+        const RtlFieldInfo * const *fields = type->queryFields();
+        StringBuffer names;
+        while (*fields)
+        {
+            const RtlFieldInfo *field = *fields;
+            if (names.length())
+                names.append(',');
+            names.append(field->name->str());
+            fields++;
+        }
+        OwnedPyObject pnames = PyString_FromString(names.str());
+        OwnedPyObject mynamedtupletype;
+        mynamedtupletype.set(PyDict_GetItem(namedtupleTypes, pnames));   // NOTE - returns borrowed reference
+        if (!mynamedtupletype)
+        {
+            OwnedPyObject recname = PyString_FromString("namerec");     // MORE - do we care what the name is?
+            OwnedPyObject ntargs = PyTuple_Pack(2, recname.get(), pnames.get());
+            mynamedtupletype.setown(PyObject_CallObject(namedtuple, ntargs));
+            PyDict_SetItem(namedtupleTypes, pnames, mynamedtupletype);
+        }
+        checkPythonError();
+        assertex(PyCallable_Check(mynamedtupletype));
+        return mynamedtupletype.getClear();
+    }
+    PyObject *compileScript(const char *text)
+    {
+        CriticalBlock b(lock);  // Not sure if this is really needed, as we have effectively locked out other threads using the GIL
+        if (!compiledScripts)
+            compiledScripts.setown(PyDict_New());
+        OwnedPyObject code;
+        code.set(PyDict_GetItemString(compiledScripts, text));
+        if (!code)
+        {
+            code.setown(Py_CompileString(text, "", Py_eval_input));
+
+            if (!code)
+            {
+                PyErr_Clear();
+                StringBuffer wrapped;
+                wrapPythonText(wrapped, text);
+                code.setown(Py_CompileString(wrapped, "<embed>", Py_file_input));
+            }
+            checkPythonError();
+            if (code)
+                PyDict_SetItemString(compiledScripts, text, code);
+        }
+        return code.getClear();
+    }
 protected:
+    static StringBuffer &wrapPythonText(StringBuffer &out, const char *in)
+    {
+        out.append("def __user__():\n  ");
+        char c;
+        while ((c = *in++) != '\0')
+        {
+            out.append(c);
+            if (c=='\n')
+                out.append("  ");
+        }
+        out.append("\n__result__ = __user__()\n");
+        return out;
+    }
     PyThreadState *tstate;
     bool initialized;
     HINSTANCE pythonLibrary;
+    OwnedPyObject namedtuple;      // collections.namedtuple
+    OwnedPyObject namedtupleTypes; // dictionary of return values from namedtuple()
+    OwnedPyObject compiledScripts; // dictionary of previously compiled scripts
+    CriticalSection lock;
 } globalState;
+
+PyObject *PythonThreadContext::getNamedTupleType(const RtlTypeInfo *type)
+{
+    if (!lru || (type!=lrutype))
+    {
+        lru.setown(globalState.getNamedTupleType(type));
+        lrutype = type;
+    }
+    return lru.getLink();
+}
+
+PyObject *PythonThreadContext::compileEmbeddedScript(size32_t lenChars, const char *utf)
+{
+    size32_t bytes = rtlUtf8Size(lenChars, utf);
+    StringBuffer text(bytes, utf);
+    if (!prevtext || strcmp(text, prevtext) != 0)
+    {
+        prevtext.clear();
+        script.setown(globalState.compileScript(text));
+        prevtext.set(utf, bytes);
+    }
+    return script.getLink();
+}
 
 static int countFields(const RtlFieldInfo * const * fields)
 {

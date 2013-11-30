@@ -81,5 +81,5 @@ ENDEMBED;
 
 //output(testRowReturn(10));
 //output(row(testTransform(10)));
-d := dataset([{'Richard'},{''},{'dsfg'}], namerec);
+d := dataset([{'Richard'},{'dsfg'}], namerec);
 output(project(d, testTransform2(LEFT, 10)));
