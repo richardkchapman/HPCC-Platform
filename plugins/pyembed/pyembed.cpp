@@ -829,7 +829,6 @@ public:
     PythonNamedTupleBuilder(PythonThreadContext *_sharedCtx, const RtlFieldInfo *_outerRow)
     : outerRow(_outerRow), sharedCtx(_sharedCtx)
     {
-        argcount = 0;
     }
     virtual void processString(unsigned len, const char *value, const RtlFieldInfo * field)
     {
@@ -935,30 +934,23 @@ protected:
     void push()
     {
         stack.append(args.getClear());
-        counts.append(argcount);
-        argcount = 0;
     }
     void pop()
     {
         addArg(args.getClear());
         args.setown((PyObject *) stack.pop());
-        argcount = counts.pop();
     }
     void addArg(PyObject *arg)
     {
-        if (!argcount)
+        if (!args)
         {
             args.setown(PyList_New(0));
         }
         PyList_Append(args, arg);
         Py_DECREF(arg);
     }
-    unsigned argcount;
     OwnedPyObject args;
-    OwnedPyObject names;
-    PointerArray namestack;
     PointerArray stack;
-    UnsignedArray counts;
     const RtlFieldInfo *outerRow;
     PythonThreadContext *sharedCtx;
 };

@@ -23,6 +23,9 @@
 #include "deftype.hpp"
 #include "eclrtl.hpp"
 #include "eclrtl_imp.hpp"
+#include "rtlds_imp.hpp"
+#include "rtlfield_imp.hpp"
+#include <vector>
 
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
@@ -55,6 +58,121 @@ extern "C" EXPORT bool getECLPluginDefinition(ECLPluginDefinitionBlock *pb)
 }
 
 namespace javascriptLanguageHelper {
+
+// A JSObjectBuilder object is used to construct a JS Object from an ECL row
+
+class JSObjectBuilder : public CInterfaceOf<IFieldProcessor>
+{
+public:
+    JSObjectBuilder(const RtlFieldInfo *_outerRow)
+    : outerRow(_outerRow)
+    {
+    }
+    virtual void processString(unsigned len, const char *value, const RtlFieldInfo * field)
+    {
+//        addArg(PyString_FromStringAndSize(value, len));
+    }
+    virtual void processBool(bool value, const RtlFieldInfo * field)
+    {
+        addProp(field, v8::BooleanObject::New(value));
+    }
+    virtual void processData(unsigned len, const void *value, const RtlFieldInfo * field)
+    {
+//        addArg(PyByteArray_FromStringAndSize((const char *) value, len));
+    }
+    virtual void processInt(__int64 value, const RtlFieldInfo * field)
+    {
+        addProp(field, v8::Integer::New(value));
+    }
+    virtual void processUInt(unsigned __int64 value, const RtlFieldInfo * field)
+    {
+//        addArg(PyLong_FromUnsignedLongLong(value));
+    }
+    virtual void processReal(double value, const RtlFieldInfo * field)
+    {
+//        addArg(PyFloat_FromDouble(value));
+    }
+    virtual void processDecimal(const void *value, unsigned digits, unsigned precision, const RtlFieldInfo * field)
+    {
+//        UNIMPLEMENTED;
+    }
+    virtual void processUDecimal(const void *value, unsigned digits, unsigned precision, const RtlFieldInfo * field)
+    {
+//        UNIMPLEMENTED;
+    }
+    virtual void processUnicode(unsigned len, const UChar *value, const RtlFieldInfo * field)
+    {
+    }
+    virtual void processQString(unsigned len, const char *value, const RtlFieldInfo * field)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual void processSetAll(const RtlFieldInfo * field)
+    {
+        rtlFail(0, "v8embed: ALL sets are not supported");
+    }
+    virtual void processUtf8(unsigned len, const char *value, const RtlFieldInfo * field)
+    {
+    }
+
+    virtual bool processBeginSet(const RtlFieldInfo * field)
+    {
+        push();
+        return true;
+    }
+    virtual bool processBeginDataset(const RtlFieldInfo * field)
+    {
+        push();
+        return true;
+    }
+    virtual bool processBeginRow(const RtlFieldInfo * field)
+    {
+        if (field != outerRow)
+            push();
+        return true;
+    }
+    virtual void processEndSet(const RtlFieldInfo * field)
+    {
+        pop(field);
+    }
+    virtual void processEndDataset(const RtlFieldInfo * field)
+    {
+        pop(field);
+    }
+    virtual void processEndRow(const RtlFieldInfo * field)
+    {
+        if (field != outerRow)
+        {
+//            args.setown(getObject(field->type));
+            pop(field);
+        }
+    }
+    v8::Local<v8::Object> getObject(const RtlTypeInfo *type)
+    {
+        return obj;
+    }
+protected:
+    void push()
+    {
+        stack.push_back(obj);
+    }
+    void pop(const RtlFieldInfo * field)
+    {
+        addProp(field, obj);
+        obj = stack.back();
+        stack.pop_back();
+    }
+    void addProp(const RtlFieldInfo * field, v8::Local<v8::Value> value)
+    {
+        if (obj.IsEmpty())
+            obj = v8::Object::New();
+        obj->Set(v8::String::New(field->name->str()), value);
+    }
+    v8::Local<v8::Object> obj;
+    std::vector< v8::Local<v8::Object> > stack;
+    const RtlFieldInfo *outerRow;
+};
+
 
 class V8JavascriptEmbedFunctionContext : public CInterfaceOf<IEmbedFunctionContext>
 {
@@ -248,7 +366,13 @@ public:
     }
     virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, byte *val)
     {
-        UNIMPLEMENTED;
+        v8::HandleScope handle_scope;
+        const RtlTypeInfo *typeInfo = metaVal.queryTypeInfo();
+        assertex(typeInfo);
+        RtlFieldStrInfo dummyField("<row>", NULL, typeInfo);
+        JSObjectBuilder objBuilder(&dummyField);
+        typeInfo->process(val, val, &dummyField, objBuilder); // Creates a JS object from the incoming ECL row
+        context->Global()->Set(v8::String::New(name), objBuilder.getObject(typeInfo));
     }
     virtual void bindDatasetParam(const char *name, IOutputMetaData & metaVal, IRowStream * val)
     {
@@ -259,7 +383,8 @@ public:
     {
         assertex (!result.IsEmpty());
         v8::HandleScope handle_scope;
-        return result->BooleanValue();
+//        return v8::BooleanObject::Cast(*result)->BooleanValue();  // This seems to work better in some cases
+        return result->BooleanValue();  // This seems to work better in other cases. Needs more investigation
     }
     virtual void getDataResult(size32_t &__len, void * &__result)
     {
