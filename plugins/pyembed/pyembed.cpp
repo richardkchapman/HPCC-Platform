@@ -856,11 +856,15 @@ public:
     }
     virtual void processDecimal(const void *value, unsigned digits, unsigned precision, const RtlFieldInfo * field)
     {
-        UNIMPLEMENTED;
+        Decimal val;
+        val.setDecimal(digits, precision, value);
+        addArg(PyFloat_FromDouble(val.getReal()));
     }
     virtual void processUDecimal(const void *value, unsigned digits, unsigned precision, const RtlFieldInfo * field)
     {
-        UNIMPLEMENTED;
+        Decimal val;
+        val.setUDecimal(digits, precision, value);
+        addArg(PyFloat_FromDouble(val.getReal()));
     }
     virtual void processUnicode(unsigned len, const UChar *value, const RtlFieldInfo * field)
     {
@@ -876,7 +880,10 @@ public:
     }
     virtual void processQString(unsigned len, const char *value, const RtlFieldInfo * field)
     {
-        UNIMPLEMENTED;
+        size32_t charCount;
+        rtlDataAttr text;
+        rtlQStrToStrX(charCount, text.refstr(), len, value);
+        processString(charCount, text.getstr(), field);
     }
     virtual void processSetAll(const RtlFieldInfo * field)
     {

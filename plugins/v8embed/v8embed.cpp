@@ -25,6 +25,7 @@
 #include "eclrtl_imp.hpp"
 #include "rtlds_imp.hpp"
 #include "rtlfield_imp.hpp"
+#include "nbcd.hpp"
 #include <vector>
 
 #ifdef _WIN32
@@ -70,15 +71,24 @@ public:
     }
     virtual void processString(unsigned len, const char *value, const RtlFieldInfo * field)
     {
-//        addArg(PyString_FromStringAndSize(value, len));
+        size32_t utfCharCount;
+        rtlDataAttr utfText;
+        rtlStrToUtf8X(utfCharCount, utfText.refstr(), len, value);
+        processUtf8(utfCharCount, utfText.getstr(), field);
     }
     virtual void processBool(bool value, const RtlFieldInfo * field)
     {
-        addProp(field, v8::BooleanObject::New(value));
+        addProp(field, v8::Boolean::New(value));
     }
     virtual void processData(unsigned len, const void *value, const RtlFieldInfo * field)
     {
-//        addArg(PyByteArray_FromStringAndSize((const char *) value, len));
+        v8::Local<v8::Array> array = v8::Array::New(len);
+        const byte *vval = (const byte *) value;
+        for (int i = 0; i < len; i++)
+        {
+            array->Set(v8::Number::New(i), v8::Integer::New(vval[i])); // feels horridly inefficient, but seems to be the expected approach
+        }
+        addProp(field, array);
     }
     virtual void processInt(__int64 value, const RtlFieldInfo * field)
     {
@@ -86,26 +96,34 @@ public:
     }
     virtual void processUInt(unsigned __int64 value, const RtlFieldInfo * field)
     {
-//        addArg(PyLong_FromUnsignedLongLong(value));
+        addProp(field, v8::Integer::NewFromUnsigned(value));
     }
     virtual void processReal(double value, const RtlFieldInfo * field)
     {
-//        addArg(PyFloat_FromDouble(value));
+        addProp(field, v8::Number::New(value));
     }
     virtual void processDecimal(const void *value, unsigned digits, unsigned precision, const RtlFieldInfo * field)
     {
-//        UNIMPLEMENTED;
+        Decimal val;
+        val.setDecimal(digits, precision, value);
+        addProp(field, v8::Number::New(val.getReal()));
     }
     virtual void processUDecimal(const void *value, unsigned digits, unsigned precision, const RtlFieldInfo * field)
     {
-//        UNIMPLEMENTED;
+        Decimal val;
+        val.setUDecimal(digits, precision, value);
+        addProp(field, v8::Number::New(val.getReal()));
     }
     virtual void processUnicode(unsigned len, const UChar *value, const RtlFieldInfo * field)
     {
+        addProp(field, v8::String::New(value, len));
     }
     virtual void processQString(unsigned len, const char *value, const RtlFieldInfo * field)
     {
-        UNIMPLEMENTED;
+        size32_t charCount;
+        rtlDataAttr text;
+        rtlQStrToStrX(charCount, text.refstr(), len, value);
+        processString(charCount, text.getstr(), field);
     }
     virtual void processSetAll(const RtlFieldInfo * field)
     {
@@ -113,6 +131,7 @@ public:
     }
     virtual void processUtf8(unsigned len, const char *value, const RtlFieldInfo * field)
     {
+        addProp(field, v8::String::New(value, rtlUtf8Size(len, value)));
     }
 
     virtual bool processBeginSet(const RtlFieldInfo * field)
@@ -143,11 +162,10 @@ public:
     {
         if (field != outerRow)
         {
-//            args.setown(getObject(field->type));
             pop(field);
         }
     }
-    v8::Local<v8::Object> getObject(const RtlTypeInfo *type)
+    v8::Local<v8::Object> getObject()
     {
         return obj;
     }
@@ -162,7 +180,7 @@ protected:
         obj = stack.back();
         stack.pop_back();
     }
-    void addProp(const RtlFieldInfo * field, v8::Local<v8::Value> value)
+    void addProp(const RtlFieldInfo * field, v8::Handle<v8::Value> value)
     {
         if (obj.IsEmpty())
             obj = v8::Object::New();
@@ -372,7 +390,7 @@ public:
         RtlFieldStrInfo dummyField("<row>", NULL, typeInfo);
         JSObjectBuilder objBuilder(&dummyField);
         typeInfo->process(val, val, &dummyField, objBuilder); // Creates a JS object from the incoming ECL row
-        context->Global()->Set(v8::String::New(name), objBuilder.getObject(typeInfo));
+        context->Global()->Set(v8::String::New(name), objBuilder.getObject());
     }
     virtual void bindDatasetParam(const char *name, IOutputMetaData & metaVal, IRowStream * val)
     {
@@ -382,9 +400,7 @@ public:
     virtual bool getBooleanResult()
     {
         assertex (!result.IsEmpty());
-        v8::HandleScope handle_scope;
-//        return v8::BooleanObject::Cast(*result)->BooleanValue();  // This seems to work better in some cases
-        return result->BooleanValue();  // This seems to work better in other cases. Needs more investigation
+        return result->BooleanValue();
     }
     virtual void getDataResult(size32_t &__len, void * &__result)
     {
