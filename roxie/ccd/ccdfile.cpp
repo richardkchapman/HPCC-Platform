@@ -1696,6 +1696,7 @@ public:
     }
     virtual void beforeDispose()
     {
+        PrintStackReport();
         DBGLOG("beforeDispose %s", queryFileName());
         if (cached)
         {
