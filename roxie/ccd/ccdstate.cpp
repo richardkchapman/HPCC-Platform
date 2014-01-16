@@ -395,6 +395,7 @@ protected:
                         // implies that a package file had ~ in subfile names - shouldn;t really, but we allow it (and just strip the ~
                         subFileName.remove(0,1);
                     }
+                    DBGLOG("Looking up subfile %s", subFileName.str());
                     Owned<const IResolvedFile> subFileInfo = lookupExpandedFileName(subFileName, cache, false, false);  // NOTE - overwriting a superfile does NOT require write access to subfiles
                     if (subFileInfo)
                     {
