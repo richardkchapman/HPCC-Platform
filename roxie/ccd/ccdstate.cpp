@@ -206,6 +206,7 @@ public:
     virtual void removeCache(const IResolvedFile *file)
     {
         CriticalBlock b(cacheLock);
+        DBGLOG("removeCache %s", file->queryFileName());
         // NOTE: it's theoretically possible for the final release to happen after a replacement has been inserted into hash table. 
         // So only remove from hash table if what we find there matches the item that is being deleted.
         IResolvedFile *goer = files.getValue(file->queryFileName());
@@ -223,6 +224,7 @@ public:
             LINK(cache);
             if (cache->isAlive())
                 return cache;
+            DBGLOG("Not returning %s from cache as isAlive() returned false", filename);
         }
         return NULL;
     }
