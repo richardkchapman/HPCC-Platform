@@ -294,9 +294,13 @@ protected:
     static IResolvedFile *resolveLFNusingDaliOrLocal(const char *fileName, bool cacheIt, bool writeAccess, bool alwaysCreate)
     {
         // MORE - look at alwaysCreate... This may be useful to implement earlier locking semantics.
+        DBGLOG("resolveLFNusingDaliOrLocal %s %d %d %d", fileName, cacheIt, writeAccess, alwaysCreate);
         IResolvedFile* result = daliFiles.lookupCache(fileName);
         if (result)
+        {
+            DBGLOG("resolveLFNusingDaliOrLocal %s - cache hit", fileName);
             return result;
+        }
         if (!checkCachedDaliMiss(fileName))
         {
             Owned<IRoxieDaliHelper> daliHelper = connectToDali();
@@ -343,6 +347,7 @@ protected:
         }
         if (cacheIt)
         {
+            DBGLOG("resolveLFNusingDaliOrLocal %s - cache add %d", fileName, result != NULL);
             if (result)
                 daliFiles.addCache(fileName, result);
             else
