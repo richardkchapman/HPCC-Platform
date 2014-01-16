@@ -1613,6 +1613,7 @@ protected:
     PointerIArrayOf<IFileDescriptor> remoteSubFiles; // note - on slaves, the file descriptors may have incomplete info. On originating server is always complete
     PointerIArrayOf<IDefRecordMeta> diskMeta;
     IArrayOf<IDistributedFile> subDFiles;  // To make sure subfiles get locked too
+    IArrayOf<IResolvedFile> subRFiles;  // To make sure subfiles get locked too
 
     Owned <IPropertyTree> properties;
 
@@ -2043,8 +2044,7 @@ public:
             assertex(sub->fileType==fileType);
         else
             fileType = sub->fileType;
-        if (sub->dFile)
-            subDFiles.append(*LINK(sub->dFile));
+        subRFiles.append((IResolvedFile &) *LINK(_sub));
         ForEachItemIn(idx, sub->subFiles)
         {
             addFile(sub->subNames.item(idx), LINK(sub->subFiles.item(idx)), LINK(sub->remoteSubFiles.item(idx)));
