@@ -1696,8 +1696,11 @@ public:
     }
     virtual void beforeDispose()
     {
+        DBGLOG("beforeDispose %s", queryFileName());
         if (cached)
+        {
             cached->removeCache(this);
+        }
     }
     virtual unsigned numSubFiles() const
     {
@@ -2067,6 +2070,7 @@ public:
     {
         if (cached)
         {
+            DBGLOG("setCache removing from prior cache %s", queryFileName());
             if (cache==NULL)
                 cached->removeCache(this);
             else
