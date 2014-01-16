@@ -206,7 +206,8 @@ public:
     virtual void removeCache(const IResolvedFile *file)
     {
         CriticalBlock b(cacheLock);
-        DBGLOG("removeCache %s", file->queryFileName());
+        if (traceLevel > 9)
+            DBGLOG("removeCache %s", file->queryFileName());
         // NOTE: it's theoretically possible for the final release to happen after a replacement has been inserted into hash table. 
         // So only remove from hash table if what we find there matches the item that is being deleted.
         IResolvedFile *goer = files.getValue(file->queryFileName());
@@ -224,7 +225,8 @@ public:
             LINK(cache);
             if (cache->isAlive())
                 return cache;
-            DBGLOG("Not returning %s from cache as isAlive() returned false", filename);
+            if (traceLevel)
+                DBGLOG("Not returning %s from cache as isAlive() returned false", filename);
         }
         return NULL;
     }
@@ -241,7 +243,7 @@ static Owned<KeptLowerCaseAtomTable> daliMisses;
 static void noteDaliMiss(const char *filename)
 {
     CriticalBlock b(daliMissesCrit);
-    if (traceLevel > 4)
+    if (traceLevel > 9)
         DBGLOG("noteDaliMiss %s", filename);
     daliMisses->addAtom(filename);
 }
@@ -250,7 +252,7 @@ static bool checkCachedDaliMiss(const char *filename)
 {
     CriticalBlock b(daliMissesCrit);
     bool ret = daliMisses->find(filename) != NULL;
-    if (traceLevel > 4)
+    if (traceLevel > 9)
         DBGLOG("checkCachedDaliMiss %s returns %d", filename, ret);
     return ret;
 }
@@ -296,11 +298,13 @@ protected:
     static IResolvedFile *resolveLFNusingDaliOrLocal(const char *fileName, bool cacheIt, bool writeAccess, bool alwaysCreate)
     {
         // MORE - look at alwaysCreate... This may be useful to implement earlier locking semantics.
-        DBGLOG("resolveLFNusingDaliOrLocal %s %d %d %d", fileName, cacheIt, writeAccess, alwaysCreate);
+        if (traceLevel > 9)
+            DBGLOG("resolveLFNusingDaliOrLocal %s %d %d %d", fileName, cacheIt, writeAccess, alwaysCreate);
         IResolvedFile* result = daliFiles.lookupCache(fileName);
         if (result)
         {
-            DBGLOG("resolveLFNusingDaliOrLocal %s - cache hit", fileName);
+            if (traceLevel > 9)
+                DBGLOG("resolveLFNusingDaliOrLocal %s - cache hit", fileName);
             return result;
         }
         if (!checkCachedDaliMiss(fileName))
@@ -349,7 +353,8 @@ protected:
         }
         if (cacheIt)
         {
-            DBGLOG("resolveLFNusingDaliOrLocal %s - cache add %d", fileName, result != NULL);
+            if (traceLevel > 9)
+                DBGLOG("resolveLFNusingDaliOrLocal %s - cache add %d", fileName, result != NULL);
             if (result)
                 daliFiles.addCache(fileName, result);
             else
@@ -395,7 +400,8 @@ protected:
                         // implies that a package file had ~ in subfile names - shouldn;t really, but we allow it (and just strip the ~
                         subFileName.remove(0,1);
                     }
-                    DBGLOG("Looking up subfile %s", subFileName.str());
+                    if (traceLevel > 9)
+                        DBGLOG("Looking up subfile %s", subFileName.str());
                     Owned<const IResolvedFile> subFileInfo = lookupExpandedFileName(subFileName, cache, false, false);  // NOTE - overwriting a superfile does NOT require write access to subfiles
                     if (subFileInfo)
                     {

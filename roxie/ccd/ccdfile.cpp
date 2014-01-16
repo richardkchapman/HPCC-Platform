@@ -1697,8 +1697,6 @@ public:
     }
     virtual void beforeDispose()
     {
-        PrintStackReport();
-        DBGLOG("beforeDispose %s", queryFileName());
         if (cached)
         {
             cached->removeCache(this);
@@ -2071,7 +2069,8 @@ public:
     {
         if (cached)
         {
-            DBGLOG("setCache removing from prior cache %s", queryFileName());
+            if (traceLevel > 9)
+                DBGLOG("setCache removing from prior cache %s", queryFileName());
             if (cache==NULL)
                 cached->removeCache(this);
             else
