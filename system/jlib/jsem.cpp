@@ -70,10 +70,14 @@ bool Semaphore::wait(unsigned timeout)
         abs.tv_nsec-=1000000000;
         abs.tv_sec++;
     }
+#ifdef __APPLE__
+    UNIMPLEMENTED;
+#else
     int ret = sem_timedwait(&sem, &abs);
     if (ret < 0)
         return false;
     return true;
+#endif
 }
 
 
