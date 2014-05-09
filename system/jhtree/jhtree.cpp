@@ -2099,6 +2099,118 @@ CJHTreeNode *CNodeCache::getNode(INodeLoader *keyIndex, int iD, offset_t pos, IC
     // Also one cache per key would surely be faster, and could still use a global total
     if (!pos)
         return NULL;
+#if 1
+    {
+        // It's a shame that we don't know the type before we read it. But probably not that big a deal
+        SpinBlock block(lock);
+        CKeyIdAndPos key(iD, pos);
+        if (preloadNodes)
+        {
+            CJHTreeNode *cacheNode = preloadCache.query(key);
+            if (cacheNode)
+            {
+                atomic_inc(&cacheHits);
+                if (ctx) ctx->noteStatistic(STATS_PRELOADCACHEHIT, 1, 1);
+                atomic_inc(&preloadCacheHits);
+                return LINK(cacheNode);
+            }
+        }
+        if (cacheNodes)
+        {
+            CJHTreeNode *cacheNode = nodeCache.query(key);
+            if (cacheNode)
+            {
+                atomic_inc(&cacheHits);
+                if (ctx) ctx->noteStatistic(STATS_NODECACHEHIT, 1, 1);
+                atomic_inc(&nodeCacheHits);
+                return LINK(cacheNode);
+            }
+        }
+        if (cacheLeaves)
+        {
+            CJHTreeNode *cacheNode = leafCache.query(key);
+            if (cacheNode)
+            {
+                atomic_inc(&cacheHits);
+                if (ctx) ctx->noteStatistic(STATS_LEAFCACHEHIT, 1, 1);
+                atomic_inc(&leafCacheHits);
+                return LINK(cacheNode);
+            }
+        }
+        if (cacheBlobs)
+        {
+            CJHTreeNode *cacheNode = blobCache.query(key);
+            if (cacheNode)
+            {
+                atomic_inc(&cacheHits);
+                if (ctx) ctx->noteStatistic(STATS_BLOBCACHEHIT, 1, 1);
+                atomic_inc(&blobCacheHits);
+                return LINK(cacheNode);
+            }
+        }
+        CJHTreeNode *node;
+        {
+            SpinUnblock block(lock);
+            node = keyIndex->loadNode(pos);  // NOTE - don't want cache locked while we load!
+        }
+        atomic_inc(&cacheAdds);
+        if (node->isBlob())
+        {
+            if (cacheBlobs)
+            {
+                CJHTreeNode *cacheNode = blobCache.query(key); // check if added to cache while we were reading
+                if (cacheNode)
+                {
+                    ::Release(node);
+                    atomic_inc(&cacheHits);
+                    if (ctx) ctx->noteStatistic(STATS_BLOBCACHEHIT, 1, 1);
+                    atomic_inc(&blobCacheHits);
+                    return LINK(cacheNode);
+                }
+                if (ctx) ctx->noteStatistic(STATS_BLOBCACHEADD, 1, 1);
+                atomic_inc(&blobCacheAdds);
+                blobCache.add(key, *LINK(node));
+            }
+        }
+        else if (node->isLeaf() && !isTLK) // leaves in TLK are cached as if they were nodes
+        {
+            if (cacheLeaves)
+            {
+                CJHTreeNode *cacheNode = leafCache.query(key); // check if added to cache while we were reading
+                if (cacheNode)
+                {
+                    ::Release(node);
+                    atomic_inc(&cacheHits);
+                    if (ctx) ctx->noteStatistic(STATS_LEAFCACHEHIT, 1, 1);
+                    atomic_inc(&leafCacheHits);
+                    return LINK(cacheNode);
+                }
+                if (ctx) ctx->noteStatistic(STATS_LEAFCACHEADD, 1, 1);
+                atomic_inc(&leafCacheAdds);
+                leafCache.add(key, *LINK(node));
+            }
+        }
+        else
+        {
+            if (cacheNodes)
+            {
+                CJHTreeNode *cacheNode = nodeCache.query(key); // check if added to cache while we were reading
+                if (cacheNode)
+                {
+                    ::Release(node);
+                    atomic_inc(&cacheHits);
+                    if (ctx) ctx->noteStatistic(STATS_NODECACHEHIT, 1, 1);
+                    atomic_inc(&nodeCacheHits);
+                    return LINK(cacheNode);
+                }
+                if (ctx) ctx->noteStatistic(STATS_NODECACHEADD, 1, 1);
+                atomic_inc(&nodeCacheAdds);
+                nodeCache.add(key, *LINK(node));
+            }
+        }
+        return node;
+    }
+#else
     // It's a shame that we don't know the type before we read it. But probably not that big a deal
     CKeyIdAndPos key(iD, pos);
     int cacheStatType = -1;
@@ -2126,6 +2238,7 @@ CJHTreeNode *CNodeCache::getNode(INodeLoader *keyIndex, int iD, offset_t pos, IC
             cacheStatType = STATS_BLOBCACHEHIT;
             cacheStatVar = &blobCacheHits;
         }
+        ::LINK(node); // Needs to be inside the locked section
     }
     if (node)
     {
@@ -2133,7 +2246,7 @@ CJHTreeNode *CNodeCache::getNode(INodeLoader *keyIndex, int iD, offset_t pos, IC
         if (ctx)
             ctx->noteStatistic(cacheStatType, 1, 1);
         atomic_inc(cacheStatVar);
-        return LINK(node);
+        return node;
     }
     node = keyIndex->loadNode(pos);  // NOTE - don't want cache locked while we load!
     CNodeMRUCache *useCache = NULL;
@@ -2169,11 +2282,11 @@ CJHTreeNode *CNodeCache::getNode(INodeLoader *keyIndex, int iD, offset_t pos, IC
         if (ctx) ctx->noteStatistic(cacheStatType, 1, 1);
         atomic_inc(cacheStatVar);
         SpinBlock block(lock);
-        // Used to check at this point if someone had cached while we were reading. But not sure what the point is, may as well just add mine anyway
-        // so long as that correctly removes the previous.
+        // NOTE - we don't need to check if someone else has added while we were loading - the add code will handle it ok.
         useCache->add(key, *LINK(node));
     }
     return node;
+#endif
 }
 
 void CNodeCache::preload(CJHTreeNode *node, int iD, offset_t pos, IContextLogger *ctx)
@@ -2893,10 +3006,51 @@ extern jhtree_decl IKeyArray *createKeyArray()
 class IKeyManagerTest : public CppUnit::TestFixture  
 {
     CPPUNIT_TEST_SUITE( IKeyManagerTest  );
-        CPPUNIT_TEST(testStepping);
-        CPPUNIT_TEST(testKeys);
+        CPPUNIT_TEST(testCache);
+//        CPPUNIT_TEST(testStepping);
+        //CPPUNIT_TEST(testKeys);
     CPPUNIT_TEST_SUITE_END();
 
+    void testCache()
+    {
+        CNodeCache cache(100*0x100000, 50*0x100000, 0);
+        class DummyTreeNode : public CJHTreeNode
+        {
+        public:
+            DummyTreeNode(unsigned fakeSize, unsigned fakeType)
+            {
+                expandedSize = fakeSize;
+                hdr.leafFlag = fakeType;
+            }
+        };
+        class TestNodeLoader : public INodeLoader
+        {
+            virtual CJHTreeNode *loadNode(offset_t offset)
+            {
+                if (offset % 8 == 0)
+                    return new DummyTreeNode(10000, 0);  // fake node
+                else
+                    return new DummyTreeNode(100000, 1); // fake leaf
+            }
+
+        } loader;
+
+        class casyncfor: public CAsyncFor
+        {
+            TestNodeLoader &loader;
+            CNodeCache &cache;
+        public:
+            casyncfor(TestNodeLoader &_loader, CNodeCache &_cache) : loader(_loader), cache(_cache)
+            {
+            }
+            void Do(unsigned i)
+            {
+                for (int i = 0; i < 10000; i++)
+                    ::Release(cache.getNode(&loader, 1, rand() % 3000, NULL, false));
+            }
+        } afor(loader, cache);
+        afor.For(400,400);
+    }
     void testStepping()
     {
         buildTestKeys(false, false, false, false);

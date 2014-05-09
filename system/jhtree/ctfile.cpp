@@ -195,7 +195,7 @@ void CNodeBase::load(CKeyHdr *_keyHdr, offset_t _fpos)
 
 CNodeBase::~CNodeBase()
 {
-    keyHdr->Release();
+    ::Release(keyHdr);
 }
 
 
