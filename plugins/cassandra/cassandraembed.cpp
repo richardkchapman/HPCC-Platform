@@ -29,6 +29,7 @@
 #include "rtlembed.hpp"
 #include "roxiemem.hpp"
 #include "nbcd.hpp"
+#include "jptree.hpp"
 
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
@@ -425,14 +426,27 @@ static void typeError(const char *expected, const CassValue *value, const RtlFie
     rtlFail(0, msg.str());
 }
 
-static bool isInteger(const CassValue *value)
+static bool isInteger(const CassValueType t)
 {
-    switch (cass_value_type(value))
+    switch (t)
     {
     case CASS_VALUE_TYPE_INT:
     case CASS_VALUE_TYPE_BIGINT:
     case CASS_VALUE_TYPE_COUNTER:
     case CASS_VALUE_TYPE_VARINT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool isString(CassValueType t)
+{
+    switch (t)
+    {
+    case CASS_VALUE_TYPE_VARCHAR:
+    case CASS_VALUE_TYPE_TEXT:
+    case CASS_VALUE_TYPE_ASCII:
         return true;
     default:
         return false;
@@ -500,7 +514,7 @@ static double getRealResult(const RtlFieldInfo *field, const CassValue *value)
         NullFieldProcessor p(field);
         return p.doubleResult;
     }
-    else if (isInteger(value))
+    else if (isInteger(cass_value_type(value)))
         return (double) getSignedResult(field, value);
     else switch (cass_value_type(value))
     {
@@ -1802,4 +1816,289 @@ extern bool syntaxCheck(const char *script)
     return true; // MORE
 }
 
+#define ATTRIBUTES_NAME "map1"
+
+void addElement(IPTree *parent, const char *name, const CassValue *value)
+{
+    switch (cass_value_type(value))
+    {
+    case CASS_VALUE_TYPE_UNKNOWN:
+        // It's a NULL - ignore it (or we could add empty element...)
+        break;
+
+    case CASS_VALUE_TYPE_ASCII:
+    case CASS_VALUE_TYPE_TEXT:
+    case CASS_VALUE_TYPE_VARCHAR:
+    {
+        rtlDataAttr str;
+        unsigned chars;
+        getUTF8Result(NULL, value, chars, str.refstr());
+        StringAttr s(str.getstr(), rtlUtf8Size(chars, str.getstr()));
+        parent->addProp(name, s);
+        break;
+    }
+
+    case CASS_VALUE_TYPE_INT:
+    case CASS_VALUE_TYPE_BIGINT:
+    case CASS_VALUE_TYPE_VARINT:
+        parent->addPropInt64(name, getSignedResult(NULL, value));
+        break;
+
+    case CASS_VALUE_TYPE_BLOB:
+    {
+        rtlDataAttr data;
+        unsigned bytes;
+        getDataResult(NULL, value, bytes, data.refdata());
+        parent->addPropBin(name, bytes, data.getbytes());
+        break;
+    }
+    case CASS_VALUE_TYPE_BOOLEAN:
+        parent->addPropBool(name, getBooleanResult(NULL, value));
+        break;
+
+    case CASS_VALUE_TYPE_DOUBLE:
+    case CASS_VALUE_TYPE_FLOAT:
+    {
+        double v = getRealResult(NULL, value);
+        StringBuffer s;
+        s.append(v);
+        parent->addProp(name, s);
+        break;
+    }
+    case CASS_VALUE_TYPE_LIST:
+    case CASS_VALUE_TYPE_SET:
+    {
+        CassandraIterator elems(cass_iterator_from_collection(value));
+        Owned<IPTree> list = createPTree(name);
+        while (cass_iterator_next(elems))
+            addElement(list, "item", cass_iterator_get_value(elems));
+        parent->addPropTree(name, list.getClear());
+        break;
+    }
+    case CASS_VALUE_TYPE_MAP:
+    {
+        CassandraIterator elems(cass_iterator_from_map(value));
+        if (strcmp(name, ATTRIBUTES_NAME)==0 && isString(cass_value_primary_sub_type(value)))
+        {
+            while (cass_iterator_next(elems))
+            {
+                rtlDataAttr str;
+                unsigned chars;
+                getStringResult(NULL, cass_iterator_get_map_key(elems), chars, str.refstr());
+                StringBuffer s("@");
+                s.append(chars, str.getstr());
+                addElement(parent, s, cass_iterator_get_map_value(elems));
+            }
+        }
+        else
+        {
+            Owned<IPTree> map = createPTree(name);
+            while (cass_iterator_next(elems))
+            {
+                if (isString(cass_value_primary_sub_type(value)))
+                {
+                    rtlDataAttr str;
+                    unsigned chars;
+                    getStringResult(NULL, cass_iterator_get_map_key(elems), chars, str.refstr());
+                    StringAttr s(str.getstr(), chars);
+                    addElement(map, s, cass_iterator_get_map_value(elems));
+                }
+                else
+                {
+                    Owned<IPTree> mapping = createPTree("mapping");
+                    addElement(mapping, "key", cass_iterator_get_map_key(elems));
+                    addElement(mapping, "value", cass_iterator_get_map_value(elems));
+                    map->addPropTree("mapping", mapping.getClear());
+                }
+            }
+            parent->addPropTree(name, map.getClear());
+        }
+        break;
+    }
+    default:
+        DBGLOG("Column type %d not supported", cass_value_type(value));
+        UNSUPPORTED("Column type");
+    }
+}
+
+void bindElement(CassStatement *statement, IPTree *parent, unsigned idx, const char *name, CassValueType type)
+{
+    if (parent->hasProp(name) || strcmp(name, ATTRIBUTES_NAME)==0)
+    {
+        switch (type)
+        {
+        case CASS_VALUE_TYPE_ASCII:
+        case CASS_VALUE_TYPE_TEXT:
+        case CASS_VALUE_TYPE_VARCHAR:
+        {
+            check(cass_statement_bind_string(statement, idx, cass_string_init(parent->queryProp(name))));
+            break;
+        }
+
+        case CASS_VALUE_TYPE_INT:
+            check(cass_statement_bind_int32(statement, idx, parent->getPropInt(name)));
+            break;
+        case CASS_VALUE_TYPE_BIGINT:
+        case CASS_VALUE_TYPE_VARINT:
+            check(cass_statement_bind_int64(statement, idx, parent->getPropInt64(name)));
+            break;
+
+        case CASS_VALUE_TYPE_BLOB:
+        {
+            MemoryBuffer buf;
+            parent->getPropBin(name, buf);
+            check(cass_statement_bind_bytes(statement, idx, cass_bytes_init((const cass_byte_t*)buf.toByteArray(), buf.length())));
+            break;
+        }
+        case CASS_VALUE_TYPE_BOOLEAN:
+            check(cass_statement_bind_bool(statement, idx, (cass_bool_t) parent->getPropBool(name)));
+            break;
+
+        case CASS_VALUE_TYPE_DOUBLE:
+            check(cass_statement_bind_double(statement, idx, atof(parent->queryProp(name))));
+            break;
+        case CASS_VALUE_TYPE_FLOAT:
+            check(cass_statement_bind_float(statement, idx, atof(parent->queryProp(name))));
+            break;
+        case CASS_VALUE_TYPE_LIST:
+        case CASS_VALUE_TYPE_SET:
+        {
+            Owned<IPTree> child = parent->getPropTree(name);
+            unsigned numItems = child->getCount("item");
+            if (numItems)
+            {
+                CassandraCollection collection(cass_collection_new(CASS_COLLECTION_TYPE_SET, numItems));
+                Owned<IPTreeIterator> items = child->getElements("item");
+                ForEach(*items)
+                {
+                    // We don't know the subtypes - we can assert that we only support string, for most purposes, I suspect
+                    if (strcmp(name, "list1")==0)
+                        check(cass_collection_append_int32(collection, items->query().getPropInt(NULL)));
+                    else
+                        check(cass_collection_append_string(collection, cass_string_init(items->query().queryProp(NULL))));
+                }
+                check(cass_statement_bind_collection(statement, idx, collection));
+            }
+            break;
+        }
+
+        case CASS_VALUE_TYPE_MAP:
+        {
+            // We don't know the subtypes - we can assert that we only support string, for most purposes, I suspect
+            if (strcmp(name, ATTRIBUTES_NAME)==0)
+            {
+                Owned<IAttributeIterator> attrs = parent->getAttributes();
+                unsigned numItems = attrs->count();
+                ForEach(*attrs)
+                {
+                    numItems++;
+                }
+                if (numItems)
+                {
+                    CassandraCollection collection(cass_collection_new(CASS_COLLECTION_TYPE_MAP, numItems));
+                    ForEach(*attrs)
+                    {
+                        const char *key = attrs->queryName();
+                        const char *value = attrs->queryValue();
+                        check(cass_collection_append_string(collection, cass_string_init(key+1)));  // skip the @
+                        check(cass_collection_append_string(collection, cass_string_init(value)));
+                    }
+                    check(cass_statement_bind_collection(statement, idx, collection));
+                }
+            }
+            else
+            {
+                Owned<IPTree> child = parent->getPropTree(name);
+                unsigned numItems = child->numChildren();
+                if (numItems)
+                {
+                    CassandraCollection collection(cass_collection_new(CASS_COLLECTION_TYPE_MAP, numItems));
+                    Owned<IPTreeIterator> items = child->getElements("*");
+                    ForEach(*items)
+                    {
+                        IPTree &item = items->query();
+                        const char *key = item.queryName();
+                        const char *value = item.queryProp(NULL);
+                        check(cass_collection_append_string(collection, cass_string_init(key)));
+                        check(cass_collection_append_string(collection, cass_string_init(value)));
+                    }
+                    check(cass_statement_bind_collection(statement, idx, collection));
+                }
+            }
+            break;
+        }
+        default:
+            DBGLOG("Column type %d not supported", type);
+            UNSUPPORTED("Column type");
+        }
+    }
+}
+
+
+extern void cassandraToXML()
+{
+    CassandraCluster cluster(cass_cluster_new());
+    cass_cluster_set_contact_points(cluster, "127.0.0.1");
+    CassandraFuture future(cass_cluster_connect_keyspace(cluster, "test"));
+    future.wait("connect");
+    CassandraSession session(cass_future_get_session(future));
+    CassandraStatement statement(cass_statement_new(cass_string_init("select * from tbl1 where name = 'name1';"), 0));
+    CassandraFuture future2(cass_session_execute(session, statement));
+    future2.wait("execute");
+    CassandraResult result(cass_future_get_result(future2));
+    StringArray names;
+    UnsignedArray types;
+    for (int i = 0; i < cass_result_column_count(result); i++)
+    {
+        CassString column = cass_result_column_name(result, i);
+        StringBuffer name(column.length, column.data);
+        names.append(name);
+        types.append(cass_result_column_type(result, i));
+    }
+    // Now fetch the rows
+    Owned<IPTree> xml = createPTree("tbl1");
+    CassandraIterator rows(cass_iterator_from_result(result));
+    while (cass_iterator_next(rows))
+    {
+        CassandraIterator cols(cass_iterator_from_row(cass_iterator_get_row(rows)));
+        Owned<IPTree> row = createPTree("row");
+        unsigned colidx = 0;
+        while (cass_iterator_next(cols))
+        {
+            const CassValue *value = cass_iterator_get_column(cols);
+            const char *name = names.item(colidx);
+            addElement(row, name, value);
+            colidx++;
+        }
+        xml->addPropTree("row", row.getClear());
+    }
+    xml->setProp("row[1]/name", "newname");
+    StringBuffer buf;
+    toXML(xml, buf);
+    DBGLOG("%s", buf.str());
+
+    // Now try going the other way...
+    // For this we need to know the expected names (can fetch them from system table) and types (ditto, potentially, though a dummy select may be easier)
+    StringBuffer colNames;
+    StringBuffer values;
+    ForEachItemIn(idx, names)
+    {
+        colNames.append(",").append(names.item(idx));
+        values.append(",?");
+    }
+    VStringBuffer insertQuery("INSERT into tbl1 (%s) values (%s);", colNames.str()+1, values.str()+1);
+    Owned<IPTreeIterator> xmlRows = xml->getElements("row");
+    ForEach(*xmlRows)
+    {
+        IPropertyTree *xmlrow = &xmlRows->query();
+        CassandraStatement update(cass_statement_new(cass_string_init(insertQuery.str()), names.length()));
+        ForEachItemIn(idx, names)
+        {
+            bindElement(update, xmlrow, idx, names.item(idx), (CassValueType) types.item(idx));
+        }
+        // MORE - use a batch
+        CassandraFuture future3(cass_session_execute(session, update));
+        future2.wait("insert");
+    }
+}
 } // namespace
