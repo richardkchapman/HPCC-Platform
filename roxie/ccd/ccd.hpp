@@ -802,6 +802,7 @@ protected:
 public: // Not very clean but I don't care
     bool intercept;
     bool blind;
+    bool aborted;
     mutable CIArrayOf<LogItem> log;
 private:
     ContextLogger(const ContextLogger &);  // Disable copy constructor
@@ -816,6 +817,7 @@ public:
         timeReporter = createStdTimeReporter();
         start = msTick();
         channel = 0;
+        aborted = false;
     }
     ~ContextLogger()
     {
@@ -940,8 +942,8 @@ public:
 
     virtual void dumpStats(IWorkUnit *wu) const
     {
-        UNIMPLEMENTED;
-        // stats.dumpStats(wu);
+        Owned<IStatisticGatherer> gatherer = createGlobalStatisticGatherer(wu);
+        stats.recordStatistics(*gatherer);
     }
 
     virtual bool isIntercepted() const
@@ -956,6 +958,8 @@ public:
 
     virtual void noteStatistic(StatisticKind kind, unsigned __int64 value) const
     {
+        if (aborted)
+            throw MakeStringException(ROXIE_ABORT_ERROR, "Roxie server requested abort for running activity");
         stats.addStatistic(kind, value);
     }
 
@@ -1032,7 +1036,7 @@ public:
     }
     inline void requestAbort()
     {
-        stats.requestAbort();
+        aborted = true;
     }
     inline const char *queryWuid()
     {

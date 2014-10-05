@@ -1326,11 +1326,12 @@ void CRuntimeStatisticCollection::rollupStatistics(unsigned numTargets, IContext
     reportIgnoredStats();
 }
 
-void CRuntimeStatisticCollection::recordStatistics(IStatisticGatherer & target, StatsMergeAction mergeAction) const
+void CRuntimeStatisticCollection::recordStatistics(IStatisticGatherer & target) const
 {
     ForEachItem(i)
     {
         StatisticKind kind = getKind(i);
+        StatsMergeAction mergeAction = queryMergeMode(queryMeasure(kind));
         target.updateStatistic(kind, values[i].get(), mergeAction);
     }
     reportIgnoredStats();

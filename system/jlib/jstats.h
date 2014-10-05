@@ -514,7 +514,7 @@ public:
     void rollupStatistics(IContextLogger * target) { rollupStatistics(1, &target); }
     void rollupStatistics(unsigned num, IContextLogger * const * targets) const;
 
-    void recordStatistics(IStatisticGatherer & target, StatsMergeAction mergeAction) const;
+    void recordStatistics(IStatisticGatherer & target) const;
 
     // Print out collected stats to string
     StringBuffer &toStr(StringBuffer &str) const;
