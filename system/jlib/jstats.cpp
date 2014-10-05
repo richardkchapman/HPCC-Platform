@@ -688,6 +688,13 @@ StatisticsMapping::StatisticsMapping(StatisticKind kind, ...)
     createMappings();
 }
 
+StatisticsMapping::StatisticsMapping()
+{
+    for (int i = 0; i < StMax; i++)
+        indexToKind.append(i);
+    createMappings();
+}
+
 void StatisticsMapping::createMappings()
 {
     //Possibly not needed, but sort the kinds, so that it is easy to merge/stream the results out in the correct order.
@@ -1292,6 +1299,21 @@ extern IStatisticGatherer * createStatisticsGatherer(StatisticCreatorType creato
 
 //--------------------------------------------------------------------------------------------------------------------
 
+void CRuntimeStatistic::merge(unsigned __int64 otherValue, StatsMergeAction mergeAction)
+{
+    value = mergeStatisticValue(value, otherValue, mergeAction);
+}
+
+void CRuntimeStatisticCollection::merge(const CRuntimeStatisticCollection & other)
+{
+    ForEachItemIn(i, other)
+    {
+        StatisticKind kind = other.getKind(i);
+        StatsMergeAction mergeAction = queryMergeMode(queryMeasure(kind));
+        mergeStatistic(kind, other.getStatisticValue(kind), mergeAction);
+    }
+}
+
 void CRuntimeStatisticCollection::rollupStatistics(unsigned numTargets, IContextLogger * const * targets) const
 {
     ForEachItem(iStat)
@@ -1299,7 +1321,7 @@ void CRuntimeStatisticCollection::rollupStatistics(unsigned numTargets, IContext
         StatisticKind kind = getKind(iStat);
         unsigned __int64 value = values[iStat].getClear();
         for (unsigned iTarget = 0; iTarget < numTargets; iTarget++)
-            targets[iTarget]->noteStatistic(kind, value, 1);
+            targets[iTarget]->noteStatistic(kind, value);
     }
     reportIgnoredStats();
 }
@@ -1320,46 +1342,35 @@ void CRuntimeStatisticCollection::reportIgnoredStats() const
         DBGLOG("Some statistics were addded but thrown away");
 }
 
-// ------------------------- old code -------------------------
-
-extern jlib_decl StatisticKind mapRoxieStatKind(unsigned i)
+StringBuffer & CRuntimeStatisticCollection::toXML(StringBuffer &str) const
 {
-    switch (i)
+    ForEachItem(iStat)
     {
-    case STATS_INDEX_SEEKS:         return StNumIndexSeeks;
-    case STATS_INDEX_SCANS:         return StNumIndexScans;
-    case STATS_INDEX_WILDSEEKS:     return StNumIndexWildSeeks;
-    case STATS_INDEX_SKIPS:         return StNumIndexSkips;
-    case STATS_INDEX_NULLSKIPS:     return StNumIndexNullSkips;
-    case STATS_INDEX_MERGES:        return StNumIndexMerges;
-
-    case STATS_BLOBCACHEHIT:        return StNumBlobCacheHits;
-    case STATS_LEAFCACHEHIT:        return StNumLeafCacheHits;
-    case STATS_NODECACHEHIT:        return StNumNodeCacheHits;
-    case STATS_PRELOADCACHEHIT:     return StNumPreloadCacheHits;
-    case STATS_BLOBCACHEADD:        return StNumBlobCacheAdds;
-    case STATS_LEAFCACHEADD:        return StNumLeafCacheAdds;
-    case STATS_NODECACHEADD:        return StNumNodeCacheAdds;
-    case STATS_PRELOADCACHEADD:     return StNumPreloadCacheAdds;
-
-    case STATS_INDEX_MERGECOMPARES: return StNumIndexMergeCompares;
-    case STATS_SERVERCACHEHIT:      return StNumServerCacheHits;
-
-    case STATS_ACCEPTED:            return StNumIndexAccepted;
-    case STATS_REJECTED:            return StNumIndexRejected;
-    case STATS_ATMOST:              return StNumAtmostTriggered;
-
-    case STATS_DISK_SEEKS:          return StNumDiskSeeks;
-    case STATS_SOAPCALL_LATENCY:    return StTimeSoapcall;
-
-    default:
-        throwUnexpected();
+        unsigned __int64 value = values[iStat].get();
+        if (value)
+        {
+            StatisticKind kind = getKind(iStat);
+            const char * name = queryStatisticName(kind);
+            str.appendf("<%s>%"I64F"d</%s>", name, value, name);
+        }
     }
+    return str;
 }
 
-extern jlib_decl StatisticMeasure getStatMeasure(unsigned i)
+StringBuffer & CRuntimeStatisticCollection::toStr(StringBuffer &str) const
 {
-    return SMeasureCount;
+    ForEachItem(iStat)
+    {
+        unsigned __int64 value = values[iStat].get();
+        if (value)
+        {
+            StatisticKind kind = getKind(iStat);
+            const char * name = queryStatisticName(kind);
+            str.append(name).append("=");
+            formatStatistic(str, value, kind);
+        }
+    }
+    return str;
 }
 
 

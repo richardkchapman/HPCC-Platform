@@ -480,21 +480,19 @@ class LogItem : public CInterface
     StringAttr text;
     unsigned time;
     unsigned channel;
-    unsigned statCode;
+    StatisticKind statCode;
     unsigned __int64 statValue;
-    unsigned statCount;
 
 public:
     LogItem(TracingCategory _category, const char *_prefix, unsigned _time, unsigned _channel, const char *_text) 
         : category(_category), prefix(_prefix), time(_time), channel(_channel), text(_text)
     {
-        statCode = 0;
+        statCode = StKindNone;
         statValue = 0;
-        statCount = 0;
     }
 
-    LogItem(TracingCategory _category, unsigned _channel, unsigned _statCode, unsigned __int64 _statValue, unsigned _count) 
-        : category(_category), channel(_channel), statCode(_statCode), statValue(_statValue), statCount(_count)
+    LogItem(TracingCategory _category, unsigned _channel, StatisticKind _statCode, unsigned __int64 _statValue, unsigned _count)
+        : category(_category), channel(_channel), statCode(_statCode), statValue(_statValue)
     {
         time = 0;
     }
@@ -504,7 +502,7 @@ public:
         return category==LOG_STATVALUES;
     }
 
-    inline unsigned getStatCode() const
+    inline StatisticKind getStatCode() const
     {
         return statCode;
     }
@@ -514,11 +512,6 @@ public:
         return statValue;
     }
 
-    inline unsigned __int64 getStatCount() const
-    {
-        return statCount;
-    }
-
     LogItem(MemoryBuffer &buf)
     {
         char c; buf.read(c); category = (TracingCategory) c;
@@ -526,18 +519,18 @@ public:
         if (category==LOG_STATVALUES)
         {
             time = 0;
-            buf.read(statCode);
+            unsigned lStatCode;
+            buf.read(lStatCode);
+            statCode = (StatisticKind) lStatCode;
             buf.read(statValue);
-            buf.read(statCount);
         }
         else
         {
             buf.read(prefix);
             buf.read(text);
             buf.read(time);
-            statCode = 0;
+            statCode = StKindNone;
             statValue = 0;
-            statCount = 0;
         }
     }
 
@@ -547,9 +540,9 @@ public:
         buf.append(channel);
         if (category==LOG_STATVALUES)
         {
-            buf.append(statCode);
+            unsigned lStatCode = (unsigned) statCode;
+            buf.append(lStatCode);
             buf.append(statValue);
-            buf.append(statCount);
         }
         else
         {
@@ -604,6 +597,7 @@ public:
 extern void putStatsValue(IPropertyTree *node, const char *statName, const char *statType, unsigned __int64 val);
 extern void putStatsValue(StringBuffer &reply, const char *statName, const char *statType, unsigned __int64 val);
 
+#if 0
 class StatsCollector : public CInterface, implements IInterface
 {
     unsigned __int64 *cumulative;
@@ -794,6 +788,7 @@ public:
         aborted = true;
     }
 };
+#endif
 
 class ContextLogger : public CInterface, implements IRoxieContextLogger
 {
@@ -801,7 +796,7 @@ protected:
     mutable CriticalSection crit;
     unsigned start;
     unsigned ctxTraceLevel;
-    mutable StatsCollector stats;
+    mutable CRuntimeStatisticCollection stats;
     mutable ITimeReporter *timeReporter;
     unsigned channel;
 public: // Not very clean but I don't care
@@ -813,7 +808,7 @@ private:
 public:
     IMPLEMENT_IINTERFACE;
 
-    ContextLogger() 
+    ContextLogger() : stats(allStatistics)
     {
         ctxTraceLevel = traceLevel;
         intercept = false;
@@ -938,19 +933,15 @@ public:
     {
     }
 
-    void dumpStats() const
-    {
-        stats.dumpStats(*this);
-    }
-
     StringBuffer &printStats(StringBuffer &s) const
     {
-        return stats.printStats(s);
+        return stats.toStr(s);
     }
 
     virtual void dumpStats(IWorkUnit *wu) const
     {
-        stats.dumpStats(wu);
+        UNIMPLEMENTED;
+        // stats.dumpStats(wu);
     }
 
     virtual bool isIntercepted() const
@@ -963,9 +954,9 @@ public:
         return blind;
     }
 
-    virtual void noteStatistic(unsigned statCode, unsigned __int64 value, unsigned count) const
+    virtual void noteStatistic(StatisticKind kind, unsigned __int64 value) const
     {
-        stats.noteStatistic(statCode, value, count);
+        stats.addStatistic(kind, value);
     }
 
     virtual unsigned queryTraceLevel() const
@@ -1035,7 +1026,7 @@ public:
     inline bool queryDebuggerActive() const { return debuggerActive; }
     inline bool queryCheckingHeap() const { return checkingHeap; }
     inline void setDebuggerActive(bool _active) { debuggerActive = _active; }
-    inline const StatsCollector &queryStats() const 
+    inline const CRuntimeStatisticCollection &queryStats() const
     {
         return stats;
     }

@@ -225,7 +225,7 @@ protected:
     ActivityArrayArray childQueries;
     UnsignedArray childQueryIndexes;
     CachedOutputMetaData meta;
-    mutable StatsCollector mystats;
+    mutable CRuntimeStatisticCollection mystats;
 
 public:
     CActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind);
@@ -243,7 +243,7 @@ public:
     virtual IQueryFactory &queryQueryFactory() const { return queryFactory; }
     virtual ThorActivityKind getKind() const { return kind; }
 
-    virtual void noteStatistics(const StatsCollector &fromStats)
+    virtual void noteStatistics(const CRuntimeStatisticCollection &fromStats)
     {
         // Merge in the stats from this instance
         mystats.merge(fromStats);
