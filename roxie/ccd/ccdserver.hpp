@@ -179,6 +179,7 @@ interface IRoxieServerActivity : extends IActivityBase
     virtual void serializeSkipInfo(MemoryBuffer &out, unsigned seekLen, const void *rawSeek, unsigned numFields, const void * seek, const SmartStepExtra &stepExtra) const = 0;
     virtual ThorActivityKind getKind() const = 0;
     virtual const IRoxieContextLogger &queryLogCtx() const = 0;
+    virtual void mergeStats(MemoryBuffer &stats) = 0;
 };
 
 interface IRoxieServerActivityFactory : extends IActivityFactory

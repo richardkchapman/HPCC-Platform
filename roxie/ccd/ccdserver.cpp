@@ -895,7 +895,7 @@ public:
         : factory(_factory), 
           basehelper(_factory->getHelper()),
           activityId(_factory->queryId()),
-          mystats(allStatistics)
+          stats(allStatistics)
     {
         input = NULL;
         ctx = NULL;
@@ -912,7 +912,7 @@ public:
         timeActivities = defaultTimeActivities;
     }
     
-    CRoxieServerActivity(IHThorArg & _helper) : factory(NULL), basehelper(_helper)
+    CRoxieServerActivity(IHThorArg & _helper) : factory(NULL), basehelper(_helper), stats(allStatistics)
     {
         activityId = 0;
         input = NULL;
@@ -951,6 +951,11 @@ public:
     virtual const IRoxieContextLogger &queryLogCtx()const
     {
         return *this;
+    }
+
+    virtual void mergeStats(MemoryBuffer &buf)
+    {
+        stats.deserializeMerge(buf);
     }
 
     inline void createRowAllocator()
@@ -1271,10 +1276,12 @@ public:
                 }
                 if (ctx->queryOptions().traceActivityTimes)
                 {
-                    stats.dumpStats(*this);
                     StringBuffer prefix, text;
                     getLogPrefix(prefix);
-                    text.appendf("records processed - %d", processed);
+                    stats.toStr(text);
+                    // MORE - probably don't need these any more - covered by the stats above
+                    CTXLOGa(LOG_STATISTICS, prefix.str(), text.str());
+                    text.clear().appendf("records processed - %d", processed);
                     CTXLOGa(LOG_STATISTICS, prefix.str(), text.str());
                     text.clear().appendf("total time - %d us", (unsigned) (cycle_to_nanosec(totalCycles)/1000));
                     CTXLOGa(LOG_STATISTICS, prefix.str(), text.str());
@@ -4118,7 +4125,12 @@ public:
                                     char *logInfo = (char *) extra->getNext(*rowlen);
                                     MemoryBuffer buf;
                                     buf.setBuffer(*rowlen, logInfo, false);
-                                    activity.queryLogCtx().CTXLOGl(new LogItem(buf));
+                                    bool isStats;
+                                    buf.read(isStats);
+                                    if (isStats)
+                                        activity.mergeStats(buf);
+                                    else
+                                        activity.queryLogCtx().CTXLOGl(new LogItem(buf));
                                     ReleaseRoxieRow(rowlen);
                                     ReleaseRoxieRow(logInfo);
                                 }
@@ -4222,7 +4234,12 @@ public:
                                 char *logInfo = (char *) extra->getNext(*rowlen);
                                 MemoryBuffer buf;
                                 buf.setBuffer(*rowlen, logInfo, false);
-                                activity.queryLogCtx().CTXLOGl(new LogItem(buf));
+                                bool isStats;
+                                buf.read(isStats);
+                                if (isStats)
+                                    activity.mergeStats(buf);
+                                else
+                                    activity.queryLogCtx().CTXLOGl(new LogItem(buf));
                                 ReleaseRoxieRow(rowlen);
                                 ReleaseRoxieRow(logInfo);
                             }

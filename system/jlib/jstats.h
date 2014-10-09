@@ -433,6 +433,7 @@ extern const jlib_decl StatisticsMapping allStatistics;
 class CRuntimeStatistic
 {
 public:
+    CRuntimeStatistic() : value(0) {}
     inline void add(unsigned __int64 delta) { value += delta; }
     inline void addAtomic(unsigned __int64 delta) { value += delta; }
     inline unsigned __int64 get() const { return value; }
@@ -509,6 +510,7 @@ public:
     inline const StatisticsMapping & queryMapping() const { return mapping; };
     inline unsigned ordinality() const { return mapping.numStatistics(); }
     inline StatisticKind getKind(unsigned i) const { return mapping.getKind(i); }
+    inline unsigned __int64 getValue(unsigned i) const { return values[i].get(); }
 
     void merge(const CRuntimeStatisticCollection & other);
     void rollupStatistics(IContextLogger * target) { rollupStatistics(1, &target); }
@@ -520,6 +522,10 @@ public:
     StringBuffer &toStr(StringBuffer &str) const;
     // Print out collected stats to string as XML
     StringBuffer &toXML(StringBuffer &str) const;
+    // Serialize/deserialize
+    MemoryBuffer &serialize(MemoryBuffer & out) const;
+    void deserialize(MemoryBuffer & in);
+    void deserializeMerge(MemoryBuffer& in);
 protected:
     void reportIgnoredStats() const;
 
@@ -561,6 +567,7 @@ extern jlib_decl const char * queryCreatorTypeName(StatisticCreatorType sct);
 extern jlib_decl const char * queryScopeTypeName(StatisticScopeType sst);
 extern jlib_decl const char * queryMeasureName(StatisticMeasure measure);
 extern jlib_decl StatsMergeAction queryMergeMode(StatisticMeasure measure);
+extern jlib_decl StatsMergeAction queryMergeMode(StatisticKind kind);
 
 extern jlib_decl StatisticMeasure queryMeasure(const char *  measure);
 extern jlib_decl StatisticKind queryStatisticKind(const char *  kind);

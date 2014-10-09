@@ -359,6 +359,12 @@ StatsMergeAction queryMergeMode(StatisticMeasure measure)
     }
 }
 
+extern jlib_decl StatsMergeAction queryMergeMode(StatisticKind kind)
+{
+    //MORE: Optimize by looking up in the meta
+    return queryMergeMode(queryMeasure(kind));
+}
+
 //--------------------------------------------------------------------------------------------------------------------
 
 #define BASE_NAMES(x, y) \
@@ -435,8 +441,8 @@ class StatisticMeta
 public:
     StatisticKind kind;
     StatisticMeasure measure;
-    const char * tags[StNextModifier/StVariantScale];
     const char * names[StNextModifier/StVariantScale];
+    const char * tags[StNextModifier/StVariantScale];
 };
 
 static const StatisticMeta statsMetaData[StMax] = {
@@ -690,7 +696,7 @@ StatisticsMapping::StatisticsMapping(StatisticKind kind, ...)
 
 StatisticsMapping::StatisticsMapping()
 {
-    for (int i = 0; i < StMax; i++)
+    for (int i = StKindAll+1; i < StMax; i++)
         indexToKind.append(i);
     createMappings();
 }
@@ -710,6 +716,8 @@ void StatisticsMapping::createMappings()
         kindToIndex.replace(i, kind);
     }
 }
+
+const StatisticsMapping allStatistics;
 
 //--------------------------------------------------------------------------------------------------------------------
 
@@ -1309,7 +1317,7 @@ void CRuntimeStatisticCollection::merge(const CRuntimeStatisticCollection & othe
     ForEachItemIn(i, other)
     {
         StatisticKind kind = other.getKind(i);
-        StatsMergeAction mergeAction = queryMergeMode(queryMeasure(kind));
+        StatsMergeAction mergeAction = queryMergeMode(kind);
         mergeStatistic(kind, other.getStatisticValue(kind), mergeAction);
     }
 }
@@ -1331,7 +1339,7 @@ void CRuntimeStatisticCollection::recordStatistics(IStatisticGatherer & target) 
     ForEachItem(i)
     {
         StatisticKind kind = getKind(i);
-        StatsMergeAction mergeAction = queryMergeMode(queryMeasure(kind));
+        StatsMergeAction mergeAction = queryMergeMode(kind);
         target.updateStatistic(kind, values[i].get(), mergeAction);
     }
     reportIgnoredStats();
@@ -1367,13 +1375,63 @@ StringBuffer & CRuntimeStatisticCollection::toStr(StringBuffer &str) const
         {
             StatisticKind kind = getKind(iStat);
             const char * name = queryStatisticName(kind);
-            str.append(name).append("=");
+            str.append(' ').append(name).append("=");
             formatStatistic(str, value, kind);
         }
     }
     return str;
 }
 
+void CRuntimeStatisticCollection::deserialize(MemoryBuffer& in)
+{
+    unsigned numValid;
+    in.read(numValid);
+    for (unsigned i=0; i < numValid; i++)
+    {
+        unsigned kindVal;
+        unsigned __int64 value;
+        in.read(kindVal).read(value);
+        StatisticKind kind = (StatisticKind)kindVal;
+        setStatistic(kind, value);
+    }
+}
+
+void CRuntimeStatisticCollection::deserializeMerge(MemoryBuffer& in)
+{
+    unsigned numValid;
+    in.read(numValid);
+    for (unsigned i=0; i < numValid; i++)
+    {
+        unsigned kindVal;
+        unsigned __int64 value;
+        in.read(kindVal).read(value);
+        StatisticKind kind = (StatisticKind)kindVal;
+        StatsMergeAction mergeAction = queryMergeMode(kind);
+        mergeStatistic(kind, value, mergeAction);
+    }
+}
+
+MemoryBuffer& CRuntimeStatisticCollection::serialize(MemoryBuffer& out) const
+{
+    unsigned numValid = 0;
+    ForEachItem(i1)
+    {
+        if (values[i1].get())
+            numValid++;
+    }
+    //out.ensure(sizeof(unsigned)+numValid*(sizeof(unsigned)+sizeof(unsigned __int64)));
+    out.append(numValid);
+    ForEachItem(i2)
+    {
+        unsigned __int64 value = values[i2].get();
+        if (value)
+        {
+            out.append((unsigned)mapping.getKind(i2));
+            out.append(value);
+        }
+    }
+    return out;
+}
 
 //---------------------------------------------------
 

@@ -256,7 +256,13 @@ public:
 
     virtual void getNodeProgressInfo(IPropertyTree &node) const
     {
-        mystats.getNodeProgressInfo(node);
+        ForEachItemIn(i, mystats)
+        {
+            StatisticKind kind = mystats.getKind(i);
+            unsigned __int64 value = mystats.getStatisticValue(kind);
+            if (value)
+                putStatsValue(&node, queryStatisticName(kind), "sum", value);
+        }
     }
 
     virtual void resetNodeProgressInfo()

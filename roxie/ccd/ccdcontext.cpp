@@ -1187,13 +1187,7 @@ public:
 
     virtual void CTXLOGl(LogItem *log) const
     {
-        if (log->isStatistics())
-        {
-            logctx.noteStatistic(log->getStatCode(), log->getStatValue());
-            log->Release();
-        }
-        else
-            logctx.CTXLOGl(log);
+        logctx.CTXLOGl(log);
     }
 
     virtual unsigned logString(const char *text) const
