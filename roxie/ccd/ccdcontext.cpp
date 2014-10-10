@@ -1259,6 +1259,8 @@ public:
                 builder.addStatistic(StNumRowsProcessed, _processed);
             }
         }
+        if (_processed)
+            logctx.noteStatistic(StNumRowsProcessed, _processed);
     }
 
     void setOptions(const SlaveContextLogger &ctx)

@@ -429,7 +429,7 @@ extern const jlib_decl StatisticsMapping allStatistics;
 
 //---------------------------------------------------------------------------------------------------------------------
 
-//MORE: We probably want to have functions that peform the atomic equivalents
+//MORE: We probably want to have functions that perform the atomic equivalents
 class CRuntimeStatistic
 {
 public:
