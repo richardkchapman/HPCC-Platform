@@ -2520,6 +2520,7 @@ public:
                 RoxiePacketHeader newHeader(header, ROXIE_ALIVE);
                 Owned<IMessagePacker> output = createOutputStream(newHeader, true, logctx);
                 output->flush(true);
+                return; // No point sending the retry in localSlave mode
             }
             RoxieQueue *targetQueue;
 #ifdef ROXIE_SLA_LOGIC
@@ -2597,8 +2598,8 @@ public:
 
     virtual bool replyPending(RoxiePacketHeader &header)
     {
-        // MORE - should really have some code here!
-        return false;
+        // MORE - should really have some code here! But returning true is a reasonable approximation.
+        return true;
     }
 
     virtual bool abortCompleted(RoxiePacketHeader &header)
