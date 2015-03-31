@@ -2214,7 +2214,7 @@ public:
 
 interface ILocalMessageCollator : extends IMessageCollator
 {
-    virtual void enqueueMessage(void *data, unsigned datalen, void *meta, unsigned metalen, void *header, unsigned headerlen) = 0;
+    virtual void enqueueMessage(bool outOfBand, void *data, unsigned datalen, void *meta, unsigned metalen, void *header, unsigned headerlen) = 0;
 };
 
 interface ILocalReceiveManager : extends IReceiveManager
@@ -2229,10 +2229,11 @@ class LocalMessagePacker : public CDummyMessagePacker
     MemoryBuffer header;
     Linked<ILocalReceiveManager> rm;
     ruid_t id;
+    bool outOfBand;
 
 public:
     IMPLEMENT_IINTERFACE;
-    LocalMessagePacker(RoxiePacketHeader &_header, ILocalReceiveManager *_rm) : rm(_rm)
+    LocalMessagePacker(RoxiePacketHeader &_header, bool _outOfBand, ILocalReceiveManager *_rm) : rm(_rm), outOfBand(_outOfBand)
     {
         id = _header.uid;
         header.append(sizeof(RoxiePacketHeader), &_header);
@@ -2382,10 +2383,13 @@ public:
         sem.interrupt(E);
     }
 
-    virtual void enqueueMessage(void *data, unsigned datalen, void *meta, unsigned metalen, void *header, unsigned headerlen)
+    virtual void enqueueMessage(bool outOfBand, void *data, unsigned datalen, void *meta, unsigned metalen, void *header, unsigned headerlen)
     {
         CriticalBlock c(crit);
-        pending.enqueue(new CLocalMessageResult(data, datalen, meta, metalen, header, headerlen));
+        if (outOfBand)
+            pending.enqueueHead(new CLocalMessageResult(data, datalen, meta, metalen, header, headerlen));
+        else
+            pending.enqueue(new CLocalMessageResult(data, datalen, meta, metalen, header, headerlen));
         sem.signal();
         totalBytesReceived += datalen + metalen + headerlen;
     }
@@ -2455,7 +2459,7 @@ void LocalMessagePacker::flush(bool last_message)
             unsigned datalen = data.length();
             unsigned metalen = meta.length();
             unsigned headerlen = header.length();
-            collator->enqueueMessage(data.detach(), datalen, meta.detach(), metalen, header.detach(), headerlen);
+            collator->enqueueMessage(outOfBand, data.detach(), datalen, meta.detach(), metalen, header.detach(), headerlen);
         }
         // otherwise Roxie server is no longer interested and we can simply discard
     }
@@ -2588,7 +2592,7 @@ public:
 
     virtual IMessagePacker *createOutputStream(RoxiePacketHeader &header, bool outOfBand, const IRoxieContextLogger &logctx)
     {
-        return new LocalMessagePacker(header, receiveManager);
+        return new LocalMessagePacker(header, outOfBand, receiveManager);
     }
 
     virtual IReceiveManager *queryReceiveManager()
