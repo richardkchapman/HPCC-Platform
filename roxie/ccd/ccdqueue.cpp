@@ -237,7 +237,7 @@ public:
         data->packetlength = lengthRemaining;
         const byte *finger = (const byte *) (data + 1);
         lengthRemaining -= sizeof(RoxiePacketHeader);
-        if (data->activityId == ROXIE_FILECALLBACK || data->activityId == ROXIE_DEBUGCALLBACK)
+        if (data->activityId == ROXIE_FILECALLBACK || data->activityId == ROXIE_DEBUGCALLBACK || data->retries == QUERY_ABORTED)
         {
             continuationData = NULL;
             continuationLength = 0;
@@ -2555,14 +2555,34 @@ public:
 
     virtual void sendAbort(RoxiePacketHeader &header, const IRoxieContextLogger &logctx)
     {
-        // MORE - should really have some code here? - no one to alert about the abort
-        //UNIMPLEMENTED;
+        MTIME_SECTION(queryActiveTimer(), "RoxieLocalQueueManager::sendAbort");
+        RoxiePacketHeader abortHeader(header, header.activityId & ROXIE_PRIORITY_MASK);
+        abortHeader.retries = QUERY_ABORTED;
+        if (logctx.queryTraceLevel() > 8)
+        {
+            StringBuffer s; logctx.CTXLOG("Sending ABORT packet %s", abortHeader.toString(s).str());
+        }
+        MemoryBuffer data;
+        data.append(sizeof(abortHeader), &abortHeader);
+        Owned<IRoxieQueryPacket> packet = createRoxiePacket(data);
+        sendPacket(packet, logctx);
+        atomic_inc(&abortsSent);
     }
 
     virtual void sendAbortCallback(const RoxiePacketHeader &header, const char *lfn, const IRoxieContextLogger &logctx)
     {
-        // MORE - should really have some code here
-        //UNIMPLEMENTED;
+        MTIME_SECTION(queryActiveTimer(), "RoxieLocalQueueManager::sendAbortCallback");
+        RoxiePacketHeader abortHeader(header, ROXIE_FILECALLBACK);
+        abortHeader.retries = QUERY_ABORTED;
+        MemoryBuffer data;
+        data.append(sizeof(abortHeader), &abortHeader).append(lfn);
+        if (logctx.queryTraceLevel() > 5)
+        {
+            StringBuffer s; logctx.CTXLOG("Sending ABORT FILECALLBACK packet %s for file %s", abortHeader.toString(s).str(), lfn);
+        }
+        Owned<IRoxieQueryPacket> packet = createRoxiePacket(data);
+        sendPacket(packet, logctx);
+        atomic_inc(&abortsSent);
     }
 
     virtual IMessagePacker *createOutputStream(RoxiePacketHeader &header, bool outOfBand, const IRoxieContextLogger &logctx)
