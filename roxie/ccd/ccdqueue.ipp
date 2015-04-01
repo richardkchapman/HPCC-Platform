@@ -76,6 +76,7 @@ public:
         return false;
     }
 
+
     virtual void *getBuffer(unsigned len, bool variable)
     {
         data.setLength(lastput);

@@ -2223,6 +2223,7 @@ interface ILocalReceiveManager : extends IReceiveManager
 };
 
 
+
 class LocalMessagePacker : public CDummyMessagePacker
 {
     MemoryBuffer meta;
@@ -2403,7 +2404,6 @@ public:
 class RoxieLocalReceiveManager : public CInterface, implements ILocalReceiveManager
 {
     MapXToMyClass<ruid_t, ruid_t, ILocalMessageCollator> collators;
-    Owned<IRowManager> rowManager;
     CriticalSection crit;
     Owned<StringContextLogger> logctx;
     Linked<IMessageCollator> defaultCollator;
@@ -2416,10 +2416,8 @@ public:
 
     virtual IMessageCollator *createMessageCollator(IRowManager *manager, ruid_t ruid)
     {
+        IMessageCollator *collator = new CLocalMessageCollator(manager, ruid);
         CriticalBlock b(crit);
-        if (!rowManager)
-            rowManager.setown(roxiemem::createRowManager(0, NULL, *logctx, NULL, false)); // MORE - should not really use default limits
-        IMessageCollator *collator = new CLocalMessageCollator(rowManager, ruid); // MORE - is this right - why two rowManagers and why pass this one (not the other) ?
         collators.setValue(ruid, collator);
         return collator;
     }
@@ -2487,7 +2485,6 @@ CLocalMessageCollator::~CLocalMessageCollator()
 
 class RoxieLocalQueueManager : public RoxieReceiverBase
 {
-    Linked<ISendManager> sendManager;
     Linked<RoxieLocalReceiveManager> receiveManager;
 
 public:
@@ -2611,6 +2608,9 @@ public:
         // MORE - should really have some code here!
         return false;
     }
+
+
+
 };
 
 IRoxieOutputQueueManager *ROQ;
