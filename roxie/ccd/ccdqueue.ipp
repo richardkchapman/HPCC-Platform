@@ -98,7 +98,7 @@ public:
             *(RecordLengthType *) buf = len;
             len += sizeof(RecordLengthType);
         }
-        data.setLength(lastput + len);
+        data.setWritePos(lastput + len);
         lastput += len;
     }
 
