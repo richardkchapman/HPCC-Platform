@@ -291,7 +291,7 @@ void * MemoryBuffer::ensureCapacity(unsigned max)
 {
     if (maxLen - curLen < max)
         _realloc(curLen + max);
-    return buffer;
+    return buffer + curLen;
 }
 
 void MemoryBuffer::kill()
