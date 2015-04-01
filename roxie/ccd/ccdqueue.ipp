@@ -79,15 +79,14 @@ public:
 
     virtual void *getBuffer(unsigned len, bool variable)
     {
-        data.setLength(lastput);
         if (variable)
         {
-            char *ret = (char *) data.reserve(len + sizeof(RecordLengthType));
+            char *ret = (char *) data.ensureCapacity(len + sizeof(RecordLengthType));
             return ret + sizeof(RecordLengthType);
         }
         else
         {
-            return data.reserve(len);
+            return data.ensureCapacity(len);
         }
     }
 
