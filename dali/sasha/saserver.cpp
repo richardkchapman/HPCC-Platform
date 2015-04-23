@@ -321,7 +321,7 @@ int main(int argc, const char* argv[])
 
         unsigned short port = (stop||coalescer)?0:DEFAULT_SASHA_PORT;
         Owned<IGroup> serverGroup = createIGroup(daliServer.str(),DALI_SERVER_PORT);
-        initClientProcess(serverGroup, DCR_SashaServer, port, NULL, NULL, MP_WAIT_FOREVER);
+        initClientProcess(serverGroup, DCR_SashaServer, port);
         setPasswordsFromSDS(); 
         if (!stop&!coalescer) {
             startLogMsgParentReceiver();    // for auditing

@@ -88,6 +88,7 @@ void CEclAgentExecutionServer::start()
         ERRLOG("'daliServers' not specified in properties file\n");
         throwUnexpected();
     }
+    properties->getProp("@workunitServers", wuServers);  // If not specified, we will use dali
 
     started = true;
     Thread::start();
@@ -113,6 +114,7 @@ int CEclAgentExecutionServer::run()
     SCMStringBuffer queueNames;
     Owned<IFile> sentinelFile = createSentinelTarget();
     removeSentinelFile(sentinelFile);
+    // Connect to Dali
     try
     {
         Owned<IGroup> serverGroup = createIGroup(daliServers, DALI_SERVER_PORT);
@@ -120,6 +122,7 @@ int CEclAgentExecutionServer::run()
         getAgentQueueNames(queueNames, agentName);
         queue.setown(createJobQueue(queueNames.str()));
         queue->connect();
+        connectWuServers(wuServers);
     }
     catch (IException *e) 
     {
@@ -131,7 +134,6 @@ int CEclAgentExecutionServer::run()
     {
         ERRLOG("Terminating unexpectedly");
     }
-
     CSDSServerStatus serverStatus("HThorServer");
     serverStatus.queryProperties()->setProp("@queue",queueNames.str());
     serverStatus.queryProperties()->setProp("@cluster", agentName);
@@ -207,6 +209,8 @@ int CEclAgentExecutionServer::executeWorkunit(const char * wuid)
 
     StringBuffer cmdLine = command;
     cmdLine.append(" WUID=").append(wuid).append(" DALISERVERS=").append(daliServers);
+    if (wuServers.length())
+        cmdLine.append(" WORKUNITSERVERS=").append(wuServers);
 
     DWORD runcode;
     PROGLOG("AgentExec: Executing '%s'", cmdLine.str());

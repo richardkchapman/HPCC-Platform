@@ -749,7 +749,7 @@ class CFuseDaliDFS: public CFuseBase
         try {
             setDaliServixSocketCaching(true);
             Owned<IGroup> serverGroup = createIGroup(daliServer,DALI_SERVER_PORT);
-            initClientProcess(serverGroup, DCR_Dfu, 0, NULL, NULL, MP_WAIT_FOREVER);                // so that 
+            initClientProcess(serverGroup, DCR_Dfu);
             setPasswordsFromSDS(); 
             startLogMsgParentReceiver();    // for auditing
             connectLogMsgManagerToDali();

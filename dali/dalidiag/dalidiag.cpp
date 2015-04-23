@@ -588,7 +588,7 @@ int main(int _argc, char* argv[])
     //CSystemCapability capability(DCR_Diagnostic, "DALIDIAG");
     //capability.secure((byte *)CLIENT_ENCRYPT_KEY, strlen(CLIENT_ENCRYPT_KEY));
     assertex(group);
-    initClientProcess(group, DCR_Diagnostic, 0, NULL, NULL, MP_WAIT_FOREVER);
+    initClientProcess(group, DCR_Diagnostic);
 
     if (argc<2)
     {

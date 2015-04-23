@@ -40,6 +40,7 @@ private:
     StringAttr agentName;
     Owned<IJobQueue> queue;
     StringBuffer daliServers;
+    StringBuffer wuServers; // If not set, assume using Dali
 };
 
 #endif

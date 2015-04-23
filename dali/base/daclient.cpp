@@ -86,8 +86,6 @@ IDaliClient_Exception *createClientException(DaliClientError err, const char *ms
     return new CDaliClientException(err, msg);
 }
 
-
-
 bool initClientProcess(IGroup *servergrp, DaliClientRole role, unsigned mpport, const char *clientVersion, const char *minServerVersion, unsigned timeout)
 {
     assertex(servergrp);

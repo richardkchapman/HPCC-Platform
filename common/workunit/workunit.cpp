@@ -2827,17 +2827,23 @@ void clientShutdownWorkUnit()
     factory.clear();
 }
 
+extern WORKUNIT_API void connectWuServers(const char *servers)
+{
+    if (servers && *servers)
+        UNIMPLEMENTED;
+    else
+        factory.setown(new CDaliWorkUnitFactory);
+}
+
 extern WORKUNIT_API void setWorkUnitFactory(IWorkUnitFactory *_factory)
 {
-    // Used by plugins that override the default (dali) workunit factory
     factory.setown(_factory);
 }
 
 extern WORKUNIT_API IWorkUnitFactory * getWorkUnitFactory()
 {
-    // MORE - This is not threadsafe - do we care?
     if (!factory)
-        factory.setown(new CDaliWorkUnitFactory());
+        throw MakeStringException(WUERR_ServerNotConfigured, "Workunit server not configured");
     return factory.getLink();
 }
 

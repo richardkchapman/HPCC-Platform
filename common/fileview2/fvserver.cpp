@@ -44,7 +44,7 @@ int main(int argc, const char *argv[])
     }
     
     Owned<IGroup> serverGroup = createIGroup(argv[1],DALI_SERVER_PORT);
-    initClientProcess(serverGroup, DCR_Other, 9123, NULL, NULL, MP_WAIT_FOREVER);
+    initClientProcess(serverGroup, DCR_Other, 9123);
     setPasswordsFromSDS(); 
 
     LocalAbortHandler localHandler(myAbortHandler);

@@ -3325,7 +3325,7 @@ extern int HTHOR_API eclagent_main(int argc, const char *argv[], StringBuffer * 
             {
                 MTIME_SECTION(queryActiveTimer(), "SDS_Initialize");
                 Owned<IGroup> serverGroup = createIGroup(daliServers.str(), DALI_SERVER_PORT);
-                initClientProcess(serverGroup, DCR_EclAgent, 0, NULL, NULL, MP_WAIT_FOREVER);
+                initClientProcess(serverGroup, DCR_EclAgent);
             }
 #ifdef MONITOR_ECLAGENT_STATUS  
             serverstatus = new CSDSServerStatus("ECLagent");

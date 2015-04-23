@@ -49,5 +49,6 @@
 #define WUERR_InvalidDll                        5024
 #define WUERR_WorkunitPublished                 5025
 #define WUERR_GraphProgressWriteUnsupported     5026
+#define WUERR_ServerNotConfigured               5027
 
 #endif
