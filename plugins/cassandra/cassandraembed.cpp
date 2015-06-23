@@ -1229,14 +1229,14 @@ protected:
     inline unsigned checkNextParam(const RtlFieldInfo * field)
     {
         if (logctx.queryTraceLevel() > 4)
-            logctx.CTXLOG("Binding %s to %d", field->name->str(), thisParam);
+            logctx.CTXLOG("Binding %s to %d", str(field->name), thisParam);
         return thisParam++;
     }
     inline void checkBind(CassError rc, const RtlFieldInfo * field)
     {
         if (rc != CASS_OK)
         {
-            failx("While binding parameter %s: %s", field->name->getAtomNamePtr(), cass_error_desc(rc));
+            failx("While binding parameter %s: %s", str(field->name), cass_error_desc(rc));
         }
     }
     const RtlTypeInfo *typeInfo;
