@@ -728,42 +728,6 @@ IHThorException * EclGraphElement::makeWrappedException(IException * e)
 
 //---------------------------------------------------------------------------
 
-class GraphRunningState
-{
-public:
-    GraphRunningState(EclGraph & parent, unsigned _id) : graphProgress(parent.getGraphProgress()), id(_id), running(true)
-    {
-        set(WUGraphRunning);
-    }
-
-    ~GraphRunningState()
-    {
-        if(running)        
-            set(WUGraphFailed);
-    }
-
-    void complete()
-    {
-        set(WUGraphComplete);
-        running = false;
-    }
-
-private:
-    void set(WUGraphState state)
-    {
-        Owned<IWUGraphProgress> progress = graphProgress->update();
-        if(id)
-            progress->setNodeState(id, state);
-        else
-            progress->setGraphState(state);
-    }
-
-private:
-    Owned<IConstWUGraphProgress> graphProgress;
-    unsigned id;
-    bool running;
-};
-
 EclSubGraph::EclSubGraph(IAgentContext & _agent, EclGraph & _parent, EclSubGraph * _owner, unsigned _seqNo, bool enableProbe, CHThorDebugContext * _debugContext, IProbeManager * _probeManager)
     : parent(_parent), owner(_owner), seqNo(_seqNo), probeEnabled(enableProbe), debugContext(_debugContext), probeManager(_probeManager)
 {
@@ -883,8 +847,7 @@ void EclSubGraph::updateProgress()
 {
     if (!isChildGraph && agent->queryRemoteWorkunit())
     {
-        Owned<IConstWUGraphProgress> graphProgress = parent.getGraphProgress();
-        Owned<IWUGraphStats> progress = graphProgress->update(queryStatisticsComponentType(), queryStatisticsComponentName(), id);
+        Owned<IWUGraphStats> progress = parent.updateStats(queryStatisticsComponentType(), queryStatisticsComponentName(), id);
         IStatisticGatherer & stats = progress->queryStatsBuilder();
         updateProgress(stats);
     }
@@ -1198,9 +1161,8 @@ void EclGraph::createFromXGMML(ILoadedDllEntry * dll, IPropertyTree * xgmml, boo
 
 void EclGraph::execute(const byte * parentExtract)
 {
-    GraphRunningState * run = NULL;
     if (agent->queryRemoteWorkunit())
-        run = new GraphRunningState(*this, 0);
+        wu->setGraphState(queryGraphName(), WUGraphRunning);
 
     unsigned startTime = msTick();
     aindex_t lastSink = -1;
@@ -1230,11 +1192,8 @@ void EclGraph::execute(const byte * parentExtract)
         wu->setStatistic(SCTsummary, "hthor", SSTglobal, GLOBAL_SCOPE, StTimeElapsed, totalTimeStr, totalTimeNs+elapsedNs, 1, 0, StatsMergeReplace);
     }
 
-    if (run)
-    {
-        run->complete();
-        delete run;
-    }
+    if (agent->queryRemoteWorkunit())
+        wu->setGraphState(queryGraphName(), WUGraphComplete);
 }
 
 void EclGraph::executeLibrary(const byte * parentExtract, IHThorGraphResults * results)
@@ -1288,12 +1247,10 @@ void EclGraph::updateLibraryProgress()
     //Check for old format embedded graph names, and don't update the stats if not the correct format
     if (!MATCHES_CONST_PREFIX(queryGraphName(), GraphScopePrefix))
         return;
-
-    Owned<IConstWUGraphProgress> graphProgress = getGraphProgress();
     ForEachItemIn(idx, graphs)
     {
         EclSubGraph & cur = graphs.item(idx);
-        Owned<IWUGraphStats> progress = graphProgress->update(queryStatisticsComponentType(), queryStatisticsComponentName(), cur.id);
+        Owned<IWUGraphStats> progress = wu->updateStats(queryGraphName(), queryStatisticsComponentType(), queryStatisticsComponentName(), cur.id);
         cur.updateProgress(progress->queryStatsBuilder());
     }
 }
@@ -1434,11 +1391,9 @@ void GraphResults::setResult(unsigned id, IHThorGraphResult * result)
 
 //---------------------------------------------------------------------------
 
-
-
-IConstWUGraphProgress * EclGraph::getGraphProgress()
+IWUGraphStats *EclGraph::updateStats(StatisticCreatorType creatorType, const char * creator, unsigned subgraph)
 {
-    return wu->getGraphProgress(queryGraphName());
+    return wu->updateStats (queryGraphName(), creatorType, creator, subgraph);
 }
 
 IThorChildGraph * EclGraph::resolveChildQuery(unsigned subgraphId)

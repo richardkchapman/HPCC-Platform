@@ -419,6 +419,7 @@ class WuTest : public CppUnit::TestFixture
         CPPUNIT_TEST(testDelete);
         CPPUNIT_TEST(testCopy);
         CPPUNIT_TEST(testGraph);
+        CPPUNIT_TEST(testGraphProgress);
     CPPUNIT_TEST_SUITE_END();
 protected:
     static StringArray wuids;
@@ -864,8 +865,51 @@ protected:
             numIterated++;
         }
         ASSERT(numIterated==2);
+        wu.clear();
+        factory->deleteWorkUnit(wuid);
+    }
+    void testGraphProgress()
+    {
+        Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
+        Owned<IWorkUnit> createWu = factory->createWorkUnit("WuTest", NULL, NULL, NULL);
+        StringBuffer wuid(createWu->queryWuid());
+        createWu->createGraph("Graph1", "graphLabel", GraphTypeActivities, createPTreeFromXMLString("<graph><node id='1'/></graph>"));
+        createWu->setState(WUStateCompleted);
+        createWu->commit();
+        createWu.clear();
+        Owned<IConstWorkUnit> wu = factory->openWorkUnit(wuid);
+        ASSERT(streq(wu->queryWuid(), wuid));
 
-}
+        SCMStringBuffer s;
+        s.set("Not empty");
+        WUGraphIDType subid = 10;
+        bool ret = wu->getRunningGraph(s, subid);
+        ASSERT(!ret);
+        ASSERT(wu->queryGraphState("Graph1")==WUGraphUnknown);
+        ASSERT(wu->queryNodeState("Graph1", 1)==WUGraphUnknown);
+
+        wu->setGraphState("Graph1",WUGraphRunning);
+        ASSERT(wu->queryGraphState("Graph1")==WUGraphRunning);
+
+        wu->setNodeState("Graph1",1, WUGraphRunning);
+        ASSERT(wu->queryNodeState("Graph1", 1)==WUGraphRunning);
+        ret = wu->getRunningGraph(s, subid);
+        ASSERT(ret);
+        ASSERT(streq(s.str(), "Graph1"));
+        ASSERT(subid==1);
+
+        wu->setNodeState("Graph1", 1, WUGraphComplete);
+        ASSERT(wu->queryNodeState("Graph1", 1)==WUGraphComplete);
+        ret = wu->getRunningGraph(s, subid);
+        ASSERT(!ret);
+
+        ASSERT(wu->queryGraphState("Graph1")==WUGraphRunning);
+        wu->clearGraphProgress();
+        ASSERT(wu->queryGraphState("Graph1")==WUGraphUnknown);
+        wu.clear();
+        factory->deleteWorkUnit(wuid);
+    }
+
     void sortStatistics(StringBuffer &xml)
     {
         Owned<IPropertyTree> p = createPTreeFromXMLString(xml);
