@@ -871,7 +871,7 @@ class CDaliWuGraphStats : public CWuGraphStats
 {
 public:
     CDaliWuGraphStats(IRemoteConnection *_conn, StatisticCreatorType _creatorType, const char * _creator, const char * _rootScope, unsigned _id)
-        : conn(_conn), CWuGraphStats(conn->queryRoot(), _creatorType, _creator, _rootScope, _id)
+        : CWuGraphStats(_conn->queryRoot(), _creatorType, _creator, _rootScope, _id), conn(_conn)
     {
     }
 protected:
