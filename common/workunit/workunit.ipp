@@ -726,7 +726,7 @@ public:
     virtual void beforeDispose();
     virtual IStatisticGatherer & queryStatsBuilder();
 protected:
-    IPropertyTree *progress;
+    Owned<IPropertyTree> progress;
     Owned<IStatisticGatherer> collector;
     StringAttr creator;
     StatisticCreatorType creatorType;

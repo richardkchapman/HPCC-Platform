@@ -2431,14 +2431,14 @@ public:
     {
     public:
         CCassandraWuGraphStats(const char *_wuid, const ICassandraSession *_sessionCache, StatisticCreatorType _creatorType, const char * _creator, const char * _rootScope, unsigned _id)
-        : wuid(_wuid), sessionCache(_sessionCache), progress(createPTree(_rootScope)),
-          CWuGraphStats(progress, _creatorType, _creator, _rootScope, _id)
+        : CWuGraphStats(createPTree(_rootScope), _creatorType, _creator, _rootScope, _id),
+          wuid(_wuid), sessionCache(_sessionCache)
         {
         }
         virtual void beforeDispose()
         {
             CWuGraphStats::beforeDispose(); // Sets up progress - should contain a single child tree sqNN where nn==id
-            CassandraStatement statement(sessionCache->prepareStatement("INSERT INTO wuGraphProgress (partition, wuid, graphID, subgraphID, creator, progress) values (?,?,?,?,?,?,?);"));
+            CassandraStatement statement(sessionCache->prepareStatement("INSERT INTO wuGraphProgress (partition, wuid, graphID, subgraphID, creator, progress) values (?,?,?,?,?,?);"));
             statement.bindInt32(0, rtlHash32VStr(wuid, 0) % NUM_PARTITIONS);
             statement.bindString(1, wuid);
             statement.bindString(2, progress->queryName());
@@ -2458,7 +2458,6 @@ public:
     protected:
         Linked<const ICassandraSession> sessionCache;
         StringAttr wuid;
-        Owned<IPropertyTree> progress;
     };
 
 

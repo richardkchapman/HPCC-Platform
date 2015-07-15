@@ -873,7 +873,7 @@ protected:
         Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
         Owned<IWorkUnit> createWu = factory->createWorkUnit("WuTest", NULL, NULL, NULL);
         StringBuffer wuid(createWu->queryWuid());
-        createWu->createGraph("Graph1", "graphLabel", GraphTypeActivities, createPTreeFromXMLString("<graph><node id='1'/></graph>"));
+        createWu->createGraph("graph1", "graphLabel", GraphTypeActivities, createPTreeFromXMLString("<graph><node id='1'/></graph>"));
         createWu->setState(WUStateCompleted);
         createWu->commit();
         createWu.clear();
@@ -885,27 +885,36 @@ protected:
         WUGraphIDType subid = 10;
         bool ret = wu->getRunningGraph(s, subid);
         ASSERT(!ret);
-        ASSERT(wu->queryGraphState("Graph1")==WUGraphUnknown);
-        ASSERT(wu->queryNodeState("Graph1", 1)==WUGraphUnknown);
+        ASSERT(wu->queryGraphState("graph1")==WUGraphUnknown);
+        ASSERT(wu->queryNodeState("graph1", 1)==WUGraphUnknown);
 
-        wu->setGraphState("Graph1",WUGraphRunning);
-        ASSERT(wu->queryGraphState("Graph1")==WUGraphRunning);
+        wu->setGraphState("graph1",WUGraphRunning);
+        ASSERT(wu->queryGraphState("graph1")==WUGraphRunning);
 
-        wu->setNodeState("Graph1",1, WUGraphRunning);
-        ASSERT(wu->queryNodeState("Graph1", 1)==WUGraphRunning);
+        wu->setNodeState("graph1", 1, WUGraphRunning);
+        ASSERT(wu->queryNodeState("graph1", 1)==WUGraphRunning);
         ret = wu->getRunningGraph(s, subid);
         ASSERT(ret);
-        ASSERT(streq(s.str(), "Graph1"));
+        ASSERT(streq(s.str(), "graph1"));
         ASSERT(subid==1);
 
-        wu->setNodeState("Graph1", 1, WUGraphComplete);
-        ASSERT(wu->queryNodeState("Graph1", 1)==WUGraphComplete);
+        wu->setNodeState("graph1", 1, WUGraphComplete);
+        ASSERT(wu->queryNodeState("graph1", 1)==WUGraphComplete);
         ret = wu->getRunningGraph(s, subid);
         ASSERT(!ret);
 
-        ASSERT(wu->queryGraphState("Graph1")==WUGraphRunning);
+        Owned<IWUGraphStats> progress = wu->updateStats("graph1", SCThthor, queryStatisticsComponentName(), 1);
+        IStatisticGatherer & stats = progress->queryStatsBuilder();
+        {
+            StatsSubgraphScope subgraph(stats, 1);
+            stats.addStatistic(StTimeElapsed, 5000);
+        }
+        progress.clear();
+
+
+        ASSERT(wu->queryGraphState("graph1")==WUGraphRunning);
         wu->clearGraphProgress();
-        ASSERT(wu->queryGraphState("Graph1")==WUGraphUnknown);
+        ASSERT(wu->queryGraphState("graph1")==WUGraphUnknown);
         wu.clear();
         factory->deleteWorkUnit(wuid);
     }
