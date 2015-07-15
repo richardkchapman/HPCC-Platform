@@ -1088,7 +1088,9 @@ protected:
         CriticalBlock block(crit);
         progressConnection.clear();  // Make sure nothing is locking for read or we won't be able to lock for write
         VStringBuffer path("/GraphProgress/%s/%s", queryWuid(), graphName);
-        return querySDS().connect(path, myProcessSession(), RTM_LOCK_WRITE|RTM_CREATE_QUERY, SDS_LOCK_TIMEOUT);
+        IRemoteConnection *conn = querySDS().connect(path, myProcessSession(), RTM_LOCK_WRITE|RTM_CREATE_QUERY, SDS_LOCK_TIMEOUT);
+        DBGLOG("getWritableProgressConnection %s returns %p", path.str(), conn);
+        return conn;
     }
     Owned<IRemoteConnection> connection;
     mutable Owned<IRemoteConnection> progressConnection;
