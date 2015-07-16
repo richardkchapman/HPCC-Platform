@@ -231,6 +231,8 @@ public:
     {
         if (query.length())
         {
+            if (!value)
+                value = "(null)";
             unsigned l = strlen(value);
             if (l > 100)
                 l = 100;
