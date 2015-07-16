@@ -2170,6 +2170,8 @@ public:
                     }
                 }
             }
+            if (sessionCache->queryTraceLevel() > 1)
+                DBGLOG("Executing batch");
             CassandraFuture futureBatch(cass_session_execute_batch(sessionCache->querySession(), *batch));
             futureBatch.wait("execute");
             batch.setown(new CassandraBatch(cass_batch_new(CASS_BATCH_TYPE_UNLOGGED))); // Commit leaves it locked...
@@ -2547,6 +2549,8 @@ public:
 protected:
     void createBatch()
     {
+        if (sessionCache->queryTraceLevel() > 1)
+            DBGLOG("Creating batch");
         batch.setown(new CassandraBatch(cass_batch_new(CASS_BATCH_TYPE_UNLOGGED)));
     }
     // Delete child table rows
