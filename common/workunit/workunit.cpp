@@ -6038,6 +6038,7 @@ static void _noteFileRead(IDistributedFile *file, IPropertyTree *filesRead)
     IDistributedSuperFile *super = file->querySuperFile();
     StringBuffer fname;
     file->getLogicalName(fname);
+    DBGLOG("noteFileRead '%s'", fname.str());
     StringBuffer path("File[@name=\"");
     path.append(fname).append("\"]");
     IPropertyTree *fileTree = filesRead->queryPropTree(path.str());
