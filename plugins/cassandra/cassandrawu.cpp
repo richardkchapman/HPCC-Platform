@@ -885,7 +885,7 @@ static const CassandraXmlMapping workunitsMappings [] =
     // These are catchalls for anything not processed above or in a child table
 
     {"elements", "map<text, text>", "@Action@Application@Debug@Exceptions@FilesRead@Graphs@Results@Statistics@Plugins@Query@Variables@Temporaries@Workflow@", elementMapColumnMapper},  // name is the suppression list, note trailing @
-    {"subtrees", "map<text, text>", "@Process@Tracing@", subTreeMapColumnMapper},  // name is the INCLUSION list, note trailing @
+    {"subtrees", "map<text, text>", "@Parameters@Process@Tracing@", subTreeMapColumnMapper},  // name is the INCLUSION list, note trailing @
 
     { NULL, "workunits", "((partition), wuid)|CLUSTERING ORDER BY (wuid DESC)", stringColumnMapper}
 };
@@ -2269,8 +2269,6 @@ public:
     }
     virtual IWUResult * updateVariableByName(const char * name)
     {
-        DBGLOG("updateVariableByName %s", name);
-        printStackReport();
         return noteDirty(CPersistedWorkUnit::updateVariableByName(name));
     }
     virtual IWUException *createException()
