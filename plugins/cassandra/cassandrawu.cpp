@@ -2877,6 +2877,7 @@ public:
         // Searching by files probably needs to be done differently - a separate table mapping filenames to wuids.
         // This can perhaps be join-merged if other filters are present. This is still TBD at the moment.
 
+        DBGLOG("getWorkUnitsSorted %x %d %d", (int) sortorder, startOffset, pageSize);
         Owned<CCassandraWuUQueryCacheEntry> cached;
         if (cachehint && *cachehint)
         {
@@ -2924,6 +2925,7 @@ public:
             const char *fv = (const char *) filterbuf;
             while (thisFilter && *thisFilter)
             {
+                DBGLOG("getWorkUnitsSorted filter: %x %s", (int) *thisFilter, fv);
                 WUSortField field = (WUSortField) (*thisFilter & 0xff);
                 bool isWild = (*thisFilter & WUSFwild) != 0;
 
