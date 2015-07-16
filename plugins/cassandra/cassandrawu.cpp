@@ -2263,6 +2263,7 @@ public:
     }
     virtual IWUResult * updateVariableByName(const char * name)
     {
+        DBGLOG("updateVariableByName %s", name);
         return noteDirty(CPersistedWorkUnit::updateVariableByName(name));
     }
     virtual IWUException *createException()
