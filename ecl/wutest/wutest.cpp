@@ -158,7 +158,7 @@ int main(int argc, const char *argv[])
     if (globals->getProp("CASSANDRASERVER", cassandraServer))
     {
         // Statically linking to cassandra plugin makes debugging easier (and means can debug simple cassandra workunit interactions without needing dali running)
-        Owned<IPTree> props = createPTreeFromXMLString("<WorkUnitsServer><Option name='server' value='.'/><Option name='randomWuidSuffix' value='4'/><Option name='traceLevel' value='0'/><Option name='keyspace' value='hpcc'></Option></WorkUnitsServer>");
+        Owned<IPTree> props = createPTreeFromXMLString("<WorkUnitsServer><Option name='server' value='.'/><Option name='randomWuidSuffix' value='4'/><Option name='traceLevel' value='0'/><Option name='keyspace' value='hpcc_test'></Option></WorkUnitsServer>");
         props->setProp("Option[@name='server']/@value", cassandraServer.str());
         props->setPropInt("Option[@name='traceLevel']/@value", globals->getPropInt("tracelevel", 0));
         setWorkUnitFactory(createWorkUnitFactory(props));

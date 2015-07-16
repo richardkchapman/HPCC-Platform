@@ -2152,6 +2152,12 @@ public:
                     switch (result.getResultSequence())
                     {
                     case ResultSequenceStored:
+                        if (sessionCache->queryTraceLevel())
+                        {
+                            StringBuffer x;
+                            toXML(result.queryPTree(), x);
+                            DBGLOG("%s", x.str());
+                        }
                         childXMLRowtoCassandra(sessionCache, *batch, wuVariablesMappings,  wuid, *result.queryPTree(), "-1");
                         break;
                     case ResultSequenceInternal:
@@ -2264,6 +2270,7 @@ public:
     virtual IWUResult * updateVariableByName(const char * name)
     {
         DBGLOG("updateVariableByName %s", name);
+        printStackReport();
         return noteDirty(CPersistedWorkUnit::updateVariableByName(name));
     }
     virtual IWUException *createException()
