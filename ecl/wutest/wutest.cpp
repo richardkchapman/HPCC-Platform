@@ -158,7 +158,7 @@ int main(int argc, const char *argv[])
     if (globals->getProp("CASSANDRASERVER", cassandraServer))
     {
         // Statically linking to cassandra plugin makes debugging easier (and means can debug simple cassandra workunit interactions without needing dali running)
-        Owned<IPTree> props = createPTreeFromXMLString("<WorkUnitsServer><Option name='server' value='.'/><Option name='randomWuidSuffix' value='4'/><Option name='traceLevel' value='0'/><Option name='keyspace' value='hpcc_test'></Option></WorkUnitsServer>");
+        Owned<IPTree> props = createPTreeFromXMLString("<WorkUnitsServer><Option name='server' value='.'/><Option name='randomWuidSuffix' value='4'/><Option name='traceLevel' value='0'/><Option name='keyspace' value='hpcc'></Option></WorkUnitsServer>");
         props->setProp("Option[@name='server']/@value", cassandraServer.str());
         props->setPropInt("Option[@name='traceLevel']/@value", globals->getPropInt("tracelevel", 0));
         setWorkUnitFactory(createWorkUnitFactory(props));
@@ -406,7 +406,7 @@ inline int min(int a, int b)
 }
 class WuTest : public CppUnit::TestFixture
 {
-    CPPUNIT_TEST_SUITE(WuTest);
+    CPPUNIT_TEST_SUITE(WuTest); /*
         CPPUNIT_TEST(testCreate);
         CPPUNIT_TEST(testValidate);
         CPPUNIT_TEST(testList);
@@ -419,7 +419,8 @@ class WuTest : public CppUnit::TestFixture
         CPPUNIT_TEST(testDelete);
         CPPUNIT_TEST(testCopy);
         CPPUNIT_TEST(testGraph);
-        CPPUNIT_TEST(testGraphProgress);
+        CPPUNIT_TEST(testGraphProgress);*/
+        CPPUNIT_TEST(testCore);
     CPPUNIT_TEST_SUITE_END();
 protected:
     static StringArray wuids;
@@ -1491,6 +1492,28 @@ protected:
         start = msTick();
         StringAttr prevValue;
         Owned<IConstWorkUnitIterator> wus = factory->getWorkUnitsSorted((WUSortField)(WUSFwuid|WUSFreverse), filterByFilesRead, "myfile00", 0, 10000, NULL, NULL);
+        ForEach(*wus)
+        {
+            IConstWorkUnitInfo &wu = wus->query();
+            if (numIterated)
+                ASSERT(strcmp(wu.queryWuid(), prevValue)<0);
+            prevValue.set(wu.queryWuid());
+            numIterated++;
+        }
+        DBGLOG("%d workunits by fileread wild in %d ms", numIterated, msTick()-start);
+        ASSERT(numIterated == (testSize+9)/10);
+        numIterated++;
+    }
+    void testCore()
+    {
+        Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
+        unsigned start = msTick();
+        unsigned numIterated = 0;
+        // Test filter by filesRead
+        WUSortField filterByFilesRead[] = { (WUSortField) (WUSFjob|WUSFnocase), WUSFterm };
+        start = msTick();
+        StringAttr prevValue;
+        Owned<IConstWorkUnitIterator> wus = factory->getWorkUnitsSorted((WUSortField)(WUSFwuid|WUSFreverse), filterByFilesRead, "setupsearchindex-150716-094017", 0, 10000, NULL, NULL);
         ForEach(*wus)
         {
             IConstWorkUnitInfo &wu = wus->query();

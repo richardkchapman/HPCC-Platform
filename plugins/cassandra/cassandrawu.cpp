@@ -1572,7 +1572,7 @@ public:
         }
         rows.add(row, idx+1);
         wuids.add(wuid, idx+1);
-        fieldValues.add(fieldValue, idx+1);
+        fieldValues.add(fieldValue ? fieldValue : "", idx+1);
     }
     IConstWorkUnitIteratorEx *getResult() const
     {
