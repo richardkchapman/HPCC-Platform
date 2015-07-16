@@ -231,12 +231,10 @@ public:
     {
         if (query.length())
         {
-            if (!value)
-                value = "(null)";
             unsigned l = strlen(value);
             if (l > 100)
                 l = 100;
-            traceBind(idx, "'.*%s'", l, value);
+            traceBind(idx, "'%.*s'", l, value);
         }
         check(cass_statement_bind_string(statement, idx, value));
     }
