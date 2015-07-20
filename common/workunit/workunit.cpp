@@ -2403,7 +2403,7 @@ bool CWorkUnitFactory::checkWorkUnitSession(const char *wuid, WUState &state, Se
                     state = WUStateAborted;
                     break;
                 default:
-                    return state;
+                    return false;
             }
             WARNLOG("checkWorkUnitSession: workunit terminated: %" I64F "d state = %d",(__int64) agent, (int) state);
             Owned<IWorkUnit> wu = updateWorkUnit(wuid, NULL, NULL);
