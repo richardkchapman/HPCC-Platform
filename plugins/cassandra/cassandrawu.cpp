@@ -3158,7 +3158,7 @@ public:
     */
     virtual WUState waitForWorkUnit(const char * wuid, unsigned timeout, bool compiled, bool returnOnWaitState)
     {
-        VStringBuffer wuRoot("/WorkUnits/%s", wuid);
+        VStringBuffer wuRoot("/WorkUnitLocks/%s", wuid);
         Owned<WorkUnitWaiter> waiter = new WorkUnitWaiter(wuRoot); // We subscribe to the dali lock branch to give us hints about when wu may have changed
         LocalIAbortHandler abortHandler(*waiter);
         CassandraStatement statement(prepareStatement("select state, agentSession from workunits where partition=? and wuid=?;"));
