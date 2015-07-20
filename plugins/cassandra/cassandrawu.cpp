@@ -856,8 +856,9 @@ static const CassandraXmlMapping workunitsMappings [] =
     {"totalThorTime", "text", "@totalThorTime", stringColumnMapper},  // We store in the wu ptree as a collatable string (with leading spaces to force to one partition)
     {"appvalues", "map<text, text>", "@Application@", subTreeMapColumnMapper},
 
+    {"agentSession", "bigint", "@agentSession", bigintColumnMapper},
     {"debug", "map<text, text>", "Debug", simpleMapColumnMapper},
-    {"attributes", "map<text, text>", "@wuid@clusterName@jobName@priorityClass@protected@scope@submitID@state@timeScheduled@totalThorTime@", attributeMapColumnMapper},  // name is the suppression list, note trailing @
+    {"attributes", "map<text, text>", "@agentSession@wuid@clusterName@jobName@priorityClass@protected@scope@submitID@state@timeScheduled@totalThorTime@", attributeMapColumnMapper},  // name is the suppression list, note trailing @
     {"plugins", "list<text>", "Plugins", pluginListColumnMapper},
     {"workflow", "map<text, text>", "Workflow", workflowMapColumnMapper},
     {"onWarnings", "map<int, text>", "OnWarnings/OnWarning", warningsMapColumnMapper},
