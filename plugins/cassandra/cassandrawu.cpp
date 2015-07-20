@@ -2182,6 +2182,7 @@ public:
             prev.clear();
             allDirty = false;
             dirtyPaths.kill();
+            dirtyResults.kill();
         }
         else
             DBGLOG("No batch present??");
