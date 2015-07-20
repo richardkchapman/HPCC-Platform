@@ -7934,6 +7934,7 @@ void CLocalWUResult::setResultInt(__int64 val)
     // Note: we always serialize scalar integer results as int8, and schema must reflect this
     MemoryBuffer m;
     serializeInt8(val, m);
+    DBGLOG("setResultInt %" I64F "d", val);
     p->setPropBin("Value", m.length(), m.toByteArray());
     setResultRowCount(1);
     setResultTotalRowCount(1);
