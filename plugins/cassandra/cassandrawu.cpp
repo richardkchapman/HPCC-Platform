@@ -142,6 +142,7 @@ public:
     virtual bool fromXML(CassandraStatement *statement, unsigned idx, IPTree *row, const char *name, const char * userVal)
     {
         MemoryBuffer value;
+        DBGLOG("BlobColumnMapper::fromXML %s", name);
         row->getPropBin(name, value);
         if (value.length())
         {
