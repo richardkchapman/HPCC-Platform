@@ -807,6 +807,7 @@ class CThorCodeContextMaster : public CThorCodeContextBase
     }
     IWUResult *updateResult(const char *name, unsigned sequence)
     {
+        This doesn't work because wu is released before result is written
         Owned<IWorkUnit> w = updateWorkUnit();
         return updateWorkUnitResult(w, name, sequence);
     }
