@@ -32,11 +32,12 @@ namesTable2 := dataset([
 
 namesTable := namesTable2;
 
-watchNames := sort(namesTable, surname, forename) : once;
+watchNames1 := sort(namesTable, surname, forename) : once;
+watchNames2 := sort(namesTable, forename) : once;
 
 numToWatch := count(namesTable) : once;
 
-badNumToWatch := count(watchNames) : once;
+badNumToWatch := count(watchNames1) : once;
 
 searchNames := dataset([
         {'Halliday','Gavin'},
@@ -44,8 +45,9 @@ searchNames := dataset([
         {'Smith','Joe'},
         {'X','Z'}], namesRecord);
 
-
-matches := (searchNames(exists(watchNames(searchNames.surname = watchNames.surname AND searchNames.forename = watchNames.forename))));
+output(watchNames1);
+output(watchNames2);
+matches := (searchNames(exists(watchNames1(searchNames.surname = watchNames1.surname AND searchNames.forename = watchNames1.forename))));
 
 output(matches);
 output('Matched ' + (string)count(matches) + ' of ' + (string)numToWatch + ' possible');

@@ -1970,8 +1970,8 @@ void EclAgent::doProcess()
         if (!queryResolveFilesLocally())
         {
             w->deleteTempFiles(NULL, false, deleteJobTemps);
-            if (deleteJobTemps)
-                w->deleteTemporaries();
+//            if (deleteJobTemps)
+  //              w->deleteTemporaries();
         }
 
         if (globals->getPropBool("DUMPFINALWU", false))
