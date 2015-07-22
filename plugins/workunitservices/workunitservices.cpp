@@ -660,7 +660,7 @@ WORKUNITSERVICES_API void wsWorkunitMessages( ICodeContext *ctx, size32_t & __le
         e.getTimeStamp(s);
         fixedAppend(mb, 20, s.str(), s.length());
         e.getExceptionMessage(s);
-        varAppend(mb, 1024, s.str());
+        varAppendMax(mb, 1024, s.str(), s.length());
     }
     __lenResult = mb.length();
     __result = mb.detach();
