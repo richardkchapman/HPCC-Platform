@@ -636,27 +636,31 @@ WORKUNITSERVICES_API void wsWorkunitTimeStamps( ICodeContext *ctx, size32_t & __
 
 WORKUNITSERVICES_API void wsWorkunitMessages( ICodeContext *ctx, size32_t & __lenResult, void * & __result, const char *wuid )
 {
+    Owned<IConstWorkUnit> wu = getWorkunit(ctx, wuid);
     MemoryBuffer mb;
     unsigned tmpu;
     int tmpi;
-    Owned<IPropertyTree> pt = getWorkUnitBranch(ctx,wuid,"Exceptions");
-    if (pt) {
-        Owned<IPropertyTreeIterator> iter = pt->getElements("Exception");
-        ForEach(*iter) {
-            IPropertyTree &item = iter->query();
-            tmpu = (unsigned)item.getPropInt("@severity");
-            mb.append(sizeof(tmpu),&tmpu);
-            tmpi = (int)item.getPropInt("@code");
-            mb.append(sizeof(tmpi),&tmpi);
-            fixedAppend(mb, 32, item, "@filename");             
-            tmpu = (unsigned)item.getPropInt("@row");
-            mb.append(sizeof(tmpu),&tmpu);
-            tmpu = (unsigned)item.getPropInt("@col");
-            mb.append(sizeof(tmpu),&tmpu);
-            fixedAppend(mb, 16, item, "@source");               
-            fixedAppend(mb, 20, item, "@time");             
-            varAppend(mb, 1024, item, NULL);                
-        }
+    SCMStringBuffer s;
+    Owned<IConstWUExceptionIterator> exceptions = &wu->getExceptions();
+    ForEach(*exceptions)
+    {
+        IConstWUException &e = exceptions->query();
+        tmpu = (unsigned) e.getSeverity();
+        mb.append(sizeof(tmpu),&tmpu);
+        tmpi = (int) e.getExceptionCode();
+        mb.append(sizeof(tmpi),&tmpi);
+        e.getExceptionFileName(s);
+        fixedAppend(mb, 32, s.str(), s.length());
+        tmpu = (unsigned) e.getExceptionLineNo();
+        mb.append(sizeof(tmpu),&tmpu);
+        tmpu = (unsigned)  e.getExceptionColumn();
+        mb.append(sizeof(tmpu),&tmpu);
+        e.getExceptionSource(s);
+        fixedAppend(mb, 16, s.str(), s.length());
+        e.getTimeStamp(s);
+        fixedAppend(mb, 20, s.str(), s.length());
+        e.getExceptionMessage(s);
+        varAppend(mb, 1024, s.str());
     }
     __lenResult = mb.length();
     __result = mb.detach();
