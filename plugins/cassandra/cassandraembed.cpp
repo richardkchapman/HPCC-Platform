@@ -1266,7 +1266,7 @@ public:
     {
         StringArray opts;
         opts.appendList(options, ",");
-        hash64_t hash;
+        hash64_t hash = 0;
         ForEachItemInRev(idx, opts)
         {
             const char *opt = opts.item(idx);
