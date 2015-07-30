@@ -80,13 +80,6 @@ static void logCallBack(const CassLogMessage *message, void *data)
     DBGLOG("cassandra: %s - %s", cass_log_level_string(message->severity), message->message);
 }
 
-MODULE_INIT(INIT_PRIORITY_STANDARD)
-{
-    cass_log_set_callback(logCallBack, NULL);
-    cass_log_set_level(CASS_LOG_WARN);
-    return true;
-}
-
 extern void failx(const char *message, ...)
 {
     va_list args;
@@ -343,6 +336,23 @@ CassandraClusterSession *lookupCachedSession(hash64_t hash, const StringArray &o
         cachedSessions.setValue(hash, cluster.getLink());
     }
     return cluster.getClear();
+}
+
+MODULE_INIT(INIT_PRIORITY_STANDARD)
+{
+    cass_log_set_callback(logCallBack, NULL);
+    cass_log_set_level(CASS_LOG_WARN);
+    return true;
+}
+
+MODULE_EXIT()
+{
+    HashIterator i(cachedSessions);
+    ForEach(i)
+    {
+        CassandraClusterSession *session = *cachedSessions.mapToValue(&i.query());
+        ::Release(session);
+    }
 }
 
 //------------------
