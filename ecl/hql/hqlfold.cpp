@@ -619,6 +619,12 @@ IValue * foldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplateC
 
     const char * entrypoint = entry.str();
     const char * library = lib.str();
+    if (!body->hasAttribute(foldAtom))
+    {
+        if (foldOptions & HFOthrowerror)
+            throw MakeStringException(ERR_TMPLT_NOFOLDFUNC, "%s/%s does not have FOLD specified, can't constant fold it", library, entrypoint);
+        return NULL;
+    }
     if(!body->hasAttribute(pureAtom) && !body->hasAttribute(templateAtom) && !(foldOptions & (HFOfoldimpure|HFOforcefold)))
     {
         if (foldOptions & HFOthrowerror)
