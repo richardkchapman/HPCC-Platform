@@ -178,7 +178,7 @@ IAtom * fixedAtom;
 IAtom * flagAtom;
 IAtom * flagsAtom;
 IAtom * flatAtom;
-IAtom * _folded_Atom;
+IAtom * foldAtom;
 IAtom * formatAtom;
 IAtom * forwardAtom;
 IAtom * fullonlyAtom;
@@ -615,7 +615,7 @@ MODULE_INIT(INIT_PRIORITY_HQLATOM)
     MAKEATOM(flag);
     MAKEATOM(flags);
     MAKEATOM(flat);
-    MAKESYSATOM(folded);
+    MAKEATOM(fold);
     MAKEATOM(format);
     MAKEATOM(forward);
     fullonlyAtom = createLowerCaseAtom("full only");        // different to get the ECL regeneration correct..

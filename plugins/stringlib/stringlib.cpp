@@ -42,7 +42,7 @@ static const char * compatibleVersions[] = {
 
 static const char * EclDefinition =
 "export StringLib := SERVICE\n"
-"  string StringFilterOut(const string src, const string _within) : c, pure,entrypoint='slStringFilterOut'; \n"
+"  string StringFilterOut(const string src, const string _within) : c, pure, fold, entrypoint='slStringFilterOut'; \n"
 "  string StringFilter(const string src, const string _within) : c, pure,entrypoint='slStringFilter'; \n"
 "  string StringSubstituteOut(const string src, const string _within, const string _newchar) : c, pure,entrypoint='slStringSubsOut'; \n"
 "  string StringSubstitute(const string src, const string _within, const string _newchar) : c, pure,entrypoint='slStringSubs'; \n"
@@ -58,7 +58,7 @@ static const char * EclDefinition =
 "  varstring GetBuildInfo() : c,once,entrypoint='slGetBuildInfo';\n"
 "  string Data2String(const data src) : c,pure,entrypoint='slData2String';\n"
 "  data String2Data(const string src) : c,pure,entrypoint='slString2Data';\n"
-"  string StringToLowerCase(const string src) : c,pure,entrypoint='slStringToLowerCase';\n"
+"  string StringToLowerCase(const string src) : c,pure,fold,entrypoint='slStringToLowerCase';\n"
 "  string StringToUpperCase(const string src) : c,pure,entrypoint='slStringToUpperCase';\n"
 "  string StringToProperCase(const string src) : c,pure,entrypoint='slStringToProperCase';\n"
 "  string StringToCapitalCase(const string src) : c,pure,entrypoint='slStringToCapitalCase';\n"
