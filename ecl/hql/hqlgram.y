@@ -401,6 +401,7 @@ static void eclsyntaxerror(HqlGram * parser, const char * s, short yystate, int 
   SERVICE
   SET
   SHARED
+  SIGNED
   SIMPLE_TYPE
   SIN
   SINGLE
@@ -3960,6 +3961,7 @@ attrib
                         {
                             $$.setExpr(createExprAttribute(lower($1.getId()), $3.getExpr(), $5.getExpr()), $1);
                         }
+    | signature
     ;
 
 funcRetType
@@ -3980,6 +3982,14 @@ funcRetType
 //                          $$.setType(makeOriginalModifier(makeRowType(expr->getType()), LINK(expr)));
                             $$.setType(makeRowType(expr->getType()));
                             $$.setPosition($1);
+                        }
+    ;
+
+signature
+    : SIGNED '(' expr ')' 
+                        {
+                            parser->normalizeExpression($3, type_string, true);
+                            $$.setExpr(createExprAttribute(signedAtom, $3.getExpr()), $1);
                         }
     ;
 

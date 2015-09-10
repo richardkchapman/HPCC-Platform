@@ -379,6 +379,7 @@ extern HQL_API IAtom * setAtom;
 extern HQL_API IAtom * sharedAtom;
 extern HQL_API IAtom * shutdownAtom;
 extern HQL_API IAtom * _sideEffect_Atom;
+extern HQL_API IAtom * signedAtom;
 extern HQL_API IAtom * singleAtom;
 extern HQL_API IAtom * sizeAtom;
 extern HQL_API IAtom * sizeofAtom;

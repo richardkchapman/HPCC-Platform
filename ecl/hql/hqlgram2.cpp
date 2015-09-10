@@ -1298,11 +1298,18 @@ void HqlGram::enterService(attribute & attrs)
 
 IHqlExpression * HqlGram::leaveService(const attribute & errpos)
 {
-    defaultServiceAttrs.clear();
     IHqlExpression* svc = QUERYINTERFACE(serviceScope.getClear(), IHqlExpression);
     if (svc)
+    {
         svc = svc->closeExpr();
+        StringBuffer signature;
+        DBGLOG("Service hash is %d", getExpressionCRC(svc));
+        if (defaultServiceAttrs && getAttribute(defaultServiceAttrs, signedAtom, signature))
+            if (!streq(signature, "Richard"))
+                throwUnexpected();
+    }
     leaveScope(errpos);
+    defaultServiceAttrs.clear();
     return svc;
 }
 
@@ -10688,6 +10695,7 @@ static void getTokenText(StringBuffer & msg, int token)
     case SERVICE: msg.append("SERVICE"); break;
     case SET: msg.append("SET"); break;
     case SHARED: msg.append("SHARED"); break;
+    case SIGNED: msg.append("SIGNED"); break;
     case SIN: msg.append("SIN"); break;
     case SINGLE: msg.append("SINGLE"); break;
     case SINH: msg.append("SINH"); break;

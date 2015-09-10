@@ -377,6 +377,7 @@ IAtom * setAtom;
 IAtom * sharedAtom;
 IAtom * shutdownAtom;
 IAtom * _sideEffect_Atom;
+IAtom * signedAtom;
 IAtom * singleAtom;
 IAtom * sizeAtom;
 IAtom * sizeofAtom;
@@ -817,6 +818,7 @@ MODULE_INIT(INIT_PRIORITY_HQLATOM)
     MAKEATOM(shared);
     MAKEATOM(shutdown);
     MAKESYSATOM(sideEffect);
+    MAKEATOM(signed);
     MAKEATOM(single);
     MAKEATOM(size);
     MAKEATOM(sizeof);
