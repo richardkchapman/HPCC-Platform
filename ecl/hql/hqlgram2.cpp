@@ -925,7 +925,7 @@ IHqlExpression * HqlGram::processEmbedBody(const attribute & errpos, IHqlExpress
         args.append(*createExprAttribute(languageAtom, getEmbedContextFunc.getClear()));
     }
     if (!checkAllowed(errpos, "cpp", "Embedded code"))
-        args.append(*createExprAttribute(_disallowed_Atom));
+        args.append(*attachPendingWarnings(createExprAttribute(_disallowed_Atom)));
     if (attribs)
         attribs->unwindList(args, no_comma);
     Linked<ITypeInfo> type = current_type;
@@ -1294,11 +1294,14 @@ IHqlExpression * HqlGram::nextEnumValue()
 }
 
 
-void HqlGram::enterService(attribute & attrs)
+void HqlGram::enterService(const attribute & errpos, attribute & attrs)
 {
     enterScope(false);      // preserve parameters
     serviceScope.setown(createService());
     defaultServiceAttrs.setown(attrs.getExpr());
+    // Check that we are allowed to declare services!
+    if (!checkAllowed(errpos, "service", "SERVICE"))
+        defaultServiceAttrs.setown(createComma(defaultServiceAttrs.getClear(), attachPendingWarnings(createExprAttribute(_disallowed_Atom))));
 }
 
 IHqlExpression * HqlGram::leaveService(const attribute & errpos)
@@ -3738,6 +3741,10 @@ IHqlExpression* HqlGram::checkServiceDef(IHqlScope* serviceScope,IIdAtom * name,
                 foldSeen = true;
             else if (name == nofoldAtom)
                 nofoldSeen = true;
+            else if (name == _disallowed_Atom)
+            {
+                // We should already have given the warning when we saw the service
+            }
             else // unsupported
                 reportWarning(CategorySyntax,WRN_SVC_UNSUPPORTED_ATTR, errpos.pos, "Unsupported service attribute: '%s'; ignored", str(name));
         }
@@ -3753,7 +3760,7 @@ IHqlExpression* HqlGram::checkServiceDef(IHqlScope* serviceScope,IIdAtom * name,
     {
         // Check that we are allowed to fold...
         if (!checkAllowed(errpos, "foldextern", "FOLD attribute"))
-            attrs = createComma(attrs, createAttribute(_disallowed_Atom));
+            attrs = attachPendingWarnings(createComma(attrs, createAttribute(_disallowedfold_Atom)));
     }
 
     if (!hasEntrypoint)
@@ -9037,7 +9044,7 @@ void HqlGram::checkDerivedCompatible(IIdAtom * name, IHqlExpression * scope, IHq
 
 bool HqlGram::checkAllowed(const attribute & errpos, const char *category, const char *description)
 {
-    if (lookupCtx.queryParseContext().codegenCtx && !lookupCtx.queryParseContext().codegenCtx->allowAccess(category, inSignedModule))
+    if (!lookupCtx.queryParseContext().codegenCtx || !lookupCtx.queryParseContext().codegenCtx->allowAccess(category, inSignedModule))
     {
         if (!inSignedModule && lookupCtx.queryParseContext().codegenCtx->allowAccess(category, true))
             reportWarning(CategorySecurity, WRN_REQUIRES_SIGNED, errpos.pos, "%s is only permitted in a signed module", description);
@@ -11599,7 +11606,7 @@ IHqlExpression * reparseTemplateFunction(IHqlExpression * funcdef, IHqlScope *sc
     text.append("=>").append(contents->length(), contents->getText());
 
     //Could use a merge string implementation of IFileContents instead of expanding...
-    Owned<IFileContents> parseContents = createFileContentsFromText(text.str(), contents->querySourcePath());
+    Owned<IFileContents> parseContents = createFileContentsFromText(text.str(), contents->querySourcePath(), false);
     HqlGram parser(scope, scope, parseContents, ctx, NULL, hasFieldMap, true);
     unsigned startLine = funcdef->getStartLine();
 
@@ -11723,7 +11730,7 @@ extern HQL_API IHqlExpression * parseQuery(const char * text, IErrorReceiver * e
 {
     Owned<IHqlScope> scope = createScope();
     HqlDummyLookupContext ctx(errs);
-    Owned<IFileContents> contents = createFileContentsFromText(text, NULL);
+    Owned<IFileContents> contents = createFileContentsFromText(text, NULL, false);
     return parseQuery(scope, contents, ctx, NULL, NULL, true);
 }
 

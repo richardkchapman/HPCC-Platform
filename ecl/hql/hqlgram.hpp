@@ -569,7 +569,7 @@ public:
 
     void enterEnum(const attribute & errpos, ITypeInfo * type);
     void setEnumType(const attribute & errpos, ITypeInfo * type);
-    void enterService(attribute & attrs);
+    void enterService(const attribute & errpos, attribute & attrs);
     IHqlExpression * leaveEnum(const attribute & errpos);
     IHqlExpression * leaveService(const attribute & errpos);
 

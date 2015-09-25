@@ -836,6 +836,7 @@ public:
     virtual ISourcePath * querySourcePath() = 0;
     virtual const char * getText() = 0;
     virtual size32_t length() = 0;
+    virtual bool isSigned() = 0;
 };
 
 //This class ensures that the pointer to the owner is cleared before both links are released, which allows
@@ -986,14 +987,32 @@ public:
     HqlExprCopyArray dependents;
 };
 
+class HqlDummyCodegenCallbackContext : public CInterfaceOf<ICodegenContextCallback>
+{
+public:
+    HqlDummyCodegenCallbackContext(bool _allowAll)
+    {
+        allowAll = _allowAll;
+    }
+    virtual void noteCluster(const char *clusterName) {}
+    virtual bool allowAccess(const char * category, bool isSigned) { return allowAll; }
+private:
+    bool allowAll;
+};
+
+
 class HqlDummyLookupContext : public HqlLookupContext
 {
 public:
     //Potentially problematic - dummyCtx not created at the point the constructor is called.
-    HqlDummyLookupContext(IErrorReceiver * _errs) : HqlLookupContext(dummyCtx, _errs) {}
+    HqlDummyLookupContext(IErrorReceiver * _errs, bool allowAll = false)
+    : HqlLookupContext(dummyCtx, _errs), dummyCodegenCtx(allowAll), dummyCtx(NULL, &dummyCodegenCtx, NULL)
+    {
+    }
 
 private:
-    HqlDummyParseContext dummyCtx;
+    HqlDummyCodegenCallbackContext dummyCodegenCtx;
+    HqlParseContext dummyCtx;
 };
 
 enum
@@ -1839,8 +1858,8 @@ extern HQL_API ITypeInfo * getPromotedECLCompareType(ITypeInfo * lType, ITypeInf
 extern HQL_API void extendAdd(SharedHqlExpr & value, IHqlExpression * expr);
 inline bool isOmitted(IHqlExpression * actual) { return !actual || actual->getOperator() == no_omitted; }
 
-extern HQL_API IFileContents * createFileContentsFromText(unsigned len, const char * text, ISourcePath * sourcePath);
-extern HQL_API IFileContents * createFileContentsFromText(const char * text, ISourcePath * sourcePath);
+extern HQL_API IFileContents * createFileContentsFromText(unsigned len, const char * text, ISourcePath * sourcePath, bool assumeSigned);
+extern HQL_API IFileContents * createFileContentsFromText(const char * text, ISourcePath * sourcePath, bool assumeSigned);
 extern HQL_API IFileContents * createFileContentsFromFile(const char * filename, ISourcePath * sourcePath);
 extern HQL_API IFileContents * createFileContentsSubset(IFileContents * contents, size32_t offset, size32_t len);
 extern HQL_API IFileContents * createFileContents(IFile * file, ISourcePath * sourcePath);

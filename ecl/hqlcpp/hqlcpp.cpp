@@ -1208,8 +1208,16 @@ bool HqlCppInstance::useFunction(IHqlExpression * func)
         return false;
 
     helpers.append(*LINK(func));
-
+    assertex(func->getOperator() == no_funcdef);
     IHqlExpression * funcDef = func->queryChild(0);
+    if (funcDef->hasAttribute(_disallowed_Atom))
+    {
+        StringBuffer name;
+        getAttribute(funcDef, entrypointAtom, name);
+        if (!name.length())
+            name.append(func->queryName());
+        throwError1(HQLERR_ServiceNotAllowed, name.str());
+    }
     StringBuffer libname, init, include, source;
     getAttribute(funcDef, libraryAtom, libname);
     getAttribute(funcDef, initfunctionAtom, init);
@@ -1387,10 +1395,10 @@ HqlCppTranslator::HqlCppTranslator(IErrorReceiver * _errors, const char * _soNam
                 systemText.append(cppSystemText[i2]).newline();
 
             MultiErrorReceiver errs;
-            HqlDummyLookupContext ctx(&errs);
+            HqlDummyLookupContext ctx(&errs, true);
             cppSystemScope = createScope();
             Owned<ISourcePath> sysPath = createSourcePath("<system-definitions>");
-            Owned<IFileContents> systemContents = createFileContentsFromText(systemText.str(), sysPath);
+            Owned<IFileContents> systemContents = createFileContentsFromText(systemText.str(), sysPath, true);
             OwnedHqlExpr query = parseQuery(cppSystemScope, systemContents, ctx, NULL, NULL, false);
             if (errs.errCount())
             {

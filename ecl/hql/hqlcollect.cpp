@@ -289,7 +289,7 @@ bool FileSystemFile::checkValid()
                         version.set(pb.version);
 
                         Owned<ISourcePath> pluginPath = createSourcePath(pb.moduleName);
-                        fileContents.setown(createFileContentsFromText(pb.ECL, pluginPath));
+                        fileContents.setown(createFileContentsFromText(pb.ECL, pluginPath, true));
 
                         //if (traceMask & PLUGIN_DLL_MODULE)
                         DBGLOG("Loading plugin %s[%s] version = %s", filename, pb.moduleName, version.get());
@@ -665,7 +665,7 @@ IFileContents * CXmlEclElement::queryFileContents()
                 getFullName(defaultName);
                 sourcePath.setown(createSourcePath(defaultName));
             }
-            fileContents.setown(createFileContentsFromText(text, sourcePath));
+            fileContents.setown(createFileContentsFromText(text, sourcePath, false));
         }
     }
     return fileContents;

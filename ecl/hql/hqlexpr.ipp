@@ -461,11 +461,11 @@ private:
     MemoryAttr fileContents;
     Linked<ISourcePath> sourcePath;
     bool delayedRead;
-
+    bool presigned;
 public:
-    CFileContents(IFile * _file, ISourcePath * _sourcePath);
-    CFileContents(const char *query, ISourcePath * _sourcePath);
-    CFileContents(unsigned len, const char *query, ISourcePath * _sourcePath);
+    CFileContents(IFile * _file, ISourcePath * _sourcePath, bool _presigned);
+    CFileContents(const char *query, ISourcePath * _sourcePath, bool _presigned);
+    CFileContents(unsigned len, const char *query, ISourcePath * _sourcePath, bool _presigned);
 
     virtual IFile * queryFile() { return file; }
     virtual ISourcePath * querySourcePath() { return sourcePath; }
@@ -480,7 +480,10 @@ public:
         ensureLoaded();
         return fileContents.length()-1;
     }
-
+    virtual bool isSigned()
+    {
+        return presigned;
+    }
 private:
     bool preloadFromFile();
     void ensureLoaded();

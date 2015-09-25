@@ -134,6 +134,7 @@ IAtom * deprecatedAtom;
 IAtom * descAtom;
 IAtom * diskAtom;
 IAtom *_disallowed_Atom;
+IAtom *_disallowedfold_Atom;
 IAtom * distributedAtom;
 IAtom * _distributed_Atom;
 IAtom * _dot_Atom;
@@ -573,6 +574,7 @@ MODULE_INIT(INIT_PRIORITY_HQLATOM)
     MAKEATOM(deprecated);
     MAKEATOM(desc);
     MAKESYSATOM(disallowed);
+    MAKESYSATOM(disallowedfold);
     MAKEATOM(disk);
     MAKEATOM(distributed);
     MAKESYSATOM(distributed);

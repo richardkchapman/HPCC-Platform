@@ -622,7 +622,7 @@ bool checkExternFoldable(IHqlExpression* expr, unsigned foldOptions, StringBuffe
             throw MakeStringException(ERR_TMPLT_NOFOLDFUNC, "%s does not have FOLD specified, can't constant fold it", str(expr->queryName()));
         return false;
     }
-    if (body->hasAttribute(_disallowed_Atom))
+    if (body->hasAttribute(_disallowed_Atom) || body->hasAttribute(_disallowedfold_Atom))
     {
         if (foldOptions & HFOthrowerror)
             throw MakeStringException(ERR_TMPLT_NOFOLDFUNC, "You do not have permission to constant-fold %s", str(expr->queryName()));

@@ -3901,7 +3901,7 @@ service
 startService
     : SERVICE attribs
                         {
-                            parser->enterService($2);
+                            parser->enterService($1, $2);
                             $$.clear();
                         }
     ;

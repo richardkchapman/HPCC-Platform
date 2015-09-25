@@ -218,6 +218,7 @@
 #define HQLERR_UnsupportedRowDiffType           4198
 #define HQLERR_EmbedParamNotSupportedInOptions  4199
 #define HQLERR_InvalidXmlnsPrefix               4200
+#define HQLERR_ServiceNotAllowed                4201
 
 //Warnings....
 #define HQLWRN_PersistDataNotLikely             4500
@@ -511,6 +512,7 @@
 #define HQLERR_UnsupportedRowDiffType_Text      "ROWDIFF: Does not support type '%s' for field %s"
 #define HQLERR_EmbedParamNotSupportedInOptions_Text   "Cannot use bound parameter in embed options - try adding a FUNCTION wrapper"
 #define HQLERR_InvalidXmlnsPrefix_Text          "Invalid XMLNS prefix: %s"
+#define HQLERR_ServiceNotAllowed_Text           "Cannot call external service function %s"
 
 //Warnings.
 #define HQLWRN_CannotRecreateDistribution_Text  "Cannot recreate the distribution for a persistent dataset"
