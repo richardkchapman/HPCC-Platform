@@ -44,6 +44,7 @@
 #include "thactivitymaster.ipp"
 #include "thdemonserver.hpp"
 #include "thgraphmanager.hpp"
+#include "roxiehelper.hpp"
 
 class CJobManager : public CSimpleInterface, implements IJobManager, implements IExceptionHandler
 {
@@ -60,9 +61,137 @@ class CJobManager : public CSimpleInterface, implements IJobManager, implements 
     StringAttr          currentWuid;
     ILogMsgHandler *logHandler;
 
+    CJobMaster *getCurrentJob() { CriticalBlock b(jobCrit); return jobs.ordinality() ? &OLINK(jobs.item(0)) : NULL; }
     bool executeGraph(IConstWorkUnit &workunit, const char *graphName, const SocketEndpoint &agentEp);
     void addJob(CJobMaster &job) { CriticalBlock b(jobCrit); jobs.append(job); }
     void removeJob(CJobMaster &job) { CriticalBlock b(jobCrit); jobs.zap(job); }
+
+    class CThorDebugListener : public CSimpleInterfaceOf<IInterface>, implements IThreaded
+    {
+    protected:
+        CThreaded threaded;
+        unsigned port;
+        Owned<ISocket> sock;
+        CJobManager &mgr;
+    private:
+        volatile bool running;
+    public:
+        CThorDebugListener(CJobManager &_mgr) : threaded("CThorDebugListener", this), mgr(_mgr)
+        {
+            port = globals->getPropInt("DebugPort", 9877);
+            running = true;
+            threaded.start();
+        }
+        ~CThorDebugListener()
+        {
+            running = false;
+            if (sock)
+                sock->cancel_accept();
+            threaded.join();
+        }
+        virtual void main()
+        {
+            sock.setown(ISocket::create(port));
+            while (running)
+            {
+                try
+                {
+                    ISocket *client = sock->accept(true);
+                    if (client)
+                    {
+                        client->set_linger(-1);
+                        CSafeSocket ssock(client);
+                        StringBuffer rawText;
+                        unsigned priority = (unsigned) -2;
+                        unsigned memused = 0;
+                        IpAddress peer;
+                        bool continuationNeeded;
+                        bool isStatus;
+                        ssock.querySocket()->getPeerAddress(peer);
+                        DBGLOG("Reading debug command from socket...");
+                        if (!ssock.readBlock(rawText, WAIT_FOREVER, NULL, continuationNeeded, isStatus, 1024*1024))
+                        {
+                            if (traceLevel > 8)
+                            {
+                                StringBuffer b;
+                                DBGLOG("No data reading query from socket");
+                                continue;
+                            }
+                        }
+                        assertex(!continuationNeeded);
+                        assertex(!isStatus);
+
+                        Owned<IPropertyTree> queryXml;
+                        StringBuffer sanitizedText;
+                        StringAttr queryName;
+                        StringBuffer peerStr;
+                        peer.getIpText(peerStr);
+                        const char *uid = "-";
+                        StringBuffer ctxstr;
+                        try
+                        {
+                            try
+                            {
+                                queryXml.setown(createPTreeFromXMLString(rawText.str(), ipt_caseInsensitive, (PTreeReaderOptions)(ptr_ignoreWhiteSpace|ptr_ignoreNameSpaces)));
+                            }
+                            catch (IException *E)
+                            {
+                                StringBuffer s;
+                                DBGLOG("ERROR: Invalid XML received from %s:%s", E->errorMessage(s).str(), rawText.str());
+                                throw;
+                            }
+
+                            FlushingStringBuffer response(&ssock, false, MarkupFmt_XML, false, false, queryDummyContextLogger());
+                            response.startDataset("Debug", NULL, (unsigned) -1);
+                            Owned<CJobMaster> job = mgr.getCurrentJob();
+                            if (job)
+                            {
+                                ICommunicator &comm = job->queryNodeComm();
+                                CMessageBuffer mbuf;
+                                mptag_t replyTag = createReplyTag();
+                                mbuf.append(DebugRequest);
+                                serializeMPtag(mbuf, replyTag);
+                                mbuf.append(rawText);
+                                if (!comm.send(mbuf, RANK_ALL_OTHER, masterSlaveMpTag, MP_ASYNC_SEND))
+                                {
+                                    DBGLOG("Failed to send debug info to slave");
+                                    throwUnexpected();
+                                }
+                                unsigned nodes = job->queryNodes();
+                                while (nodes)
+                                {
+                                    rank_t sender;
+                                    mbuf.clear();
+                                    comm.recv(mbuf, RANK_ALL, replyTag, &sender, 10000);
+                                    response.append("<Row/>");
+                                    nodes--;
+                                }
+                            }
+                            response.flush(true);
+                        }
+                        catch (IException *E)
+                        {
+                            StringBuffer s;
+                            ssock.sendException("Thor", E->errorCode(), E->errorMessage(s), false, queryDummyContextLogger());
+                            E->Release();
+                        }
+                        unsigned replyLen = 0;
+                        ssock.write(&replyLen, sizeof(replyLen));
+                    }
+                }
+                catch (IException *E)
+                {
+                    EXCLOG(E);
+                    E->Release();
+                }
+                catch (...)
+                {
+                    DBGLOG("Unexpected exception in CThorDebugListener");
+                }
+            }
+        }
+    };
+    Owned<CThorDebugListener> debugListener;
 
 public:
     IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
@@ -100,6 +229,7 @@ CJobManager::CJobManager(ILogMsgHandler *_logHandler) : logHandler(_logHandler)
         globals->setPropBool("@watchdogProgressEnabled", false);
     atomic_set(&activeTasks, 0);
     setJobManager(this);
+    debugListener.setown(new CThorDebugListener(*this));
 }
 
 CJobManager::~CJobManager()

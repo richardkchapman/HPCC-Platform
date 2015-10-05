@@ -74,7 +74,8 @@ enum msgids
     GraphInit,
     GraphEnd,
     GraphAbort,
-    GraphGetResult
+    GraphGetResult,
+    DebugRequest
 };
 
 interface ICodeContextExt : extends ICodeContext
