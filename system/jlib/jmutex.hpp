@@ -20,8 +20,11 @@
 #ifndef __JMUTEX__
 #define __JMUTEX__
 
+//Should probably be in platform.h
+#define loop            for(;;)
 
 #include <assert.h>
+#include <atomic>
 #include "jiface.hpp"
 #include "jsem.hpp"
 
@@ -891,6 +894,172 @@ public:
         return sobj;
     }
 */
+
+/*
+ This uses two spare slots in the array
+ This ensures that writer cannot overtake the readers and create an ABA problem
+ i) The writer only fills in a blank entry
+ ii) the reader sets to null after reading
+ */
+
+inline static void pause() {}
+
+class jlib_decl ReaderWriterQueue
+{
+    class BufferElement
+    {
+    public:
+        const void * value = nullptr;
+        std::atomic<unsigned> sequence = 0;
+    };
+    enum
+    {
+        readerShift     = 24,
+        readerMask      = 0xff000000,
+        writerShift     = 16,
+        writerMask      = 0x00ff0000,
+        sequenceMask    = 0xFF,
+        enqueueShift    = 8,
+        enqueueMask     = (sequenceMask << enqueueShift),
+        dequeueShift    = 0,
+        dequeueMask     = (sequenceMask << dequeueShift),
+    };
+    //const bool hasMultipleProducers = true; - should possibly become a template argument
+
+public:
+    ReaderWriterQueue(unsigned _maxItems, bool _hasMultipleProducers) : maxItems(_maxItems), hasMultipleProducers(_hasMultipleProducers)
+    {
+        // Reserve at least one free entry to be able to tell when the queue is full.
+        const unsigned minSpace = 1;
+        assertex(maxItems + minSpace <= 128 && maxItems != 0);
+
+        //Ensure the array is a power of two, so the sequnce can be mapped to an item using an AND
+        unsigned numSlots = 1;
+        while (numSlots < maxItems+minSpace)
+            numSlots += numSlots;
+        itemMask = numSlots -1;
+        freeSpace = numSlots - maxItems;
+
+        state.store(0, std::memory_order_relaxed);
+        values = new BufferElement[numSlots];
+        for (unsigned i=0; i < numSlots; i++)
+            values[i].sequence.store(i, std::memory_order_relaxed);
+    }
+    ~ReaderWriterQueue()
+    {
+        delete [] values;
+    }
+
+    void enqueue(const void * value)
+    {
+        loop
+        {
+            unsigned curState = state.load(std::memory_order_acquire);
+            unsigned curEnqueue = (curState & enqueueMask) >> enqueueShift;
+            unsigned curDequeue = (curState & dequeueMask) >> dequeueShift;
+            unsigned fullDequeue = (curDequeue + freeSpace) & itemMask;
+            if (fullDequeue == curEnqueue)
+            {
+                //The list is currently full, increment the number of writers waiting.
+                //This can never overflow...
+                const unsigned nextState = curState + (1 << writerShift);
+                if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
+                    writers.wait();
+            }
+            else
+            {
+                //There should be space.  Increment head, and possibly decrease readers
+                unsigned nextEnqueue = (curState + (1 << enqueueShift)) & enqueueMask;
+                unsigned nextState = (curState & ~enqueueMask) | nextEnqueue;
+
+                //If a reader is waiting then decrement the count, and signal later..
+                if (curState & readerMask)
+                    nextState -= (1 << readerShift);
+                if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
+                {
+                    unsigned slot = curEnqueue & itemMask;
+                    BufferElement & cur = values[slot];
+                    if (hasMultipleProducers)
+                    {
+                        //MORE: Another producer has been interupted while writing to the same slot
+                        //spin until that has been consumed.
+                        while (cur.sequence.load(std::memory_order_acquire) != curEnqueue)
+                        {
+                            pause();
+                            //more: option to back off and yield.
+                        }
+                    }
+                    cur.value = value;
+                    cur.sequence.store(nextEnqueue, std::memory_order_release);
+                    if ((curState & readerMask) != 0)
+                        readers.signal();
+                    return;
+                }
+            }
+        }
+    }
+
+    const void * dequeue(bool block)
+    {
+        loop
+        {
+            unsigned curState = state.load(std::memory_order_acquire);
+            //if dequeue + spaces = enqueue then the item is full
+            unsigned curDequeue = (curState & dequeueMask) >> dequeueShift;
+            unsigned curEnqueue = (curState & enqueueMask) >> enqueueShift;
+            if (curDequeue == curEnqueue)
+            {
+                if (!block)
+                    return NULL;
+
+                //The list is currently empty, increment the number of readers waiting.
+                //This can never overflow...
+                unsigned nextState = curState + (1 << readerShift);
+                if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
+                    readers.wait();
+            }
+            else
+            {
+                //There should be space.  Increment head, and possibly decrease readers
+                unsigned nextDequeue = (curState + (1 << dequeueShift)) & dequeueMask;
+                unsigned nextState = (curState & ~dequeueMask) | nextDequeue;
+
+                //If a reader is waiting then decrement the count, and signal later..
+                if (curState & writerMask)
+                    nextState -= (1 << writerShift);
+                if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
+                {
+                    unsigned slot = curDequeue & itemMask;
+                    BufferElement & cur = values[slot];
+                    loop
+                    {
+                        unsigned sequence = cur.sequence.load(std::memory_order_acquire);
+                        if (sequence == nextDequeue)
+                            break;
+                        //possibly yield every n iterations?
+                        pause();
+                    }
+
+                    ret = cur.value;
+                    cur.sequence.store((curDequeue + (itemMask + 1)) & sequenceMask, std::memory_order_release);
+                    if (curState & readerMask)
+                        readers.signal();
+                    return ret;
+                }
+            }
+        }
+    }
+
+protected:
+    BufferElement * values;
+    std::atomic<unsigned> state;     // { enqueuePos, dequeuePos, readers, writers }
+    unsigned itemMask;
+    unsigned maxItems;
+    unsigned freeSpace;
+    Semaphore readers;
+    Semaphore writers;
+    bool hasMultipleProducers;
+};
 
 
 #endif
