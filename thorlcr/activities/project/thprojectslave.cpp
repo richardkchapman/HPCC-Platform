@@ -18,63 +18,68 @@
 
 #include "thprojectslave.ipp"
 #include "eclrtl_imp.hpp"
+#include "thorstrand.hpp"
 
 //  IThorDataLink needs only be implemented once, since there is only one output,
 //  therefore may as well implement it here.
 
-class CProjectSlaveActivity : public CSlaveActivity, public CThorDataLink
+class CProjectProcessor : public StrandProcessor
 {
     IHThorProjectArg * helper;
     bool anyThisGroup;
-    IThorDataLink *input;
+    IRowStream  *input;
     Owned<IEngineRowAllocator> allocator;
 
 public:
+    CProjectProcessor(CSlaveActivity & _activity) : StrandProcessor(_activity), helper(nullptr)
+    {
+        input = NULL;
+        anyThisGroup = false;
+    }
     IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
 
-    CProjectSlaveActivity(CGraphElementBase *_container) : CSlaveActivity(_container), CThorDataLink(this) { }
-
-    void init(MemoryBuffer &data, MemoryBuffer &slaveData)
+    void init(IHThorProjectArg * _helper, IEngineRowAllocator * _allocator)
     {
-        appendOutputLinked(this);
-        helper = static_cast <IHThorProjectArg *> (queryHelper());
+        helper = _helper;
         anyThisGroup = false;
-        allocator.set(queryRowAllocator());
+        allocator.set(_allocator);
     }
-    void start()
+    IEngineRowStream * queryOutput() { return this; }
+    void setInput(IRowStream * _rowStream)
     {
-        ActivityTimer s(totalCycles, timeActivities);
-        input = inputs.item(0);
-        startInput(input);
+        input = _rowStream;
+    }
+    void startProcessor()
+    {
         dataLinkStart();
     }
-    void stop()
+    void stopProcessor()
     {
-        stopInput(input);
         dataLinkStop();
     }
     CATCH_NEXTROW()
     {
-        ActivityTimer t(totalCycles, timeActivities);
+        ActivityTimer t(totalCycles, owner->queryTimeActivities());
         loop {
             OwnedConstThorRow row = input->nextRow();
             if (!row && !anyThisGroup)
                 row.setown(input->nextRow());
-            if (!row||abortSoon)
+
+            if (!row||isAborting())
                 break;
             RtlDynamicRowBuilder ret(allocator);
             size32_t sz;
             try {
                 sz = helper->transform(ret, row);
             }
-            catch (IException *e) 
-            { 
-                ActPrintLog(e, "In helper->transform()");
-                throw; 
+            catch (IException *e)
+            {
+                owner->ActPrintLog(e, "In helper->transform()");
+                throw;
             }
             catch (CATCHALL)
-            { 
-                ActPrintLog("PROJECT: Unknown exception in helper->transform()"); 
+            {
+                owner->ActPrintLog("PROJECT: Unknown exception in helper->transform()");
                 throw;
             }
             if (sz) {
@@ -85,6 +90,106 @@ public:
         }
         anyThisGroup = false;
         return NULL;
+    }
+    virtual void start()
+    {
+        //Not sure what to do.... junction may need to hold a count + pass on when done
+    }
+    virtual void stop()
+    {
+        //Not sure what to do.... junction may need to hold a count + pass on when done
+    }
+    void getMetaInfo(ThorDataLinkMetaInfo &info)
+    {
+        throwUnexpected();
+    }
+
+    virtual bool isGrouped() { throwUnexpected(); return false; }
+};
+
+
+class CProjectSlaveActivity : public CSlaveActivity, public CThorDataLink
+{
+    IHThorProjectArg * helper;
+    CProjectProcessor * * processors;
+    unsigned numStrands;
+    unsigned rowsPerBlock;
+    Owned<IStrandBranch> branch;
+    IStrandJunction * inputJunction;
+    IStrandJunction * outputJunction;
+    IRowStream * strandOutput;
+    bool orderedStrands;
+public:
+    IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
+
+    CProjectSlaveActivity(CGraphElementBase *_container) : CSlaveActivity(_container), CThorDataLink(this)
+    {
+        numStrands = getOptInt(THOROPT_NUM_STRANDS, 1);
+        rowsPerBlock = getOptInt(THOROPT_STRAND_BLOCK_SIZE, 2000);
+        orderedStrands = getOptBool(THOROPT_STRAND_ORDERED, true);
+        if (numStrands < 1)
+            numStrands = 1;
+        ActPrintLog("PROJECT: Strands(%u) rowsPerBlock(%u) ordered(%u)", numStrands, rowsPerBlock, orderedStrands);
+        processors = new CProjectProcessor * [numStrands];
+        for (unsigned i=0; i < numStrands; i++)
+            processors[i] = new CProjectProcessor(*this);
+        inputJunction = nullptr;
+        outputJunction = nullptr;
+    }
+    ~CProjectSlaveActivity()
+    {
+        delete [] processors;
+    }
+
+    void init(MemoryBuffer &data, MemoryBuffer &slaveData)
+    {
+        appendOutputLinked(this);
+        helper = static_cast <IHThorProjectArg *> (queryHelper());
+        for (unsigned i=0; i < numStrands; i++)
+        {
+            Owned<IEngineRowAllocator> allocator = queryJobChannel().getRowAllocator(queryRowMetaData(),queryActivityId(),roxiemem::RHFunique);
+            processors[i]->init(helper, allocator);
+        }
+
+        //MORE: The following logic should be outside of the activity code, to allow chains
+        //of activities to be connected.  Hopefully the following code is the correct structure for that.
+        bool isGrouped = helper->queryOutputMeta()->isGrouped();
+        branch.setown(createStrandBranch(queryRowManager(), numStrands, rowsPerBlock, orderedStrands, isGrouped));
+        inputJunction = branch->queryInputJunction();
+        outputJunction = branch->queryOutputJunction();
+    }
+
+    void start()
+    {
+        ActivityTimer s(totalCycles, timeActivities);
+
+        //Connect inputs
+        inputJunction->setInput(0, inputs.item(0));
+        for (unsigned i1=0; i1 < numStrands; i1++)
+            processors[i1]->setInput(inputJunction->queryOutput(i1));
+
+        //Connect outputs
+        for (unsigned i2=0; i2 < numStrands; i2++)
+            outputJunction->setInput(i2, processors[i2]->queryOutput());
+        strandOutput = outputJunction->queryOutput(0);
+
+        //MORE: The processors will not be started... - an issue if multiple activities.
+        startInput(inputs.item(0));
+        for (unsigned i3=0; i3 < numStrands; i3++)
+            processors[i3]->startProcessor();
+
+        inputJunction->ready();
+        outputJunction->ready();
+    }
+    void stop()
+    {
+        for (unsigned i3=0; i3 < numStrands; i3++)
+            processors[i3]->stopProcessor();
+        stopInput(inputs.item(0));
+    }
+    CATCH_NEXTROW()
+    {
+        return strandOutput->nextRow();
     }
     void getMetaInfo(ThorDataLinkMetaInfo &info)
     {

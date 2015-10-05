@@ -76,6 +76,9 @@
 #define THOROPT_WRITE_CRC             "crcWriteEnabled"         // Calculate CRC's for disk outputs and store in file meta data                  (default = true)
 #define THOROPT_READCOMPRESSED_CRC    "crcReadCompressedEnabled"  // Enabled CRC validation on compressed disk reads if file CRC are available   (default = false)
 #define THOROPT_WRITECOMPRESSED_CRC   "crcWriteCompressedEnabled" // Calculate CRC's for compressed disk outputs and store in file meta data     (default = false)
+#define THOROPT_NUM_STRANDS           "numStrands"              // Number of strands to execute this query on                                    (default = 1)
+#define THOROPT_STRAND_BLOCK_SIZE     "strandBlockSize"         // Number of rows to include in each strand block                                (default = 32)
+#define THOROPT_STRAND_ORDERED        "strandOrdered"           // Are strand outputs ordered                                                    (default = true)
 
 #define INITIAL_SELFJOIN_MATCH_WARNING_LEVEL 20000  // max of row matches before selfjoin emits warning
 

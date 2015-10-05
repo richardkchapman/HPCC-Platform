@@ -6811,6 +6811,10 @@ aggregateFlags
                         {
                             $$.setExpr(createComma($1.getExpr(), $3.getExpr()), $1);
                         }
+    | ',' hintAttribute
+                        {
+                            $$.setExpr($2.getExpr(), $2);
+                        }
     ;
 
 aggregateFlag

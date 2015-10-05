@@ -1359,9 +1359,9 @@ class CRowStreamWriter : public CSimpleInterface, private IRowSerializerTarget, 
         try
         {
             if (bufpos) {
-                stream->write(bufpos,buf);
                 if (tallycrc)
                     crc.tally(bufpos,buf);
+                stream->write(bufpos,buf);
                 bufpos = 0;
             }
             size32_t extpos = extbuf.length();

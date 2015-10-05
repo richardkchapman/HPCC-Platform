@@ -19,6 +19,7 @@
 #ifndef _thactivityutil_ipp
 #define _thactivityutil_ipp
 
+#include <atomic>
 #include "jlib.hpp"
 #include "jlzw.hpp"
 #include "jfile.hpp"
@@ -71,6 +72,7 @@ IRowStream *createSequentialPartHandler(CPartHandler *partHandler, IArrayOf<IPar
 void initMetaInfo(ThorDataLinkMetaInfo &info);
 class CThorDataLink : implements IThorDataLink
 {
+protected:
     CActivityBase *owner;
     rowcount_t count, icount;
     unsigned outputId;
@@ -173,6 +175,29 @@ public:
     static void calcMetaInfoSize(ThorDataLinkMetaInfo &info,IThorDataLink *input); // for derived children to call from getMetaInfo
     static void calcMetaInfoSize(ThorDataLinkMetaInfo &info,IThorDataLink **link,unsigned ninputs);
     static void calcMetaInfoSize(ThorDataLinkMetaInfo &info, ThorDataLinkMetaInfo *infos,unsigned num);
+};
+
+class StrandProcessor : public CInterface, public CThorDataLink
+{
+public:
+    IMPLEMENT_IINTERFACE
+    StrandProcessor(CSlaveActivity & _activity) : CThorDataLink(&_activity), abortSoon(false)
+    {
+    }
+
+    __declspec(noreturn) void processAndThrowOwnedException(IException * e) __attribute__((noreturn))
+    {
+        owner->processAndThrowOwnedException(e);
+    }
+
+
+    inline void setAborting(bool value) { abortSoon.store(value, std::memory_order_relaxed); }
+    inline bool isAborting() const { return abortSoon.load(std::memory_order_relaxed); }
+
+protected:
+    ActivityTimeAccumulator totalCycles;
+private:
+    std::atomic<bool> abortSoon;
 };
 
 interface ISmartBufferNotify

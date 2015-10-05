@@ -294,8 +294,9 @@ void CDiskReadSlaveActivityBase::serializeStats(MemoryBuffer &mb)
 
 /////////////////
 
-void CDiskWriteSlaveActivityBase::open()
+IFileIO * CDiskWriteSlaveActivityBase::createOutputIO()
 {
+    //Not so sure about the side-effects e.g. updating processed...
     if (dlfn.isExternal() && !firstNode())
     {
         input.setown(createDataLinkSmartBuffer(this, inputs.item(0), PROCESS_SMART_BUFFER_SIZE, isSmartBufferSpillNeeded(this), grouped, RCUNBOUND, NULL, false, &container.queryJob().queryIDiskUsage()));
@@ -305,7 +306,7 @@ void CDiskWriteSlaveActivityBase::open()
             ActPrintLog("Blocked, waiting for previous part to complete write");
             CMessageBuffer msg;
             if (!receiveMsg(msg, queryJobChannel().queryMyRank()-1, mpTag))
-                return;
+                return NULL;
             rowcount_t prevRows;
             msg.read(prevRows);
             msg.read(tempExternalName); // reuse temp filename, last node will rename
@@ -335,11 +336,6 @@ void CDiskWriteSlaveActivityBase::open()
             diskRowMinSz += 1;
     }
 
-    if (compress)
-        calcFileCrc = getOptBool(THOROPT_WRITECOMPRESSED_CRC, false);
-    else
-        calcFileCrc = getOptBool(THOROPT_WRITE_CRC, true);
-
     bool external = dlfn.isExternal();
     bool query = dlfn.isQuery();
     if (query && compress)
@@ -353,10 +349,22 @@ void CDiskWriteSlaveActivityBase::open()
     if (extend||(external&&!query))
         twFlags |= TW_Extend;
 
+    return createMultipleWrite(this, *partDesc, diskRowMinSz, twFlags, compress, ecomp, this, &abortSoon, (external&&!query) ? &tempExternalName : NULL);
+}
+
+
+void CDiskWriteSlaveActivityBase::open()
+{
     {
+        Owned<IFileIO> iFileIO = createOutputIO();
         CriticalBlock block(statsCs);
-        outputIO.setown(createMultipleWrite(this, *partDesc, diskRowMinSz, twFlags, compress, ecomp, this, &abortSoon, (external&&!query) ? &tempExternalName : NULL));
+        outputIO.setown(iFileIO.getClear());
     }
+
+    if (compress)
+        calcFileCrc = getOptBool(THOROPT_WRITECOMPRESSED_CRC, false);
+    else
+        calcFileCrc = getOptBool(THOROPT_WRITE_CRC, true);
 
     if (compress)
     {
@@ -380,6 +388,10 @@ void CDiskWriteSlaveActivityBase::open()
             rwFlags |= rw_crc;
         out.setown(createRowWriter(stream, ::queryRowInterfaces(input), rwFlags));
     }
+
+    bool extend = 0 != (diskHelperBase->getFlags() & TDWextend);
+    bool external = dlfn.isExternal();
+    bool query = dlfn.isQuery();
     if (extend || (external && !query))
         stream->seek(0,IFSend);
     ActPrintLog("Created output stream for %s, calcFileCrc=%s", fName.get(), calcFileCrc?"true":"false");
@@ -543,7 +555,7 @@ void CDiskWriteSlaveActivityBase::process()
         try
         {
             open();
-            assertex(out||outraw);
+            //assertex(out||outraw);
             write();
         }
         catch (IException *)

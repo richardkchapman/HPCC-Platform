@@ -123,7 +123,9 @@ protected:
     CRuntimeStatisticCollection fileStats;
     CriticalSection statsCs;
 
-    void open();
+    IFileIO * createOutputIO();
+
+    virtual void open();
     void removeFiles();
     void close();
     virtual void write() = 0;

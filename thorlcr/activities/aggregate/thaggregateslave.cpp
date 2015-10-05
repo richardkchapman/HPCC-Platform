@@ -28,6 +28,7 @@
 
 #include "thactivityutil.ipp"
 #include "thaggregateslave.ipp"
+#include "thorstrand.hpp"
 
 class AggregateSlaveBase : public CSlaveActivity, public CThorDataLink
 {
@@ -131,12 +132,67 @@ public:
     virtual bool isGrouped() { return false; }
 };
 
-//
+// MORE: Should the rowBlocks be included inside tasks, which are added to a task queue instead?
+// What is the relationship between tasks and IThreaded?  (One is a unit of work, the second is a processor.)
+
+class AggregateProcessor : public IThreaded
+{
+public:
+    AggregateProcessor(IEngineRowAllocator * _rowAllocator, IHThorAggregateArg * _helper)
+        : helper(_helper), rowAllocator(_rowAllocator)
+    {
+        input = NULL;
+    }
+
+    const void * getResult()
+    {
+        return result.getClear();
+    }
+
+    void main()
+    {
+        OwnedConstThorRow next = input->ungroupedNextRow();
+        if (next)
+        {
+            RtlDynamicRowBuilder resultBuilder(rowAllocator);
+            size32_t sz = helper->clearAggregate(resultBuilder);
+            sz = helper->processFirst(resultBuilder, next);
+            loop
+            {
+                next.setown(input->ungroupedNextRow());
+                if (!next)
+                    break;
+                sz = helper->processNext(resultBuilder, next);
+            }
+            result.setown(resultBuilder.finalizeRowClear(sz));
+        }
+    }
+
+    void reset()
+    {
+        result.clear();
+    }
+
+    void setInput(IRowStream * _input)
+    {
+        input = _input;
+    }
+
+protected:
+    IHThorAggregateArg * helper;
+    Owned<IEngineRowAllocator> rowAllocator;
+    OwnedConstThorRow result;
+    IRowStream * input;
+};
 
 class AggregateSlaveActivity : public AggregateSlaveBase
 {
     bool eof;
     IHThorAggregateArg * helper;
+    unsigned numStrands;
+    size32_t rowsPerBlock;
+    AggregateProcessor * * processors;
+    Owned<IStrandJunction> junction;
 
 public:
     IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
@@ -145,10 +201,39 @@ public:
     {
         helper = (IHThorAggregateArg *)queryHelper();
         eof = false;
+        numStrands = getOptInt(THOROPT_NUM_STRANDS, 0);
+        rowsPerBlock = getOptInt(THOROPT_STRAND_BLOCK_SIZE, 2000);
+        //MORE: Don't execute in parallel if grouped, or if aggregate is ordered
+        if (numStrands != 0)
+        {
+            ActPrintLog("Parallel Aggregate %u strands", numStrands);
+
+            //assertex(!grouped);
+            processors = new AggregateProcessor * [numStrands];
+            junction.setown(createStrandJunction(queryRowManager(), 1, numStrands, rowsPerBlock, false));
+            for (unsigned i=0; i < numStrands; i++)
+            {
+                //MORE: Not sure this really needs to be unique
+                IEngineRowAllocator * allocator = queryJobChannel().getRowAllocator(queryRowMetaData(),queryActivityId(),roxiemem::RHFunique);
+                processors[i] = new AggregateProcessor(allocator, helper);
+                processors[i]->setInput(junction->queryOutput(i));
+            }
+        }
+        else
+        {
+            processors = NULL;
+        }
+    }
+    ~AggregateSlaveActivity()
+    {
+        for (unsigned i=0; i < numStrands; i++)
+            delete processors[i];
+        delete [] processors;
     }
     virtual void abort()
     {
         AggregateSlaveBase::abort();
+        junction->abort();
         if (firstNode())
             cancelReceiveMsg(1, mpTag);
     }
@@ -164,12 +249,44 @@ public:
         doStopInput();
         dataLinkStop();
     }
-    CATCH_NEXTROW()
+    const void * calculateLocalAggregate()
     {
-        ActivityTimer t(totalCycles, timeActivities);
-        if (abortSoon || eof)
-            return NULL;
-        eof = true;
+        if (numStrands != 0)
+        {
+            junction->setInput(0, input);
+            junction->ready();
+
+            //MORE: Good candidate for a helper function in jthread e.g., asyncStart(..., bool wait)
+            {
+                CThreaded * * threads = new CThreaded * [numStrands];
+                for (unsigned i = 0; i < numStrands; i++)
+                {
+                    threads[i] = new CThreaded("Aggregate Thread", processors[i]);
+                    threads[i]->start();
+                }
+
+                for (unsigned i2 = 0; i2 < numStrands; i2++)
+                {
+                    threads[i2]->join();
+                    threads[i2]->Release();
+                }
+                delete [] threads;
+            }
+
+            //Now merge the results from the different processors
+            RtlDynamicRowBuilder resultBuilder(queryRowAllocator());
+            size32_t sz = helper->clearAggregate(resultBuilder);
+            for (unsigned strand=0; strand < numStrands; strand++)
+            {
+                OwnedConstThorRow result = processors[strand]->getResult();
+                if (result)
+                {
+                    hadElement = true;
+                    sz = helper->mergeAggregate(resultBuilder, result);
+                }
+            }
+            return resultBuilder.finalizeRowClear(sz);
+        }
 
         OwnedConstThorRow next = input->ungroupedNextRow();
         RtlDynamicRowBuilder resultcr(queryRowAllocator());
@@ -189,21 +306,32 @@ public:
                 }
             }
         }
+        return resultcr.finalizeRowClear(sz);
+    }
+    CATCH_NEXTROW()
+    {
+        ActivityTimer t(totalCycles, timeActivities);
+        if (abortSoon || eof)
+            return NULL;
+
+        eof = true;
+        OwnedConstThorRow result(calculateLocalAggregate());
         doStopInput();
         if (!firstNode())
         {
-            OwnedConstThorRow result(resultcr.finalizeRowClear(sz));
             sendResult(result.get(),queryRowSerializer(), 1); // send partial result
             return NULL;
         }
-        OwnedConstThorRow ret = getResult(resultcr.finalizeRowClear(sz));
+        OwnedConstThorRow ret = getResult(result.getClear());
         if (ret)
         {
             dataLinkIncrement();
             return ret.getClear();
         }
-        sz = helper->clearAggregate(resultcr);  
-        return resultcr.finalizeRowClear(sz);
+
+        RtlDynamicRowBuilder resultBuilder(queryRowAllocator());
+        size32_t sz = helper->clearAggregate(resultBuilder);
+        return resultBuilder.finalizeRowClear(sz);
     }
     virtual void getMetaInfo(ThorDataLinkMetaInfo &info)
     {
