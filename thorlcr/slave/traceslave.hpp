@@ -98,6 +98,10 @@ public:
     virtual CActivityBase *queryFromActivity() {return thorDataLink->queryFromActivity();} // activity that has this as an output
     virtual void dataLinkSerialize(MemoryBuffer &mb) {thorDataLink->dataLinkSerialize(mb);}
     virtual unsigned __int64 queryTotalCycles() const { return thorDataLink->queryTotalCycles();}
+    virtual void debugRequest(MemoryBuffer &mb)
+    {
+        UNIMPLEMENTED;
+    }
 
     virtual const void *nextRow()
     {
