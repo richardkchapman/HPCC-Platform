@@ -527,161 +527,8 @@ CPPUNIT_TEST_SUITE_REGISTRATION( JlibStringBufferTest );
 CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( JlibStringBufferTest, "JlibStringBufferTest" );
 
 
-CPPUNIT_TEST_SUITE_REGISTRATION(JlibSetTest);
-CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(JlibSetTest, "JlibSetTest");
-
-/* =========================================================== */
-class JlibFileIOTest : public CppUnit::TestFixture
-{
-    unsigned rs, nr10pct, nr150pct;
-    char *record;
-    StringBuffer tmpfile;
-    StringBuffer server;
-
-    CPPUNIT_TEST_SUITE(JlibFileIOTest);
-    CPPUNIT_TEST(testIOSmall);
-    CPPUNIT_TEST(testIORemote);
-    CPPUNIT_TEST(testIOLarge);
-    CPPUNIT_TEST_SUITE_END();
-
-public:
-    JlibFileIOTest()
-    {
-        HardwareInfo hdwInfo;
-        getHardwareInfo(hdwInfo);
-        rs = 65536;
-        unsigned nr = (unsigned)(1024.0 * (1024.0 * (double)hdwInfo.totalMemory / (double)rs));
-        nr10pct = nr / 10;
-        nr150pct = (unsigned)((double)nr * 1.5);
-        record = (char *)malloc(rs);
-        for (unsigned i = 0;i<rs;i++)
-            record[i] = 'a';
-        record[rs - 1] = '\n';
-
-        tmpfile.set("JlibFileIOTest.txt");
-        server.set(".");
-        // server.set("192.168.1.18");
-    }
-
-    ~JlibFileIOTest()
-    {
-        free(record);
-    }
-
-protected:
-    void testIO(unsigned nr, SocketEndpoint *ep)
-    {
-        IFile *ifile;
-        IFileIO *ifileio;
-        unsigned fsize = (unsigned)(((double)nr * (double)rs) / (1024.0 * 1024.0));
-
-        fflush(NULL);
-        fprintf(stdout, "\n");
-        fflush(NULL);
-
-        for (int j = 0; j<2; j++)
-        {
-            if (j == 0)
-                fprintf(stdout, "File size: %d (MB) Cache, ", fsize);
-            else
-                fprintf(stdout, "\nFile size: %d (MB) Nocache, ", fsize);
-
-            if (ep != NULL)
-            {
-                ifile = createRemoteFile(*ep, tmpfile);
-                fprintf(stdout, "Remote: (%s)\n", server.str());
-            }
-            else
-            {
-                ifile = createIFile(tmpfile);
-                fprintf(stdout, "Local:\n");
-            }
-
-            ifile->remove();
-
-            unsigned st = msTick();
-
-            IFEflags extraFlags = IFEcache;
-            if (j == 1)
-                extraFlags = IFEnocache;
-            ifileio = ifile->open(IFOcreate, extraFlags);
-
-            unsigned iter = nr / 40;
-
-            __int64 pos = 0;
-            for (unsigned i = 0;i<nr;i++)
-            {
-                ifileio->write(pos, rs, record);
-                pos += rs;
-                if ((i % iter) == 0)
-                {
-                    fprintf(stdout, ".");
-                    fflush(NULL);
-                }
-            }
-
-            ifileio->close();
-
-            double rsec = (double)(msTick() - st) / 1000.0;
-            unsigned iorate = (unsigned)((double)fsize / rsec);
-
-            fprintf(stdout, "\nwrite - elapsed time = %6.2f (s) iorate = %4d (MB/s)\n", rsec, iorate);
-
-            st = msTick();
-
-            extraFlags = IFEcache;
-            if (j == 1)
-                extraFlags = IFEnocache;
-            ifileio = ifile->open(IFOread, extraFlags);
-
-            pos = 0;
-            for (unsigned i = 0;i<nr;i++)
-            {
-                ifileio->read(pos, rs, record);
-                pos += rs;
-                if ((i % iter) == 0)
-                {
-                    fprintf(stdout, ".");
-                    fflush(NULL);
-                }
-            }
-
-            ifileio->close();
-
-            rsec = (double)(msTick() - st) / 1000.0;
-            iorate = (unsigned)((double)fsize / rsec);
-
-            fprintf(stdout, "\nread -- elapsed time = %6.2f (s) iorate = %4d (MB/s)\n", rsec, iorate);
-
-            ifileio->Release();
-            ifile->remove();
-            ifile->Release();
-        }
-    }
-
-    void testIOSmall()
-    {
-        testIO(nr10pct, NULL);
-    }
-
-    void testIOLarge()
-    {
-        testIO(nr150pct, NULL);
-    }
-
-    void testIORemote()
-    {
-        SocketEndpoint ep;
-        ep.set(server, 7100);
-        testIO(nr10pct, &ep);
-    }
-
-};
 
 //---------------------------------------------------------------------------------------------------------------------
-
-CPPUNIT_TEST_SUITE_REGISTRATION(JlibReaderWriterTest);
-CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(JlibReaderWriterTest, "JlibReaderWriterTest");
 
 /* =========================================================== */
 
@@ -693,43 +540,48 @@ class JlibReaderWriterTest : public CppUnit::TestFixture
 
         class Reader : public Thread
         {
-            Reader(ReaderWriterQueue * _source, Sempahore & _startSem) : Thread("Reader"), source(_source), startSem(_startSem)
+        public:
+            Reader(ReaderWriterQueue * _source, Semaphore & _doneSem) : Thread("Reader"), source(_source), doneSem(_doneSem)
+            {
+            }
+
+            virtual int run()
+            {
+                loop
+                {
+                    const void * next = source->dequeue(true);
+                    if (!next)
+                        break;
+                    std::atomic<byte> * value = (std::atomic<byte> *)next;
+                    (*value)++;
+                }
+                doneSem.signal();
+                return 0;
+            }
+
+        private:
+            ReaderWriterQueue * source;
+            Semaphore & doneSem;
+        };
+
+        class Writer : public Thread
+        {
+        public:
+            Writer(ReaderWriterQueue * _target, size_t _len, byte * _buffer, Semaphore & _startSem, Semaphore & _doneSem)
+                : Thread("Writer"), target(_target), len(_len), buffer(_buffer), startSem(_startSem), doneSem(_doneSem)
             {
             }
 
             virtual int run()
             {
                 startSem.wait();
-                loop
-                {
-                    const void * next = source->dequeue();
-                    if (!next)
-                        break;
-                    atomic<byte> * value = (atomic<byte> *)next;
-                    (*value)++
-                }
-            }
-
-        private:
-            ReaderWriterQueue * source;
-            Semaphore & startSem;
-        };
-
-        class Writer : public Thread
-        {
-            Writer(ReaderWriterQueue * _target, size_t len, byte * _buffer, Semaphore & _doneSem)
-                : Thread("Writer"), source(_source), len(_len), buffer(_buffer), startSem(_startSem), doneSem(_doneSem)
-            {
-            }
-
-            virtual int run()
-            {
                 for (size_t i = 0; i < len; i++)
                 {
                     target->enqueue(buffer + i);
                 }
                 doneSem.signal();
-        }
+                return 0;
+            }
 
         private:
             size_t len;
@@ -739,60 +591,68 @@ class JlibReaderWriterTest : public CppUnit::TestFixture
             Semaphore & doneSem;
     };
 public:
-    JlibStringBufferTest()
-    {
-    }
-
     void testQueue(unsigned numProducers, unsigned numConsumers, unsigned numElements = 0)
     {
-        unsigned queueElements = (numElements != 0) ? numElements : numProducers + numConsumers;
-        const size_t bufferSize = 0x100000*64;
+        unsigned queueElements = (numElements != 0) ? numElements : (numProducers + numConsumers)*2;
+        const size_t bufferSize = 0x100000;//0x100000*64;
         const size_t sizePerProducer = bufferSize / numProducers;
         const size_t testSize = sizePerProducer * numProducers;
 
         OwnedMalloc<byte> buffer(bufferSize, true);
-        ReaderWriterQueue queue(numElements, numProducers != 1);
-        Sempahore startSem;
+        ReaderWriterQueue queue(queueElements, numProducers != 1);
+        Semaphore startSem;
+        Semaphore writerDoneSem;
         Semaphore stopSem;
 
         Reader * * consumers = new Reader *[numConsumers];
-        for (unsigned i2 = 0; i2 < numConsumers; i1++)
+        for (unsigned i2 = 0; i2 < numConsumers; i2++)
         {
-            consumers[i2] = new Reader(queue, stopSem);
+            consumers[i2] = new Reader(&queue, stopSem);
             consumers[i2]->start();
         }
 
         Writer * * producers = new Writer *[numProducers];
         for (unsigned i1 = 0; i1 < numProducers; i1++)
         {
-            producers[i1] = new Writer(queue, sizePerProducer, buffer + i1 * sizePerProducer, startSem);
+            producers[i1] = new Writer(&queue, sizePerProducer, buffer + i1 * sizePerProducer, startSem, writerDoneSem);
             producers[i1]->start();
         }
 
-        cycles_t startTime = get_cycles_now();
+        cycle_t startTime = get_cycles_now();
 
         //Start the writers
         startSem.signal(numProducers);
 
+        //Wait for the writers to complete
+        for (unsigned i7 = 0; i7 < numProducers; i7++)
+            writerDoneSem.wait();
+
+        //Now add NULL records to the queue so the consumers know to terminate
+        for (unsigned i8 = 0; i8 < numConsumers; i8++)
+            queue.enqueue(NULL);
+
         //Wait for the readers to complete
-        for (i3 = 0; i3 < numConsumers; i3++)
+        for (unsigned i3 = 0; i3 < numConsumers; i3++)
             stopSem.wait();
 
-        cycles_t stopTime = get_cycles_now();
+        cycle_t stopTime = get_cycles_now();
 
         //All bytes should have been changed to 1, if not a queue item got lost.
         unsigned failures = 0;
+        unsigned numClear = 0;
         for (size_t pos = 0; pos < testSize; pos++)
         {
             if (buffer[pos] != 1)
                 failures++;
+            if (buffer[pos] == 0)
+                numClear++;
         }
 
-        unsigned timeMs = cycles_to_nanosecs(stopTime - startTime) / 1000000;
+        unsigned timeMs = cycle_to_nanosec(stopTime - startTime) / 1000000;
         if (failures)
-            printf("Fail: Test %u producers %u consumers %u queueItems %u mismatches\n", numProduced, numConsumers, queueElements, failures);
+            printf("Fail: Test %u producers %u consumers %u queueItems %u(%u) mismatches\n", numProducers, numConsumers, queueElements, failures, numClear);
         else
-            printf("Pass: Test %u producers %u consumers %u queueItems in %ums\n", numProduced, numConsumers, queueElements, timeMs);
+            printf("Pass: Test %u producers %u consumers %u queueItems in %ums\n", numProducers, numConsumers, queueElements, timeMs);
 
 
         for (unsigned i4 = 0; i4 < numConsumers; i4++)
@@ -808,8 +668,6 @@ public:
             producers[i5]->Release();
         }
         delete[] producers;
-
-        const size_t totalSize = num
     }
 
     void testCombinations()
@@ -822,15 +680,15 @@ public:
         testQueue(1, 10, 5);
         testQueue(1, 5, 5);
         testQueue(1, 5, 10);
-        testQueue(1, 200, 10);
-        testQueue(1, 200, 200);
+        testQueue(1, 127, 10);
+        testQueue(1, 127, 127);
 
         //Many to One
         testQueue(10, 1, 5);
         testQueue(5, 1, 5);
         testQueue(5, 1, 10);
-        testQueue(200, 1, 10);
-        testQueue(200, 1, 200);
+        //testQueue(127, 1, 10);
+        //testQueue(127, 1, 127);
 
         //Many to Many
         testQueue(2, 2);
@@ -840,14 +698,20 @@ public:
         testQueue(4, 2);
         testQueue(8, 2);
         testQueue(16, 2);
-        testQueue(8, 8);
-        testQueue(2, 2, 100);
+        //testQueue(8, 8);
 
-        testQueue(10, 200, 10);
-        testQueue(200, 10, 10);
-        testQueue(200, 200, 10);
-        testQueue(200, 200, 200);
-        testQueue(1, 200, 200);
+        testQueue(2, 2, 4);
+        testQueue(2, 2, 8);
+        testQueue(2, 2, 16);
+        testQueue(2, 2, 32);
+        testQueue(2, 2, 100);
+        return;
+
+        testQueue(10, 127, 10);
+        testQueue(127, 10, 10);
+        testQueue(127, 127, 10);
+        testQueue(127, 127, 127);
+        testQueue(1, 127, 127);
     }
 
 };
