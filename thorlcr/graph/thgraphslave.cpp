@@ -1151,6 +1151,11 @@ bool CJobSlave::getWorkUnitValueBool(const char *prop, bool defVal) const
     return workUnitInfo->queryPropTree("Debug")->getPropBool(propName.toLowerCase().str(), defVal);
 }
 
+void CJobSlave::debugRequest(CMessageBuffer &msg, const char *request) const
+{
+    watchdog->debugRequest(msg, request);
+}
+
 IGraphTempHandler *CJobSlave::createTempHandler(bool errorOnMissing)
 {
     return new CSlaveGraphTempHandler(*this, errorOnMissing);

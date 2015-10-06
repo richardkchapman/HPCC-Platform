@@ -165,6 +165,7 @@ public:
     {
         return icount; 
     } 
+    virtual void debugRequest(MemoryBuffer &msg) {}
 
     CActivityBase *queryFromActivity() { return owner; }
 

@@ -148,6 +148,7 @@ class CJobManager : public CSimpleInterface, implements IJobManager, implements 
                             {
                                 ICommunicator &comm = job->queryNodeComm();
                                 CMessageBuffer mbuf;
+                                mbuf.append(job->queryKey());
                                 mptag_t replyTag = createReplyTag();
                                 mbuf.append(DebugRequest);
                                 serializeMPtag(mbuf, replyTag);

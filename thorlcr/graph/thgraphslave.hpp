@@ -157,6 +157,8 @@ public:
     virtual __int64 getWorkUnitValueInt(const char *prop, __int64 defVal) const;
     virtual StringBuffer &getWorkUnitValue(const char *prop, StringBuffer &str) const;
     virtual bool getWorkUnitValueBool(const char *prop, bool defVal) const;
+    virtual void debugRequest(CMessageBuffer &msg, const char *request) const;
+
 // IExceptionHandler
     virtual bool fireException(IException *e)
     {

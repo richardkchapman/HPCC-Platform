@@ -511,6 +511,25 @@ public:
                         }
                         break;
                     }
+                    case DebugRequest:
+                    {
+                        StringAttr jobKey;
+                        msg.read(jobKey);
+                        PROGLOG("DebugRequest: %s", jobKey.get());
+                        CJobSlave *job = jobs.find(jobKey.get());
+                        if (job)
+                        {
+                            mptag_t replyTag = job->deserializeMPTag(msg);
+                            msg.setReplyTag(replyTag);
+                            StringAttr rawText;
+                            msg.read(rawText);
+                            PROGLOG("DebugRequest: %s", rawText.get());
+                            msg.clear();
+                            job->debugRequest(msg, rawText);
+                        }
+
+                        break;
+                    }
                     default:
                         throwUnexpected();
                 }
