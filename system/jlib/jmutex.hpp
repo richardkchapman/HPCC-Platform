@@ -901,6 +901,8 @@ public:
  i) The writer only fills in a blank entry
  ii) the reader sets to null after reading
  */
+
+#define BLOCKING
 #include "xmmintrin.h"
 
 inline static void spin_pause() { _mm_pause(); }
@@ -927,7 +929,7 @@ class jlib_decl ReaderWriterQueue
     };
 
 public:
-    ReaderWriterQueue(unsigned _maxItems, bool _hasMultipleProducers) : maxItems(_maxItems), hasMultipleProducers(_hasMultipleProducers)
+    ReaderWriterQueue(unsigned _maxItems) : maxItems(_maxItems)
     {
         // Reserve at least one free entry to be able to tell when the queue is full.
         const unsigned minSpace = 1;
@@ -959,16 +961,17 @@ public:
             unsigned curDequeueSeq = (curState & dequeueMask) >> dequeueShift;
             //Which slot would enqueue be pointing to if it was full
             unsigned fullEnqueueSeq = (curDequeueSeq + maxItems);
-            unsigned curEnqueueSlot = curEnqueueSeq & slotMask;
             if (((fullEnqueueSeq - curEnqueueSeq) & sequenceMask) == 0)
             {
-
+#ifndef BLOCKING
                 continue;
+#else
                 //The list is currently full, increment the number of writers waiting.
                 //This can never overflow...
                 const unsigned nextState = curState + (1 << writerShift);
                 if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
                     writers.wait();
+#endif
             }
             else
             {
@@ -982,6 +985,7 @@ public:
                 if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
                 {
                     unsigned filledSeq = (curEnqueueSeq + 1) & sequenceMask;
+                    unsigned curEnqueueSlot = curEnqueueSeq & slotMask;
                     BufferElement & cur = values[curEnqueueSlot];
 
                     //MORE: Another producer has been interupted while writing to the same slot
@@ -1015,12 +1019,15 @@ public:
             {
                 if (!block)
                     return NULL;
+#ifndef BLOCKING
                 continue;
+#else
                 //The list is currently empty, increment the number of readers waiting.
                 //This can never overflow...
                 unsigned nextState = curState + (1 << readerShift);
                 if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
                     readers.wait();
+#endif
             }
             else
             {
@@ -1064,7 +1071,6 @@ protected:
     unsigned maxItems;
     Semaphore readers;
     Semaphore writers;
-    bool hasMultipleProducers;
 };
 
 
