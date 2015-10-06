@@ -27,50 +27,68 @@
 class CTracingThorDataLink :  implements CInterfaceOf<IThorDataLink>
 {
 private:
-    OwnedConstThorRow *rowBuffer;
-    unsigned rowHeadp;
+    class TraceQueue
+    {
+    public:
+        OwnedConstThorRow *rowBuffer;
+        unsigned rowHeadp;
+        TraceQueue()
+        {
+            rowBuffer = NULL;
+            rowHeadp = 0;
+        }
+        ~TraceQueue()
+        {
+            delete [] rowBuffer;
+        }
+        void init()
+        {
+            if (!rowBuffer)
+            {
+                rowBuffer = new OwnedConstThorRow[traceRowBufferSize];
+                rowHeadp = 0;
+            }
+        }
+        void enqueue(const void *row)
+        {
+            // NOTE - updates then sets rowHeadp (atomically) so that the code
+            // below (ignoring oldest record) is safe
+            rowBuffer[rowHeadp].set(row);
+            unsigned nextHead = rowHeadp + 1;
+            if (nextHead==traceRowBufferSize)
+                nextHead = 0;
+            rowHeadp = nextHead;
+        }
+        void dump(MemoryBuffer &mb, IHThorArg *helper)
+        {
+            unsigned rowPos = rowHeadp;
+            // NOTE - we don't output every item in the list as one
+            // COULD have been updated after we swapped the buffers
+            for (unsigned n=1; n<traceRowBufferSize;++n)
+            {
+                OwnedConstThorRow row = rowBuffer[rowPos].getClear(); // This will need changing to move to a third buffer or something...
 
-    static const unsigned traceRowBufferSize=10;
-    static const unsigned dumpRowIntervalMS=600000;
+                if (++rowPos==traceRowBufferSize) rowPos = 0;
+                if (!row) continue;
+
+                CommonXmlWriter xmlwrite(XWFnoindent);
+                helper->queryOutputMeta()->toXML((const byte *) row.get(), xmlwrite);
+                VStringBuffer trace("<Row>%s</Row>", xmlwrite.str());
+                mb.append(trace.str());
+            }
+        }
+    } buffers[2];
+    atomic_t rowBufInUse;
+
+    static const unsigned traceRowBufferSize=11;  // we only output 10
     Owned<IThorDataLink> thorDataLink;
 
     IHThorArg *helper;
-    CCycleTimer cycleTimer;
-    cycle_t intervalCycle;
     activity_id activityId;
 
-    inline bool hasTimeElapsed()
-    {
-        return (cycleTimer.elapsedCycles() > intervalCycle);
-    }
     inline void enqueueRowForTrace(const void *row)
     {
-        rowBuffer[rowHeadp].set(row);
-
-        ++rowHeadp;
-        if (rowHeadp==traceRowBufferSize)
-            rowHeadp = 0;
-
-        if (hasTimeElapsed())
-        {
-            cycleTimer.reset();
-            logTraceRows();
-        }
-    }
-    inline void logTraceRows()
-    {
-        unsigned rowPos = rowHeadp;
-        for (unsigned n=0; n<traceRowBufferSize;++n)
-        {
-            OwnedConstThorRow row = rowBuffer[rowPos].getClear();
-
-            if (++rowPos==traceRowBufferSize) rowPos = 0;
-            if (!row) continue;
-
-            CommonXmlWriter xmlwrite(XWFnoindent);
-            helper->queryOutputMeta()->toXML((const byte *) row.get(), xmlwrite);
-            DBGLOG ("TRACE: (ActivityId: %d) <ROW>%s</ROW>", activityId, xmlwrite.str());
-        }
+        buffers[atomic_read(&rowBufInUse)].enqueue(row);
     }
 
 public:
@@ -78,16 +96,12 @@ public:
     {
         thorDataLink->start();
         activityId = queryFromActivity()->queryActivityId();
-        if (!rowBuffer)
-            rowBuffer = new OwnedConstThorRow[traceRowBufferSize];
     }
     virtual bool isGrouped() { return thorDataLink->isGrouped();}
     virtual const void *nextRowGE(const void * seek, unsigned numFields, bool &wasCompleteMatch, const SmartStepExtra &stepExtra)
     {
         const void *row = thorDataLink->nextRowGE(seek, numFields, wasCompleteMatch, stepExtra);
-
         enqueueRowForTrace(row);
-
         return row;
     }    // can only be called on stepping fields.
     virtual IInputSteppingMeta *querySteppingMeta() { return thorDataLink->querySteppingMeta(); }
@@ -100,21 +114,20 @@ public:
     virtual unsigned __int64 queryTotalCycles() const { return thorDataLink->queryTotalCycles();}
     virtual void debugRequest(MemoryBuffer &mb)
     {
-        UNIMPLEMENTED;
+        // NOTE - cannot be called by more than one thread
+        buffers[1].init();
+        int bufToDump = atomic_read(&rowBufInUse);
+        atomic_set(&rowBufInUse, 1-bufToDump);
+        buffers[bufToDump].dump(mb, helper);
+        // TBD - may need a third buffer to ensure that a second call to debugRequest gets
+        // any old records that have not been evicted.
     }
 
     virtual const void *nextRow()
     {
         const void *row = thorDataLink->nextRow();
-
         enqueueRowForTrace(row);
-
         return row;
-    }
-    virtual void beforeDispose()
-    {
-        logTraceRows();
-        delete [] rowBuffer;
     }
     virtual void stop() {
         thorDataLink->stop();
@@ -122,9 +135,11 @@ public:
 
     inline const void *ungroupedNextRow() { return thorDataLink->ungroupedNextRow();}
 
-    CTracingThorDataLink(IThorDataLink *_input, IHThorArg *_helper) : thorDataLink(_input), helper(_helper), rowHeadp(0),rowBuffer(NULL)
+    CTracingThorDataLink(IThorDataLink *_input, IHThorArg *_helper)
+    : thorDataLink(_input), helper(_helper), activityId(0)
     {
-        intervalCycle = queryOneSecCycles() * dumpRowIntervalMS / 1000;
+        atomic_set(&rowBufInUse, 0);
+        buffers[0].init();
     }
 };
 

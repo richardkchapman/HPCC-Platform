@@ -164,7 +164,12 @@ class CJobManager : public CSimpleInterface, implements IJobManager, implements 
                                     rank_t sender;
                                     mbuf.clear();
                                     comm.recv(mbuf, RANK_ALL, replyTag, &sender, 10000);
-                                    response.append("<Row/>");
+                                    while (mbuf.remaining())
+                                    {
+                                        StringAttr row;
+                                        mbuf.read(row);
+                                        response.append(row);
+                                    }
                                     nodes--;
                                 }
                             }
@@ -176,6 +181,7 @@ class CJobManager : public CSimpleInterface, implements IJobManager, implements 
                             ssock.sendException("Thor", E->errorCode(), E->errorMessage(s), false, queryDummyContextLogger());
                             E->Release();
                         }
+                        // Write terminator
                         unsigned replyLen = 0;
                         ssock.write(&replyLen, sizeof(replyLen));
                     }
