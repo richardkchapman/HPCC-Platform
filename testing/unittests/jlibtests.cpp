@@ -676,7 +676,6 @@ public:
         testQueue(1, 1, 1);
         testQueue(1, 1, 10);
 
-#if 0
         //One to Many
         testQueue(1, 10, 5);
         testQueue(1, 5, 5);
@@ -690,7 +689,6 @@ public:
         testQueue(5, 1, 10);
         //testQueue(127, 1, 10);
         //testQueue(127, 1, 127);
-#endif
 
         //Many to Many
         testQueue(2, 2);
@@ -707,11 +705,9 @@ public:
         testQueue(2, 2, 16);
         testQueue(2, 2, 32);
         testQueue(2, 2, 100);
-        return;
 
         testQueue(10, 127, 10);
         testQueue(127, 10, 10);
-        testQueue(127, 127, 10);
         testQueue(127, 127, 127);
         testQueue(1, 127, 127);
     }

@@ -902,7 +902,7 @@ public:
  ii) the reader sets to null after reading
  */
 
-#define BLOCKING
+//#define BLOCKING
 #include "xmmintrin.h"
 
 inline static void spin_pause() { _mm_pause(); }
@@ -927,6 +927,7 @@ class jlib_decl ReaderWriterQueue
         dequeueShift    = 0,
         dequeueMask     = (sequenceMask << dequeueShift),
     };
+    const unsigned spinsBeforeWait = 2000;
 
 public:
     ReaderWriterQueue(unsigned _maxItems) : maxItems(_maxItems)
@@ -954,24 +955,32 @@ public:
 
     void enqueue(const void * value)
     {
+        //Note, compare_exchange_weak updates curState when it fails, so don't read inside the main loop
+        unsigned numSpins = spinsBeforeWait;
+        unsigned curState = state.load(std::memory_order_acquire);
         loop
         {
-            unsigned curState = state.load(std::memory_order_acquire);
             unsigned curEnqueueSeq = (curState & enqueueMask) >> enqueueShift;
             unsigned curDequeueSeq = (curState & dequeueMask) >> dequeueShift;
             //Which slot would enqueue be pointing to if it was full
             unsigned fullEnqueueSeq = (curDequeueSeq + maxItems);
             if (((fullEnqueueSeq - curEnqueueSeq) & sequenceMask) == 0)
             {
-#ifndef BLOCKING
-                continue;
-#else
+                if (--numSpins != 0)
+                {
+                    curState = state.load(std::memory_order_acquire);
+                    continue;
+                }
+                numSpins = spinsBeforeWait;
+
                 //The list is currently full, increment the number of writers waiting.
                 //This can never overflow...
                 const unsigned nextState = curState + (1 << writerShift);
                 if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
+                {
                     writers.wait();
-#endif
+                    curState = state.load(std::memory_order_acquire);
+                }
             }
             else
             {
@@ -1007,11 +1016,19 @@ public:
         }
     }
 
+    unsigned enqueue(unsigned num, const void * * value)
+    {
+        //MORE: Enqueue up to n items, return the number enqueued
+        return 0;
+    }
+
     const void * dequeue(bool block)
     {
+        unsigned numSpins = spinsBeforeWait;
+        //Note, compare_exchange_weak updates curState when it fails, so don't read inside the main loop
+        unsigned curState = state.load(std::memory_order_acquire);
         loop
         {
-            unsigned curState = state.load(std::memory_order_acquire);
             unsigned curDequeueSeq = (curState & dequeueMask) >> dequeueShift;
             unsigned curEnqueueSeq = (curState & enqueueMask) >> enqueueShift;
             //Check if the queue is empty.
@@ -1019,15 +1036,23 @@ public:
             {
                 if (!block)
                     return NULL;
-#ifndef BLOCKING
-                continue;
-#else
+
+                //We must check numSpins before we try and increment the number of readers
+                if (--numSpins != 0)
+                {
+                    curState = state.load(std::memory_order_acquire);
+                    continue;
+                }
+                numSpins = spinsBeforeWait;
+
                 //The list is currently empty, increment the number of readers waiting.
                 //This can never overflow...
                 unsigned nextState = curState + (1 << readerShift);
                 if (state.compare_exchange_weak(curState, nextState, std::memory_order_relaxed))
+                {
                     readers.wait();
-#endif
+                    curState = state.load(std::memory_order_acquire);
+                }
             }
             else
             {
