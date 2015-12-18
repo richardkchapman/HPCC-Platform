@@ -212,7 +212,7 @@ interface IRoxieServerActivityFactory : extends IActivityFactory
 interface IGraphResult : public IInterface
 {
     virtual void getLinkedResult(unsigned & countResult, byte * * & result) = 0;
-    virtual IRoxieInput * createIterator() = 0;
+    virtual IEngineRowStream * createIterator() = 0;
     virtual const void * getLinkedRowResult() = 0;
 };
 
@@ -225,7 +225,7 @@ interface IRoxieServerLoopResultProcessor
 interface IRoxieGraphResults : extends IEclGraphResults
 {
 public:
-    virtual IRoxieInput * createIterator(unsigned id) = 0;
+    virtual IEngineRowStream * createIterator(unsigned id) = 0;
 };
 
 class CGraphIterationInfo;
@@ -244,7 +244,7 @@ interface IRoxieServerChildGraph : public IInterface
     virtual void clearGraphLoopResults() = 0;
     virtual void executeGraphLoop(size32_t parentExtractSize, const byte *parentExtract) = 0;
     virtual void setGraphLoopResult(unsigned id, IGraphResult * result) = 0;
-    virtual IRoxieInput * getGraphLoopResult(unsigned id) = 0;
+    virtual IEngineRowStream * getGraphLoopResult(unsigned id) = 0;
 //parallel graph related helpers.
     virtual CGraphIterationInfo * selectGraphLoopOutput() = 0;
     virtual void gatherIterationUsage(IRoxieServerLoopResultProcessor & processor) = 0;
