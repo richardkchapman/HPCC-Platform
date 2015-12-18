@@ -32,14 +32,8 @@ struct IInputBase : public IInterface //base for IRoxieInput and IHThorInput
     virtual IInputSteppingMeta * querySteppingMeta() { return NULL; }
     virtual void resetEOF() = 0;
 
-    // These will need some thought
+    // This may eventually go
     virtual IEngineRowStream &queryStream() = 0;
-    inline bool nextGroup(ConstPointerArray & group) { return queryStream().nextGroup(group); }
-    inline void readAll(RtlLinkedDatasetBuilder &builder) { return queryStream().readAll(builder); }
-    inline const void *nextRowGE(const void * seek, unsigned numFields, bool &wasCompleteMatch, const SmartStepExtra &stepExtra) { return queryStream().nextRowGE(seek, numFields, wasCompleteMatch, stepExtra); }
-    inline const void *nextRow() { return queryStream().nextRow(); }
-    inline void stop() { queryStream().stop(); }
-    inline const void *ungroupedNextRow() { return queryStream().ungroupedNextRow(); }
 
 };
 
