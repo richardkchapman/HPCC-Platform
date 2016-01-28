@@ -1555,11 +1555,14 @@ protected:
     unsigned processed = 0;
     bool stopped = false;
 public:
-    explicit StrandProcessor(CRoxieServerActivity &_parent, IEngineRowStream *_inputStream)
+    explicit StrandProcessor(CRoxieServerActivity &_parent, IEngineRowStream *_inputStream, bool needsAllocator)
       : parent(_parent), inputStream(_inputStream)
     {
         timeActivities = parent.timeActivities;
-        rowAllocator = parent.queryContext()->getRowAllocatorEx(parent.queryOutputMeta(), parent.queryId(), roxiemem::RHFunique);
+        if (needsAllocator)
+            rowAllocator = parent.queryContext()->getRowAllocatorEx(parent.queryOutputMeta(), parent.queryId(), roxiemem::RHFunique);
+        else
+            rowAllocator = NULL;
     }
     virtual void start() = 0;
     virtual void stop()
@@ -13465,7 +13468,7 @@ class CRoxieServerStrandedProjectActivity : public CRoxieServerStrandedActivity
 
     public:
         ProjectProcessor(CRoxieServerActivity &_parent, IEngineRowStream *_inputStream, IHThorProjectArg &_helper)
-        : StrandProcessor(_parent, _inputStream), helper(_helper)
+        : StrandProcessor(_parent, _inputStream, true), helper(_helper)
         {
         }
         virtual void start()
@@ -19873,6 +19876,7 @@ extern IRoxieServerActivityFactory *createRoxieServerWhenActionActivityFactory(u
 }
 
 //=================================================================================
+
 class CRoxieServerParseActivity : public CRoxieServerActivity, implements IMatchedAction
 {
     IHThorParseArg &helper;
@@ -19986,7 +19990,6 @@ public:
             rowIter->first();
         }
     }
-
 };
 
 class CRoxieServerParseActivityFactory : public CRoxieServerActivityFactory
