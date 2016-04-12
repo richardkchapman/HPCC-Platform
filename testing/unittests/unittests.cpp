@@ -84,4 +84,47 @@ class InternalStatisticsTest : public CppUnit::TestFixture
 CPPUNIT_TEST_SUITE_REGISTRATION( InternalStatisticsTest );
 CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( InternalStatisticsTest, "StatisticsTest" );
 
+class ThreadTest : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE( ThreadTest  );
+        CPPUNIT_TEST(testAsyncFor);
+    CPPUNIT_TEST_SUITE_END();
+
+    void testAsyncFor()
+    {
+        for (;;)
+        {
+            static atomic_t total;
+            class l1 : public CAsyncFor
+            {
+                virtual void Do(unsigned idx)
+                {
+                    class l2 : public CAsyncFor
+                    {
+                        virtual void Do(unsigned idx)
+                        {
+                            class l3 : public CAsyncFor
+                            {
+                                virtual void Do(unsigned idx)
+                                {
+                                    // Nothing
+                                    atomic_inc(&total);
+                                }
+                            } c3;
+                            c3.For(2,2);
+                        }
+                    } c2;
+                    c2.For(50,50);
+                }
+            } c1;
+            c1.For(100,10);
+            ASSERT(atomic_read(&total) == 10000);
+            atomic_set(&total, 0);
+        }
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION( ThreadTest );
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( ThreadTest, "ThreadTest" );
+
 #endif // _USE_CPPUNIT
