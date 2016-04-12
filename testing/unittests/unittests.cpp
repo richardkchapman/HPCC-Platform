@@ -92,35 +92,37 @@ class ThreadTest : public CppUnit::TestFixture
 
     void testAsyncFor()
     {
-        for (;;)
+        static atomic_t total;
+        class l1 : public CAsyncFor
         {
-            static atomic_t total;
-            class l1 : public CAsyncFor
+            virtual void Do(unsigned idx)
             {
-                virtual void Do(unsigned idx)
+                class l2 : public CAsyncFor
                 {
-                    class l2 : public CAsyncFor
+                    virtual void Do(unsigned idx)
                     {
-                        virtual void Do(unsigned idx)
+                        class l3 : public CAsyncFor
                         {
-                            class l3 : public CAsyncFor
+                            virtual void Do(unsigned idx)
                             {
-                                virtual void Do(unsigned idx)
-                                {
-                                    // Nothing
-                                    atomic_inc(&total);
-                                }
-                            } c3;
-                            c3.For(2,2);
-                        }
-                    } c2;
-                    c2.For(50,50);
+                                // Nothing
+                                atomic_inc(&total);
+                            }
+                        } c3;
+                        c3.For(2,2);
+                    }
+                } c2;
+                if (idx < 16)
+                {
+                    for (;;)
+                        ;
                 }
-            } c1;
-            c1.For(100,10);
-            ASSERT(atomic_read(&total) == 10000);
-            atomic_set(&total, 0);
-        }
+                else
+                    c2.For(5000000,50);
+            }
+        } c1;
+        c1.For(100,100);
+//        ASSERT(atomic_read(&total) == 10000);
     }
 };
 
