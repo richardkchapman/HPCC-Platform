@@ -6217,7 +6217,7 @@ IHqlExpression * WorkflowTransformer::transformInternalFunction(IHqlExpression *
     HqlExprArray funcdefArgs;
     funcdefArgs.append(*LINK(newBody));
 
-    if (ecl->getOperator() == no_embedbody)
+    if (ecl->getOperator() == no_embedbody && ecl->hasAttribute(languageAtom))
     {
         IHqlExpression * outofline = newFuncDef->queryChild(0);
         IHqlExpression * formals = newFuncDef->queryChild(1);
@@ -6285,6 +6285,9 @@ IHqlExpression * WorkflowTransformer::transformInternalFunction(IHqlExpression *
         OwnedHqlExpr namedFuncDef = newFuncDef->clone(funcdefArgs);
         inheritDependencies(namedFuncDef);
 
+        if (ecl->getOperator() == no_embedbody)
+            return namedFuncDef.getClear();
+
         WorkflowItem * item = new WorkflowItem(namedFuncDef);
         workflowOut->append(*item);
         OwnedHqlExpr external = createExternalFuncdefFromInternal(namedFuncDef);
@@ -6305,7 +6308,7 @@ IHqlExpression * WorkflowTransformer::transformInternalCall(IHqlExpression * tra
     if (body->getOperator() == no_outofline)
     {
         IHqlExpression * ecl = body->queryChild(0);
-        if (ecl->getOperator() == no_embedbody)
+        if (ecl->getOperator() == no_embedbody && ecl->hasAttribute(languageAtom))
         {
             // Copy the new default value into the end of the parameters array
             parameters.append(*LINK(newFuncDef->queryChild(2)->queryChild(parameters.length())));

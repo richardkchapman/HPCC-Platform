@@ -11772,7 +11772,8 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
     if (formals->numChildren())
     {
         optionsParam = formals->queryChild(formals->numChildren()-1);
-        assertex(optionsParam->queryId()==__optionsId);
+        if (optionsParam->queryId() != __optionsId)
+            optionsParam = nullptr;
     }
     if (formals->numChildren()==(optionsParam ? 1 : 0))
         createParam.append("|EFnoparams");
