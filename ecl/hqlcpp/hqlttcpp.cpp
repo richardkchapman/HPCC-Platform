@@ -6262,6 +6262,7 @@ IHqlExpression * WorkflowTransformer::transformInternalFunction(IHqlExpression *
         HqlExprArray newFormals;
         HqlExprArray attrs;
         unwindChildren(newFormals, formals);
+        attrs.append(*createAttribute(_hidden_Atom));
         newFormals.append(*createParameter(__optionsId, newFormals.length(), LINK(unknownVarStringType), attrs));
 
         HqlExprArray newDefaults;
@@ -6305,7 +6306,7 @@ IHqlExpression * WorkflowTransformer::transformInternalCall(IHqlExpression * tra
     unwindChildren(parameters, transformed);
 
     IHqlExpression * body = newFuncDef->queryChild(0);
-    if (body->getOperator() == no_outofline)
+    if (body && body->getOperator() == no_outofline)
     {
         IHqlExpression * ecl = body->queryChild(0);
         if (ecl->getOperator() == no_embedbody && ecl->hasAttribute(languageAtom))
