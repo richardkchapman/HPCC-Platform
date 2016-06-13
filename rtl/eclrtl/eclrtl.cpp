@@ -5302,7 +5302,7 @@ void rtlAddExceptionTag(StringBuffer & errorText, const char * tag, const char *
 
 //---------------------------------------------------------------------------
 
-void rtlSubstituteEmbeddedScript(size32_t __lenResult, const char * &__result, size32_t scriptChars, const char *script, size32_t outFieldsChars, const char *outFields, size32_t searchChars, const char *search)
+void rtlSubstituteEmbeddedScript(size32_t &__lenResult, char * &__result, size32_t scriptChars, const char *script, size32_t outFieldsChars, const char *outFields, size32_t searchChars, const char *search)
 {
     StringBuffer result;
     result.append(rtlUtf8Size(scriptChars, script), script);

@@ -11816,18 +11816,34 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
             fieldlist.append(',').append(fieldName->queryStr());
         }
         assertex(fieldlist.length());
-        OwnedHqlExpr query;
-        if (queryParam)
-            query.setown(createActualFromFormal(queryParam));
+        LinkedHqlExpr substSearch = queryAttributeChild(bodyCode, projectedAtom, 0);
+        if (!substSearch)
+            substSearch.setown(createConstant("OUTPUTFIELDS()"));
+        IValue *substValue = substSearch->queryValue();
+        if (queryParam || !substValue)
+        {
+            HqlExprArray args;
+            if (queryParam)
+                args.append(*createActualFromFormal(queryParam));
+            else
+                args.append(*LINK(bodyCode->queryChild(0)));
+            args.append(*createConstant(createUtf8Value(fieldlist.length()-1, fieldlist+1, makeUtf8Type(UNKNOWN_LENGTH, NULL))));
+            args.append(*LINK(substSearch));
+            scriptArgs.append(*bindFunctionCall(substituteEmbeddedScriptId, args,makeUtf8Type(UNKNOWN_LENGTH, NULL)));
+        }
         else
-            query.setown(bodyCode->queryChild(0));
-        OwnedHqlExpr fieldsExpr = createConstant(createUtf8Value(fieldlist.length()-1, fieldlist+1, makeUtf8Type(UNKNOWN_LENGTH, NULL)));
-
-        HqlExprArray args;
-        args.append(*query.getClear());
-        args.append(*fieldsExpr.getClear());
-        args.append(*createConstant("OUTPUTFIELDS()"));
-        scriptArgs.append(*bindFunctionCall(substituteEmbeddedScriptId, args,makeUtf8Type(UNKNOWN_LENGTH, NULL)));
+        {
+            IValue *query = bodyCode->queryChild(0)->queryValue();
+            assertex(query);
+            StringBuffer origBody;
+            query->getUTF8Value(origBody);
+            StringBuffer search;
+            substValue->getUTF8Value(search);
+            rtlDataAttr result;
+            unsigned resultLen;
+            rtlSubstituteEmbeddedScript(resultLen, result.refstr(), origBody.length(), origBody.str(), fieldlist.length()-1, fieldlist.str()+1, search.length(), search.str());
+            scriptArgs.append(*createConstant(createUtf8Value(resultLen, result.getstr(), makeUtf8Type(resultLen, NULL))));
+        }
     }
     else
     {

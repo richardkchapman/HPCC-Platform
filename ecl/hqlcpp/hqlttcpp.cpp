@@ -6281,7 +6281,7 @@ IHqlExpression * WorkflowTransformer::transformInternalFunction(IHqlExpression *
         newDefaults.append(*folded.getClear());
 
         IHqlExpression *query = bodyCode->queryChild(0);
-        if (!bodyCode->queryValue())
+        if (!query->queryValue())
         {
             newFormals.append(*createParameter(__queryId, newFormals.length(), LINK(unknownUtf8Type), attrs));
             newDefaults.append(*LINK(query));
