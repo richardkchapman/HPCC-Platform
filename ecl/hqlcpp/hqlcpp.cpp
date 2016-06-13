@@ -11769,13 +11769,19 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
         createParam.append("|EFnoreturn");
 
     IHqlExpression *optionsParam = nullptr;
-    if (formals->numChildren())
+    IHqlExpression *queryParam = nullptr;
+    unsigned numRealParams = 0;
+    ForEachChild(formalIdx, formals)
     {
-        optionsParam = formals->queryChild(formals->numChildren()-1);
-        if (optionsParam->queryId() != __optionsId)
-            optionsParam = nullptr;
+        IHqlExpression *formal = formals->queryChild(formalIdx);
+        if (formal->queryId()==__optionsId)
+            optionsParam = formal;
+        else if (formal->queryId()==__queryId)
+            queryParam = formal;
+        else
+            numRealParams++;
     }
-    if (formals->numChildren()==(optionsParam ? 1 : 0))
+    if (!numRealParams)
         createParam.append("|EFnoparams");
 
     if (optionsParam)
@@ -11794,8 +11800,9 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
 
     HqlExprArray scriptArgs;
     scriptArgs.append(*LINK(ctxVar));
-    if (bodyCode->hasAttribute(_projected_Atom))
+    if (bodyCode->hasAttribute(projectedAtom))
     {
+        assertex(!isImport);
         // Generate the field list from the output record
         StringBuffer fieldlist;
         IHqlExpression *outRec = bodyCode->queryChild(1);
@@ -11809,21 +11816,34 @@ void HqlCppTranslator::buildScriptFunctionDefinition(BuildCtx &funcctx, IHqlExpr
             fieldlist.append(',').append(fieldName->queryStr());
         }
         assertex(fieldlist.length());
-        StringBuffer origBody;
-        IValue *origValue = bodyCode->queryChild(0)->queryValue();
-        origValue->getUTF8Value(origBody);
-        origBody.replaceString("OUTPUTFIELDS()", fieldlist+1);
-        scriptArgs.append(*createConstant(createUtf8Value(origBody.length(), origBody.str(), makeUtf8Type(UNKNOWN_LENGTH, NULL))));
+        OwnedHqlExpr query;
+        if (queryParam)
+            query.setown(createActualFromFormal(queryParam));
+        else
+            query.setown(bodyCode->queryChild(0));
+        OwnedHqlExpr fieldsExpr = createConstant(createUtf8Value(fieldlist.length()-1, fieldlist+1, makeUtf8Type(UNKNOWN_LENGTH, NULL)));
+
+        HqlExprArray args;
+        args.append(*query.getClear());
+        args.append(*fieldsExpr.getClear());
+        args.append(*createConstant("OUTPUTFIELDS()"));
+        scriptArgs.append(*bindFunctionCall(substituteEmbeddedScriptId, args,makeUtf8Type(UNKNOWN_LENGTH, NULL)));
     }
     else
     {
-        scriptArgs.append(*LINK(bodyCode->queryChild(0)));
+        if (queryParam)
+        {
+            OwnedHqlExpr query = createActualFromFormal(queryParam);
+            scriptArgs.append(*query.getClear());
+        }
+        else
+            scriptArgs.append(*LINK(bodyCode->queryChild(0)));
     }
     buildFunctionCall(funcctx, isImport ? importId : compileEmbeddedScriptId, scriptArgs);
     ForEachChild(i, formals)
     {
         IHqlExpression * param = formals->queryChild(i);
-        if (param == optionsParam)
+        if (param == optionsParam || param==queryParam)
             continue;
         HqlExprArray args;
         args.append(*LINK(ctxVar));

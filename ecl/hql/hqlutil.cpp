@@ -83,7 +83,7 @@ MODULE_INIT(INIT_PRIORITY_STANDARD)
     cacheEmbeddedAttr = createAttribute(embeddedAtom);
     cacheInlineAttr = createAttribute(inlineAtom);
     cacheLinkCountedAttr = createAttribute(_linkCounted_Atom);
-    cacheProjectedAttr = createAttribute(_projected_Atom);
+    cacheProjectedAttr = createAttribute(projectedAtom);
     cacheReferenceAttr = createAttribute(referenceAtom);
     cacheStreamedAttr = createAttribute(streamedAtom);
     cacheUnadornedAttr = createAttribute(_propUnadorned_Atom);
@@ -5654,7 +5654,7 @@ bool isProjectableCall(IHqlExpression *expr)
     if ((funcdef->getOperator() == no_funcdef) && (body->getOperator() == no_outofline))
     {
         IHqlExpression * bodycode = body->queryChild(0);
-        if (bodycode->getOperator() == no_embedbody && bodycode->hasAttribute(_projected_Atom))
+        if (bodycode->getOperator() == no_embedbody && bodycode->hasAttribute(projectedAtom))
             return true;
     }
     return false;

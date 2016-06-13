@@ -6279,6 +6279,14 @@ IHqlExpression * WorkflowTransformer::transformInternalFunction(IHqlExpression *
         while (newDefaults.length() < formals->numChildren())
             newDefaults.append(*createOmittedValue());
         newDefaults.append(*folded.getClear());
+
+        IHqlExpression *query = bodyCode->queryChild(0);
+        if (!bodyCode->queryValue())
+        {
+            newFormals.append(*createParameter(__queryId, newFormals.length(), LINK(unknownUtf8Type), attrs));
+            newDefaults.append(*LINK(query));
+        }
+
         formals = formals->clone(newFormals);
         defaults = createValueSafe(no_sortlist, makeSortListType(NULL), newDefaults);
         funcdefArgs.append(*LINK(formals));
@@ -6319,8 +6327,11 @@ IHqlExpression * WorkflowTransformer::transformInternalCall(IHqlExpression * tra
         IHqlExpression * ecl = body->queryChild(0);
         if (ecl->getOperator() == no_embedbody && ecl->hasAttribute(languageAtom))
         {
-            // Copy the new default value into the end of the parameters array
-            parameters.append(*LINK(newFuncDef->queryChild(2)->queryChild(parameters.length())));
+            // Copy the new default value(s) into the end of the parameters array
+            IHqlExpression *formals = newFuncDef->queryChild(1);
+            IHqlExpression *defaults = newFuncDef->queryChild(2);
+            while (parameters.length() < formals->numChildren())
+                parameters.append(*LINK(defaults->queryChild(parameters.length())));
         }
     }
 

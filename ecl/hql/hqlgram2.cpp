@@ -935,15 +935,19 @@ IHqlExpression * HqlGram::processEmbedBody(const attribute & errpos, IHqlExpress
             // MORE - create an expression that calls it, and const fold it, I guess....
         }
         args.append(*createExprAttribute(languageAtom, getEmbedContextFunc.getClear()));
-        StringBuffer text;
-        embedText->queryValue()->getStringValue(text);
-        if (strstr(text, "OUTPUTFIELDS()"))
+        if (embedText->queryValue()) // if not constant, they can still put the projected flag on themselves...
+        {
+            StringBuffer text;
+            embedText->queryValue()->getStringValue(text);
+            if (strstr(text, "OUTPUTFIELDS()"))
+                args.append(*getProjectedAttr());
+        }
+        if (hasAttribute(projectedAtom, args))  // Added above or explicitly by user
         {
             if (!record)
-                reportError(ERR_EMBEDPROJECT_INVALID, errpos, "OUTPUTFIELDS() should only be used when returning a record type");
+                reportError(ERR_EMBEDPROJECT_INVALID, errpos, "OUTPUTFIELDS()/PROJECTED should only be used when returning a record type");
             if (!isSimpleRecord(record))
-                reportError(ERR_EMBEDPROJECT_INVALID, errpos, "OUTPUTFIELDS() requires a simple output record (no nested records or IFBLOCKs)");
-            args.append(*getProjectedAttr());
+                reportError(ERR_EMBEDPROJECT_INVALID, errpos, "OUTPUTFIELDS()/PROJECTED requires a simple output record (no nested records or IFBLOCKs)");
         }
     }
     if (!checkAllowed(errpos, "cpp", "Embedded code"))

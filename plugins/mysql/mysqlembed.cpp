@@ -1431,9 +1431,9 @@ public:
     {
         throwUnexpected();
     }
-    virtual void compileEmbeddedScript(size32_t chars, const char *script)
+    virtual void compileEmbeddedScript(size32_t scriptChars, const char *script)
     {
-        size32_t len = rtlUtf8Size(chars, script);
+        size32_t len = rtlUtf8Size(scriptChars, script);
         Owned<MySQLStatement> stmt  = new MySQLStatement(mysql_stmt_init(*conn));
         if (!*stmt)
             fail("failed to create statement");
