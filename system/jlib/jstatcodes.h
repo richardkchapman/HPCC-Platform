@@ -23,6 +23,8 @@
 #define EdgeScopePrefix "e"
 #define SubGraphScopePrefix "sg"
 #define GraphScopePrefix "graph"
+#define FunctionScopePrefix "f"
+
 #define CONST_STRLEN(x) (sizeof(x)-1)       // sizeof(const-string) = strlen(const-string) + 1 byte for the \0 terminator
 #define MATCHES_CONST_PREFIX(search, prefix) (strncmp(search, prefix, CONST_STRLEN(prefix)) == 0)
 
@@ -63,6 +65,7 @@ enum StatisticScopeType
     SSTcompilestage,                    // a stage within the compilation process
     SSTdfuworkunit,                     // a reference to an executing dfu workunit
     SSTedge,
+    SSTfunction,                        // a function call
     SSTmax
 };
 
@@ -175,9 +178,8 @@ enum StatisticKind
     StSizeSpillFile,
     StCycleSpillElapsedCycles,
     StCycleSortElapsedCycles,
-
-    // Stranding stats - on edge
-    StNumStrands,
+    StNumStrands,                       // Stranding stats - on edge
+    StNumCalls,
 
     StMax,
 

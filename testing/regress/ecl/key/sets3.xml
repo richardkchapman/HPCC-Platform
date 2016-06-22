@@ -8,3 +8,6 @@
  <Row><id>1</id></Row>
  <Row><id>2</id></Row>
 </Dataset>
+<Dataset name='Result 4'>
+ <Row><Result_4><Item>1</Item><Item>4</Item></Result_4></Row>
+</Dataset>

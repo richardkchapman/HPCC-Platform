@@ -541,6 +541,15 @@ public:
     virtual unsigned getResultHash(const char * name, unsigned sequence) { throwUnexpected(); }
     virtual unsigned getExternalResultHash(const char * wuid, const char * name, unsigned sequence) { throwUnexpected(); }
 
+    virtual ISectionTimer * registerTimer(unsigned subgraphId, unsigned activityId, const char * name)
+    {
+        return queryNullSectionTimer();
+    }
+    virtual unsigned __int64 getCyclesNow()
+    {
+        return get_cycles_now();
+    }
+
     // Not yet thought about these....
 
     virtual char *getWuid() { throwUnexpected(); } // caller frees return string.

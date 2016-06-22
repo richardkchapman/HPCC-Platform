@@ -1778,7 +1778,8 @@ protected:
             virtual IEngineContext *queryEngineContext() { return NULL; }
             virtual char *getDaliServers() { throwUnexpected(); }
             virtual IWorkUnit* updateWorkUnit() const { throwUnexpected(); }
-
+            virtual ISectionTimer * registerTimer(unsigned subgraphId, unsigned activityId, const char * name) { throwUnexpected(); }
+            virtual unsigned __int64 getCyclesNow() { return get_cycles_now(); }
         } ctx;
 
         size32_t lenResult;

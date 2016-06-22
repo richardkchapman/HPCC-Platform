@@ -65,7 +65,7 @@ void setStatisticsComponentName(StatisticCreatorType processType, const char * p
 // Textual forms of the different enumerations, first items are for none and all.
 static const char * const measureNames[] = { "", "all", "ns", "ts", "cnt", "sz", "cpu", "skw", "node", "ppm", "ip", "cy", NULL };
 static const char * const creatorTypeNames[]= { "", "all", "unknown", "hthor", "roxie", "roxie:s", "thor", "thor:m", "thor:s", "eclcc", "esp", "summary", NULL };
-static const char * const scopeTypeNames[] = { "", "all", "global", "graph", "subgraph", "activity", "allocator", "section", "compile", "dfu", "edge", NULL };
+static const char * const scopeTypeNames[] = { "", "all", "global", "graph", "subgraph", "activity", "allocator", "section", "compile", "dfu", "edge", "function", NULL };
 
 static unsigned matchString(const char * const * names, const char * search)
 {
@@ -582,6 +582,7 @@ static const StatisticMeta statsMetaData[StMax] = {
     { CYCLESTAT(SpillElapsedCycles) },
     { CYCLESTAT(SortElapsedCycles) },
     { NUMSTAT(Strands) },
+    { NUMSTAT(Calls) },
 };
 
 
@@ -905,19 +906,28 @@ StringBuffer & StatsScopeId::getScopeText(StringBuffer & out) const
         return out.append(ActivityScopePrefix).append(id);
     case SSTedge:
         return out.append(EdgeScopePrefix).append(id).append("_").append(extra);
+    case SSTfunction:
+        return out.append(FunctionScopePrefix).append(name);
     default:
         throwUnexpected();
+        break;
     }
 }
 
 unsigned StatsScopeId::getHash() const
 {
-    return hashc((const byte *)&id, sizeof(id), (unsigned)scopeType);
+    switch (scopeType)
+    {
+    case SSTfunction:
+        return hashc((const byte *)name.get(), strlen(name), (unsigned)scopeType);
+    default:
+        return hashc((const byte *)&id, sizeof(id), (unsigned)scopeType);
+    }
 }
 
 bool StatsScopeId::matches(const StatsScopeId & other) const
 {
-    return (scopeType == other.scopeType) && (id == other.id) && (extra == other.extra);
+    return (scopeType == other.scopeType) && (id == other.id) && (extra == other.extra) && strsame(name, other.name);
 }
 
 unsigned StatsScopeId::queryActivity() const
@@ -948,8 +958,12 @@ void StatsScopeId::deserialize(MemoryBuffer & in, unsigned version)
         in.read(id);
         in.read(extra);
         break;
+    case SSTfunction:
+        in.read(name);
+        break;
     default:
         throwUnexpected();
+        break;
     }
 }
 
@@ -967,8 +981,12 @@ void StatsScopeId::serialize(MemoryBuffer & out) const
         out.append(id);
         out.append(extra);
         break;
+    case SSTfunction:
+        out.append(name);
+        break;
     default:
         throwUnexpected();
+        break;
     }
 }
 
@@ -994,6 +1012,8 @@ bool StatsScopeId::setScopeText(const char * text)
             return false;
         setEdgeId(atoi(text + CONST_STRLEN(EdgeScopePrefix)), atoi(underscore+1));
     }
+    else if (MATCHES_CONST_PREFIX(text, FunctionScopePrefix))
+        setFunctionId(text+CONST_STRLEN(FunctionScopePrefix));
     else
         return false;
 
@@ -1011,6 +1031,11 @@ void StatsScopeId::setEdgeId(unsigned _id, unsigned _output)
 void StatsScopeId::setSubgraphId(unsigned _id)
 {
     setId(SSTsubgraph, _id);
+}
+void StatsScopeId::setFunctionId(const char * _name)
+{
+    scopeType = SSTfunction;
+    name.set(_name);
 }
 
 //--------------------------------------------------------------------------------------------------------------------

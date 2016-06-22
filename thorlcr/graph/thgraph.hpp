@@ -535,6 +535,14 @@ class graph_decl CGraphBase : public CInterface, implements IEclGraphResults, im
             return ctx->getDaliServers();
         }
         virtual IWorkUnit *updateWorkUnit() const { return ctx->updateWorkUnit(); }
+        virtual ISectionTimer * registerTimer(unsigned subgraphId, unsigned activityId, const char * name)
+        {
+            return ctx->registerTimer(subgraphId, activityId, name);
+        }
+        virtual unsigned __int64 getCyclesNow()
+        {
+            return get_cycles_now();
+        }
    } graphCodeContext;
 
 protected:

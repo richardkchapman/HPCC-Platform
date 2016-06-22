@@ -1125,6 +1125,60 @@ public:
 
 //---------------------------------------------------------------------------------------
 
+class RoxieSectionTimer : public CSimpleInterfaceOf<ISectionTimer>
+{
+public:
+    RoxieSectionTimer(const char * _name, unsigned _subgraphId, unsigned _activityId)
+    : name(_name), subgraphId(_subgraphId), activityId(_activityId)
+    {}
+
+    bool matches(const char * _name, unsigned _subgraphId, unsigned _activityId) const
+    {
+        return (subgraphId == _subgraphId) && (activityId == _activityId) && strsame(name, _name);
+    }
+
+    virtual void noteSectionTime(unsigned __int64 startCycles)
+    {
+        cycle_t delay = get_cycles_now() - startCycles;
+        elapsed.add_fetch(delay);
+        occurences++;
+    }
+
+    void recordStatistics(IStatisticGatherer & builder)
+    {
+        if (occurences)
+        {
+            if (activityId)
+            {
+                StatsSubgraphScope graphScope(builder, subgraphId);
+                StatsActivityScope activityScope(builder, activityId);
+                addStatistics(builder);
+            }
+            else
+                addStatistics(builder);
+        }
+    }
+
+protected:
+    void addStatistics(IStatisticGatherer & builder)
+    {
+        StatsScope funcScope(builder, StatsScopeId(SSTfunction, name));
+        builder.addStatistic(StTimeLocalExecute, elapsed);
+        builder.addStatistic(StNumCalls, occurences);
+    }
+
+private:
+    RelaxedAtomic<cycle_t> elapsed = {0};
+    RelaxedAtomic<unsigned __int64> occurences = {0};
+    StringAttr name;
+    unsigned subgraphId = 0;
+    unsigned activityId = 0;
+};
+
+
+
+//---------------------------------------------------------------------------------------
+
 class CRoxieContextBase : public CInterface, implements IRoxieSlaveContext, implements ICodeContext, implements roxiemem::ITimeLimiter, implements IRowAllocatorMetaActIdCacheCallback
 {
 protected:
@@ -1470,7 +1524,13 @@ public:
             graph.clear();
             childGraphs.kill();
             if (graphStats)
+            {
+                IStatisticGatherer & builder = graphStats->queryStatsBuilder();
+                ForEachItemIn(i, functionStats)
+                    functionStats.item(i).recordStatistics(builder);
+                functionStats.kill();
                 graphStats.clear();
+            }
             if (error)
                 throw error;
         }
@@ -1972,6 +2032,14 @@ public:
         useContext(sequence).getProp(name, x);
         return rtlVCodepageToVUnicodeX(x.str(), "utf-8");
     }
+    virtual ISectionTimer * registerTimer(unsigned subgraphId, unsigned activityId, const char * name)
+    {
+        return queryNullSectionTimer();
+    }
+    virtual unsigned __int64 getCyclesNow()
+    {
+        return get_cycles_now();
+    }
 
 protected:
     mutable CriticalSection contextCrit;
@@ -1981,6 +2049,7 @@ protected:
     IPropertyTree *rereadResults;
     PTreeReaderOptions xmlStoredDatasetReadFlags;
     CDeserializedResultStore *deserializedResultStore;
+    IArrayOf<RoxieSectionTimer> functionStats;
 
     IPropertyTree &useContext(unsigned sequence)
     {
@@ -3533,6 +3602,19 @@ public:
     IUserDescriptor *queryUserDescriptor()
     {
         return NULL; // TBD - Richard, where do user credentials for a roxie query come from
+    }
+
+    virtual ISectionTimer * registerTimer(unsigned subgraphId, unsigned activityId, const char * name)
+    {
+        ForEachItemIn(i, functionStats)
+        {
+            RoxieSectionTimer & cur = functionStats.item(i);
+            if (cur.matches(name, subgraphId, activityId))
+                return &cur;
+        }
+        RoxieSectionTimer * stat = new RoxieSectionTimer(name, subgraphId, activityId);
+        functionStats.append(*stat);
+        return stat;
     }
 
     virtual bool isResult(const char * name, unsigned sequence)

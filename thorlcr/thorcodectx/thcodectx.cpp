@@ -29,6 +29,7 @@
 #include "thorxmlread.hpp"
 #include "thgraph.hpp"
 #include "thorxmlwrite.hpp"
+#include "roxiehelper.hpp"
 
 CThorCodeContextBase::CThorCodeContextBase(CJobChannel &_jobChannel, ILoadedDllEntry &_querySo, IUserDescriptor &_userDesc) : jobChannel(_jobChannel), querySo(_querySo), userDesc(&_userDesc)
 {
@@ -153,4 +154,14 @@ const void * CThorCodeContextBase::fromXml(IEngineRowAllocator * rowAllocator, s
 const void * CThorCodeContextBase::fromJson(IEngineRowAllocator * rowAllocator, size32_t len, const char * utf8, IXmlToRowTransformer * xmlTransformer, bool stripWhitespace)
 {
     return createRowFromJson(rowAllocator, len, utf8, xmlTransformer, stripWhitespace);
+}
+
+ISectionTimer * CThorCodeContextBase::registerTimer(unsigned subgraphId, unsigned activityId, const char * name)
+{
+    return queryNullSectionTimer();
+}
+
+unsigned __int64 CThorCodeContextBase::getCyclesNow()
+{
+    return get_cycles_now();
 }

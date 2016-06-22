@@ -31,9 +31,13 @@ inline StatisticKind queryStatsVariant(StatisticKind kind) { return (StatisticKi
 class jlib_decl StatsScopeId
 {
 public:
-    StatsScopeId() : id(0), extra(0), scopeType(SSTnone) {}
+    StatsScopeId() {}
     StatsScopeId(StatisticScopeType _scopeType, unsigned _id, unsigned _extra = 0)
         : id(_id), extra(_extra), scopeType(_scopeType)
+    {
+    }
+    StatsScopeId(StatisticScopeType _scopeType, const char * _name)
+        : name(_name), scopeType(_scopeType)
     {
     }
 
@@ -51,15 +55,17 @@ public:
     void setId(StatisticScopeType _scopeType, unsigned _id, unsigned _extra = 0);
     void setActivityId(unsigned _id);
     void setEdgeId(unsigned _id, unsigned _output);
+    void setFunctionId(const char * _name);
     void setSubgraphId(unsigned _id);
 
     bool operator == (const StatsScopeId & other) const { return matches(other); }
 
 protected:
     //If any more items are added then this could become a union...
-    unsigned id;
-    unsigned extra;
-    StatisticScopeType scopeType;
+    unsigned id = 0;
+    unsigned extra = 0;
+    StringAttr name;
+    StatisticScopeType scopeType = SSTnone;
 };
 
 interface IStatisticCollectionIterator;
@@ -159,6 +165,16 @@ public:
         gatherer.beginEdgeScope(id, oid);
     }
 };
+
+class StatsScope : public StatsScopeBlock
+{
+public:
+    inline StatsScope(IStatisticGatherer & _gatherer, const StatsScopeId & id) : StatsScopeBlock(_gatherer)
+    {
+        gatherer.beginScope(id);
+    }
+};
+
 
 //---------------------------------------------------------------------------------------------------------------------
 
