@@ -23,6 +23,7 @@
 #include "rtlread_imp.hpp"
 #include "thorplugin.hpp"
 #include "thorxmlread.hpp"
+#include "thorstats.hpp"
 #include "roxiemem.hpp"
 #include "eventqueue.hpp"
 
@@ -1179,6 +1180,8 @@ private:
 
 //---------------------------------------------------------------------------------------
 
+static const StatisticsMapping graphStatistics(StKindAll, StKindNone);
+
 class CRoxieContextBase : public CInterface, implements IRoxieSlaveContext, implements ICodeContext, implements roxiemem::ITimeLimiter, implements IRowAllocatorMetaActIdCacheCallback
 {
 protected:
@@ -1261,7 +1264,7 @@ protected:
 public:
     IMPLEMENT_IINTERFACE;
     CRoxieContextBase(const IQueryFactory *_factory, const IRoxieContextLogger &_logctx)
-        : factory(_factory), logctx(_logctx), options(factory->queryOptions())
+        : factory(_factory), logctx(_logctx), options(factory->queryOptions()), globalStats(graphStatistics)
     {
         startTime = lastWuAbortCheck = msTick();
         persists = NULL;
@@ -1523,14 +1526,7 @@ public:
             }
             graph.clear();
             childGraphs.kill();
-            if (graphStats)
-            {
-                IStatisticGatherer & builder = graphStats->queryStatsBuilder();
-                ForEachItemIn(i, functionStats)
-                    functionStats.item(i).recordStatistics(builder);
-                functionStats.kill();
-                graphStats.clear();
-            }
+            graphStats.clear();
             if (error)
                 throw error;
         }
@@ -2049,7 +2045,8 @@ protected:
     IPropertyTree *rereadResults;
     PTreeReaderOptions xmlStoredDatasetReadFlags;
     CDeserializedResultStore *deserializedResultStore;
-    IArrayOf<RoxieSectionTimer> functionStats;
+    MapStringToMyClass<ThorSectionTimer> functionTimers;
+    CRuntimeStatisticCollection globalStats;
 
     IPropertyTree &useContext(unsigned sequence)
     {
@@ -2669,6 +2666,18 @@ protected:
 
     void doPostProcess()
     {
+        if (workUnit)
+        {
+            WorkunitUpdate w(&workUnit->lock());
+            Owned<IStatisticGatherer> builder = createGlobalStatisticGatherer(w);
+            globalStats.recordStatistics(*builder);
+            // Or we could put them in a dummy graph:
+            // Owned<IWUGraphStats> nographStats = workUnit->updateStats("graph0", SCTroxie, queryStatisticsComponentName(), 0);
+            // IStatisticGatherer & builder = nographStats->queryStatsBuilder();
+            // globalStats.recordStatistics(builder);
+        }
+        logctx.mergeStats(globalStats);
+        globalStats.reset();
         if (!protocol)
             return;
 
@@ -3612,15 +3621,13 @@ public:
             if (act)
                 return act->registerTimer(subgraphId, activityId, name);
         }
-        ForEachItemIn(i, functionStats)
+        ISectionTimer *timer = functionTimers.getValue(name);
+        if (!timer)
         {
-            RoxieSectionTimer & cur = functionStats.item(i);
-            if (cur.matches(name, subgraphId, activityId))
-                return &cur;
+            timer = ThorSectionTimer::createTimer(globalStats, name);
+            functionTimers.setValue(name, timer);
         }
-        RoxieSectionTimer * stat = new RoxieSectionTimer(name, subgraphId, activityId);
-        functionStats.append(*stat);
-        return stat;
+        return timer;
     }
 
     virtual bool isResult(const char * name, unsigned sequence)

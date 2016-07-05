@@ -1198,9 +1198,10 @@ public:
             daliHelper->noteWorkunitRunning(wuid.get(), false);
         if (standalone)
         {
+            wu->getStatistics(nullptr);
             StringBuffer wuXML;
             exportWorkUnitToXML(wu, wuXML, true, true, true);
-//            DBGLOG("%s", wuXML.str());
+            DBGLOG("%s", wuXML.str());
         }
         clearKeyStoreCache(false);   // Bit of a kludge - cache should really be smarter
     }

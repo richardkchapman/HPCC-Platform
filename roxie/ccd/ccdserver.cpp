@@ -26720,6 +26720,8 @@ public:
     virtual IRoxieServerActivity *queryActivity(unsigned _activityId)
     {
         unsigned idx = graphDefinition.findActivityIndex(_activityId);
+        if (idx==NotFound)
+            return nullptr;
         assertex(activities.isItem(idx));
         IRoxieServerActivity *activity = &activities.item(idx);
         assertex(activity->queryId() == _activityId);
