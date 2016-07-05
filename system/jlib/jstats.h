@@ -277,36 +277,44 @@ extern const jlib_decl StatisticsMapping diskWriteRemoteStatistics;
 
 //---------------------------------------------------------------------------------------------------------------------
 
-//MORE: We probably want to have functions that perform the atomic equivalents
 class jlib_decl CRuntimeStatistic
 {
 public:
     CRuntimeStatistic() : value(0) {}
-    inline void add(unsigned __int64 delta) { value += delta; }
-    inline void addAtomic(unsigned __int64 delta) { value += delta; }
+    inline void add(unsigned __int64 delta)
+    {
+        //load and store default to relaxed - so this has no atomic constraints
+        value.store(value.load() + delta);
+    }
+    inline void addAtomic(unsigned __int64 delta)
+    {
+        value.fetch_add(delta);
+    }
     inline unsigned __int64 get() const { return value; }
     inline unsigned __int64 getClear()
     {
         unsigned __int64 ret = value;
-        value -= ret;
+        value.store(0);
         return ret;
     }
     inline unsigned __int64 getClearAtomic()
     {
         unsigned __int64 ret = value;
-        value -= ret; // should be atomic dec...
+        value.fetch_sub(ret);
         return ret;
     }
     inline void clear() { set(0); }
     void merge(unsigned __int64 otherValue, StatsMergeAction mergeAction);
-    inline void set(unsigned __int64 delta) { value = delta; }
+    inline void set(unsigned __int64 _value) { value = _value; }
 
 protected:
-    unsigned __int64 value;
+    RelaxedAtomic<unsigned __int64> value;
 };
 
 //This class is used to gather statistics for an activity - it has no notion of scope.
 interface IContextLogger;
+class CNestedRuntimeStatisticMap;
+
 class jlib_decl CRuntimeStatisticCollection
 {
 public:
@@ -322,10 +330,7 @@ public:
         for (unsigned i=0; i <= num; i++)
             values[i].set(_other.values[i].get());
     }
-    ~CRuntimeStatisticCollection()
-    {
-        delete [] values;
-    }
+    ~CRuntimeStatisticCollection();
 
     inline CRuntimeStatistic & queryStatistic(StatisticKind kind)
     {
@@ -368,6 +373,8 @@ public:
             values[i].clear();
     }
 
+    CRuntimeStatisticCollection & registerNested(const StatsScopeId & scope, const StatisticsMapping & mapping);
+
     inline const StatisticsMapping & queryMapping() const { return mapping; };
     inline unsigned ordinality() const { return mapping.numStatistics(); }
     inline StatisticKind getKind(unsigned i) const { return mapping.getKind(i); }
@@ -393,6 +400,42 @@ protected:
 private:
     const StatisticsMapping & mapping;
     CRuntimeStatistic * values;
+    CNestedRuntimeStatisticMap * nested = nullptr;
+};
+
+class CNestedRuntimeStatisticCollection : public CRuntimeStatisticCollection, public CInterface
+{
+public:
+    CNestedRuntimeStatisticCollection(const StatsScopeId & _scope, const StatisticsMapping & _mapping)
+    : CRuntimeStatisticCollection(_mapping), scope(_scope)
+    {
+    }
+    CNestedRuntimeStatisticCollection(const CNestedRuntimeStatisticCollection & _other)
+    : CRuntimeStatisticCollection(_other), scope(_other.scope)
+    {
+    }
+    bool matches(const StatsScopeId & otherScope) const;
+    bool serialize(MemoryBuffer & out) const;  // Returns true if any non-zero
+    void deserialize(MemoryBuffer & in);
+    void recordStatistics(IStatisticGatherer & target) const;
+
+public:
+    StatsScopeId scope;
+};
+
+class CNestedRuntimeStatisticMap
+{
+public:
+    CRuntimeStatisticCollection & addNested(const StatsScopeId & scope, const StatisticsMapping & mapping);
+
+    bool serialize(MemoryBuffer & out) const;  // Returns true if any non-zero
+    void deserialize(MemoryBuffer & in);
+    void deserializeMerge(MemoryBuffer& in);
+    void recordStatistics(IStatisticGatherer & target) const;
+
+protected:
+    CIArrayOf<CNestedRuntimeStatisticCollection> map;
+
 };
 
 //---------------------------------------------------------------------------------------------------------------------

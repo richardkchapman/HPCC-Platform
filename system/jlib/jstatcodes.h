@@ -117,8 +117,8 @@ enum StatisticKind
     StWhenWorkunitModified,             // Not sure this is very useful
 
     StTimeElapsed,                      // Elapsed wall time between first row and last row
-    StTimeLocalExecute,                 // Time spend processing just this activity
     StTimeTotalExecute,                 // Time executing this activity and all inputs
+    StTimeLocalExecute,                 // Time spend processing just this activity
     StTimeRemaining,
 
     StSizeGeneratedCpp,
@@ -179,7 +179,8 @@ enum StatisticKind
     StCycleSpillElapsedCycles,
     StCycleSortElapsedCycles,
     StNumStrands,                       // Stranding stats - on edge
-    StNumCalls,
+    StCycleTotalExecuteCycles,
+    StNumExecutions,
 
     StMax,
 

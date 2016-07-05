@@ -1164,7 +1164,7 @@ protected:
     {
         StatsScope funcScope(builder, StatsScopeId(SSTfunction, name));
         builder.addStatistic(StTimeLocalExecute, elapsed);
-        builder.addStatistic(StNumCalls, occurences);
+        builder.addStatistic(StNumExecutions, occurences);
     }
 
 private:
