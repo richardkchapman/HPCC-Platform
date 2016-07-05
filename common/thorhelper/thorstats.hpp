@@ -17,8 +17,8 @@
 
 
 
-#ifndef THORSORT_HPP
-#define THORSORT_HPP
+#ifndef THORSTATS_HPP
+#define THORSTATS_HPP
 
 #include "eclhelper.hpp"
 #include "jstats.h"

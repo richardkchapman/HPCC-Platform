@@ -1675,6 +1675,8 @@ bool CNestedRuntimeStatisticCollection::matches(const StatsScopeId & otherScope)
     return scope.matches(otherScope);
 }
 
+//NOTE: When deserializing, the scope is deserialized by the caller, and the correct target selected
+//which is why there is no corresponding deserialize() method
 bool CNestedRuntimeStatisticCollection::serialize(MemoryBuffer& out) const
 {
     scope.serialize(out);

@@ -21,7 +21,7 @@
 #include "jdebug.hpp"
 
 
-//MORE: When do cycles get converted into nanoseconds?
+//Cycles are accumulated locally, time is updated once it is serialized or persisted
 const StatisticsMapping nestedSectionStatistics(StCycleTotalExecuteCycles, StTimeTotalExecute, StNumExecutions, StKindNone);
 
 ThorSectionTimer::ThorSectionTimer(const char * _name, CRuntimeStatistic & _occurences, CRuntimeStatistic & _elapsed)
