@@ -900,7 +900,7 @@ public:
     }
     StringBuffer & toXML(StringBuffer &out) const
     {
-        return out.append("<Stat name=\"").append(queryStatisticName(kind)).append("\" value=\"").append(value).append("\"/>");
+        return out.append("  <Stat name=\"").append(queryStatisticName(kind)).append("\" value=\"").append(value).append("\"/>\n");
     }
 public:
     StatisticKind kind;
@@ -1275,19 +1275,19 @@ private:
 StringBuffer &CStatisticCollection::toXML(StringBuffer &out) const
 {
     out.append("<Scope id=\"");
-    id.getScopeText(out).append("\">");
+    id.getScopeText(out).append("\">\n");
     if (stats.ordinality())
     {
-        out.append("<Stats>");
+        out.append(" <Stats>");
         ForEachItemIn(i, stats)
             stats.item(i).toXML(out);
-        out.append("</Stats>");
+        out.append(" </Stats>\n");
     }
 
     SuperHashIteratorOf<CStatisticCollection> iter(children, false);
     for (iter.first(); iter.isValid(); iter.next())
         iter.query().toXML(out);
-    out.append("</Scope>");
+    out.append("</Scope>\n");
     return out;
 }
 

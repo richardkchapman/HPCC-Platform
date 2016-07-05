@@ -3606,6 +3606,12 @@ public:
 
     virtual ISectionTimer * registerTimer(unsigned subgraphId, unsigned activityId, const char * name)
     {
+        if (subgraphId)
+        {
+            IRoxieServerActivity *act = graph->queryActivity(activityId);
+            if (act)
+                return act->registerTimer(subgraphId, activityId, name);
+        }
         ForEachItemIn(i, functionStats)
         {
             RoxieSectionTimer & cur = functionStats.item(i);

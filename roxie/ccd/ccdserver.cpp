@@ -29,6 +29,7 @@
 #include "thorsoapcall.hpp"
 #include "thorcommon.ipp"
 #include "thorsort.hpp"
+#include "thorstats.hpp"
 #include "jlzw.hpp"
 #include "javahash.hpp"
 #include "javahash.tpp"
@@ -929,6 +930,7 @@ protected:
     CriticalSection statscrit;
 
     mutable CRuntimeStatisticCollection stats;
+    MapStringToMyClass<ThorSectionTimer> functionTimers;
     unsigned processed;
     ActivityTimeAccumulator totalCycles;
     cycle_t localCycles;
@@ -1031,6 +1033,16 @@ public:
     virtual void mergeStats(MemoryBuffer &buf)
     {
         stats.deserializeMerge(buf);
+    }
+    virtual ISectionTimer *registerTimer(unsigned subgraphId, unsigned activityId, const char * name)
+    {
+        ISectionTimer *timer = functionTimers.getValue(name);
+        if (!timer)
+        {
+            timer = ThorSectionTimer::createTimer(stats, name);
+            functionTimers.setValue(name, timer);
+        }
+        return timer;
     }
     void mergeStrandStats(unsigned strandProcessed, const ActivityTimeAccumulator & strandCycles, const CRuntimeStatisticCollection & strandStats)
     {
@@ -26705,6 +26717,15 @@ public:
         return graphName.get();
     }
 
+    virtual IRoxieServerActivity *queryActivity(unsigned _activityId)
+    {
+        unsigned idx = graphDefinition.findActivityIndex(_activityId);
+        assertex(activities.isItem(idx));
+        IRoxieServerActivity *activity = &activities.item(idx);
+        assertex(activity->queryId() == _activityId);
+        return activity;
+    }
+
     void createGraph(IRoxieSlaveContext *_ctx)
     {
         if (graphDefinition.isMultiInstance())
@@ -27087,6 +27108,7 @@ public:
     virtual IRoxieServerChildGraph * queryLoopGraph() { throwUnexpected(); }
     virtual IRoxieServerChildGraph * createGraphLoopInstance(IRoxieSlaveContext *ctx, unsigned loopCounter, unsigned parentExtractSize, const byte * parentExtract, const IRoxieContextLogger &logctx) { throwUnexpected(); }
     virtual const char *queryName() const { throwUnexpected(); }
+    virtual IRoxieServerActivity *queryActivity(unsigned _activityId) { throwUnexpected(); } // MORE - may need something here!?
 
     virtual IEclGraphResults * evaluate(unsigned parentExtractSize, const byte * parentExtract)
     {
@@ -27309,6 +27331,7 @@ public:
     virtual IThorChildGraph * queryChildGraph() { throwUnexpected(); }
     virtual IEclGraphResults * queryLocalGraph() { throwUnexpected(); }
     virtual IRoxieServerChildGraph * queryLoopGraph() { throwUnexpected(); }
+    virtual IRoxieServerActivity *queryActivity(unsigned _activityId) { throwUnexpected(); } // MORE - may need something here!?
 
     virtual void onCreate(IHThorArg *_colocalParent)
     { 
