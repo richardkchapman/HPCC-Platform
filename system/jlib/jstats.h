@@ -394,9 +394,12 @@ public:
     bool serialize(MemoryBuffer & out) const;  // Returns true if any non-zero
     void deserialize(MemoryBuffer & in);
     void deserializeMerge(MemoryBuffer& in);
+
 protected:
+    void ensureNested();
     void reportIgnoredStats() const;
     const CRuntimeStatistic & queryUnknownStatistic() const { return values[mapping.numStatistics()]; }
+
 private:
     const StatisticsMapping & mapping;
     CRuntimeStatistic * values;
@@ -418,6 +421,8 @@ public:
     bool serialize(MemoryBuffer & out) const;  // Returns true if any non-zero
     void deserialize(MemoryBuffer & in);
     void recordStatistics(IStatisticGatherer & target) const;
+    StringBuffer & toStr(StringBuffer &str) const;
+    StringBuffer & toXML(StringBuffer &str) const;
 
 public:
     StatsScopeId scope;
@@ -431,7 +436,10 @@ public:
     bool serialize(MemoryBuffer & out) const;  // Returns true if any non-zero
     void deserialize(MemoryBuffer & in);
     void deserializeMerge(MemoryBuffer& in);
+    void merge(const CNestedRuntimeStatisticMap & other);
     void recordStatistics(IStatisticGatherer & target) const;
+    StringBuffer & toStr(StringBuffer &str) const;
+    StringBuffer & toXML(StringBuffer &str) const;
 
 protected:
     CIArrayOf<CNestedRuntimeStatisticCollection> map;

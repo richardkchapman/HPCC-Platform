@@ -1465,15 +1465,23 @@ extern IStatisticGatherer * createStatisticsGatherer(StatisticCreatorType creato
 
 //--------------------------------------------------------------------------------------------------------------------
 
+void CRuntimeStatistic::merge(unsigned __int64 otherValue, StatsMergeAction mergeAction)
+{
+    value = mergeStatisticValue(value, otherValue, mergeAction);
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+
 CRuntimeStatisticCollection::~CRuntimeStatisticCollection()
 {
     delete [] values;
     delete nested;
 }
 
-void CRuntimeStatistic::merge(unsigned __int64 otherValue, StatsMergeAction mergeAction)
+void CRuntimeStatisticCollection::ensureNested()
 {
-    value = mergeStatisticValue(value, otherValue, mergeAction);
+    if (!nested)
+        nested = new CNestedRuntimeStatisticMap;
 }
 
 void CRuntimeStatisticCollection::merge(const CRuntimeStatisticCollection & other)
@@ -1485,6 +1493,11 @@ void CRuntimeStatisticCollection::merge(const CRuntimeStatisticCollection & othe
         if (value)
             mergeStatistic(kind, other.getStatisticValue(kind));
     }
+    if (other.nested)
+    {
+        ensureNested();
+        nested->merge(*other.nested);
+    }
 }
 
 void CRuntimeStatisticCollection::mergeStatistic(StatisticKind kind, unsigned __int64 value)
@@ -1494,8 +1507,7 @@ void CRuntimeStatisticCollection::mergeStatistic(StatisticKind kind, unsigned __
 
 CRuntimeStatisticCollection & CRuntimeStatisticCollection::registerNested(const StatsScopeId & scope, const StatisticsMapping & mapping)
 {
-    if (!nested)
-        nested = new CNestedRuntimeStatisticMap;
+    ensureNested();
     return nested->addNested(scope, mapping);
 }
 
@@ -1553,6 +1565,8 @@ StringBuffer & CRuntimeStatisticCollection::toXML(StringBuffer &str) const
             str.appendf("<%s>%" I64F "d</%s>", name, value, name);
         }
     }
+    if (nested)
+        nested->toXML(str);
     return str;
 }
 
@@ -1569,6 +1583,8 @@ StringBuffer & CRuntimeStatisticCollection::toStr(StringBuffer &str) const
             formatStatistic(str, value, kind);
         }
     }
+    if (nested)
+        nested->toStr(str);
     return str;
 }
 
@@ -1588,8 +1604,7 @@ void CRuntimeStatisticCollection::deserialize(MemoryBuffer& in)
     in.read(hasNested);
     if (hasNested)
     {
-        if (!nested)
-            nested = new CNestedRuntimeStatisticMap;
+        ensureNested();
         nested->deserializeMerge(in);
     }
 }
@@ -1611,8 +1626,7 @@ void CRuntimeStatisticCollection::deserializeMerge(MemoryBuffer& in)
     in.read(hasNested);
     if (hasNested)
     {
-        if (!nested)
-            nested = new CNestedRuntimeStatisticMap;
+        ensureNested();
         nested->deserializeMerge(in);
     }
 }
@@ -1642,26 +1656,19 @@ bool CRuntimeStatisticCollection::serialize(MemoryBuffer& out) const
         }
     }
 
+
     bool nonEmpty = (numValid != 0);
+    out.append(nested != nullptr);
     if (nested)
     {
-        out.append(true);
         if (nested->serialize(out))
             nonEmpty = true;
     }
-    else
-        out.append(false);
     return nonEmpty;
 }
 
 
 //---------------------------------------------------
-
-void CNestedRuntimeStatisticCollection::deserialize(MemoryBuffer& in)
-{
-    scope.deserialize(in, currentStatisticsVersion);
-    CRuntimeStatisticCollection::deserialize(in);
-}
 
 bool CNestedRuntimeStatisticCollection::matches(const StatsScopeId & otherScope) const
 {
@@ -1677,10 +1684,25 @@ bool CNestedRuntimeStatisticCollection::serialize(MemoryBuffer& out) const
 void CNestedRuntimeStatisticCollection::recordStatistics(IStatisticGatherer & target) const
 {
     target.beginScope(scope);
-    recordStatistics(target);
+    CRuntimeStatisticCollection::recordStatistics(target);
     target.endScope();
 }
 
+StringBuffer & CNestedRuntimeStatisticCollection::toStr(StringBuffer &str) const
+{
+    str.append("{Scope ");
+    scope.getScopeText(str).newline();
+    CRuntimeStatisticCollection::toStr(str);
+    return str.append("}").newline();
+}
+
+StringBuffer & CNestedRuntimeStatisticCollection::toXML(StringBuffer &str) const
+{
+    str.append("<Scope id=\"");
+    scope.getScopeText(str).append("\">");
+    CRuntimeStatisticCollection::toXML(str);
+    return str.append("</Scope>");
+}
 
 //---------------------------------------------------
 
@@ -1728,6 +1750,16 @@ void CNestedRuntimeStatisticMap::deserializeMerge(MemoryBuffer& in)
     }
 }
 
+void CNestedRuntimeStatisticMap::merge(const CNestedRuntimeStatisticMap & other)
+{
+    ForEachItemIn(i, other.map)
+    {
+        CNestedRuntimeStatisticCollection & cur = other.map.item(i);
+        CRuntimeStatisticCollection & target = addNested(cur.scope, cur.queryMapping());
+        target.merge(cur);
+    }
+}
+
 bool CNestedRuntimeStatisticMap::serialize(MemoryBuffer& out) const
 {
     out.appendPacked(map.ordinality());
@@ -1744,6 +1776,20 @@ void CNestedRuntimeStatisticMap::recordStatistics(IStatisticGatherer & target) c
 {
     ForEachItemIn(i, map)
         map.item(i).recordStatistics(target);
+}
+
+StringBuffer & CNestedRuntimeStatisticMap::toStr(StringBuffer &str) const
+{
+    ForEachItemIn(i, map)
+        map.item(i).toStr(str);
+    return str;
+}
+
+StringBuffer & CNestedRuntimeStatisticMap::toXML(StringBuffer &str) const
+{
+    ForEachItemIn(i, map)
+        map.item(i).toXML(str);
+    return str;
 }
 
 //---------------------------------------------------

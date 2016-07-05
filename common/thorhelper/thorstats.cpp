@@ -22,7 +22,7 @@
 
 
 //MORE: When do cycles get converted into nanoseconds?
-const StatisticsMapping nestedSectionStatistics(StCycleTotalExecuteCycles, StTimeTotalExecute, StNumExecutions);
+const StatisticsMapping nestedSectionStatistics(StCycleTotalExecuteCycles, StTimeTotalExecute, StNumExecutions, StKindNone);
 
 ThorSectionTimer::ThorSectionTimer(const char * _name, CRuntimeStatistic & _occurences, CRuntimeStatistic & _elapsed)
 : occurences(_occurences), elapsed(_elapsed), name(_name)
