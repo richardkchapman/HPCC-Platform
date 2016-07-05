@@ -497,7 +497,7 @@ extern jlib_decl StatsMergeAction queryMergeMode(StatisticKind kind)
 #define NODESTAT(y) STAT(Node, y, SMeasureNode)
 #define PERSTAT(y) STAT(Per, y, SMeasurePercent)
 #define IPV4STAT(y) STAT(IPV4, y, SMeasureIPV4)
-#define CYCLESTAT(y) St##Cycle##y##Cycles, SMeasureCycle, St##Time##y, { NAMES(x, y) }, { TAGS(x, y) }
+#define CYCLESTAT(y) St##Cycle##y##Cycles, SMeasureCycle, St##Time##y, { NAMES(Cycle, y##Cycles) }, { TAGS(Cycle, y##Cycles) }
 
 //--------------------------------------------------------------------------------------------------------------------
 
