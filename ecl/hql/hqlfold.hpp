@@ -41,6 +41,7 @@ enum {
     HFOconstantdatasets = 0x0100,
     HFOpercolateconstants = 0x0200,
     HFOpercolatefilters = 0x0400,
+    HFOpreserveCaseExternalParameter = 0x800,
 };
 
 

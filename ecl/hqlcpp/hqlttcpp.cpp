@@ -6200,11 +6200,6 @@ IHqlExpression * WorkflowTransformer::extractCommonWorkflow(IHqlExpression * exp
     return getValue.getClear();
 }
 
-static bool isInternalEmbedAttr(IAtom *name)
-{
-    return name == languageAtom || name == projectedAtom || name == streamedAtom || name == _linkCounted_Atom ||name == importAtom;
-}
-
 IHqlExpression * WorkflowTransformer::transformInternalFunction(IHqlExpression * newFuncDef)
 {
     IHqlExpression * body = newFuncDef->queryChild(0);
@@ -13233,6 +13228,7 @@ void HqlCppTranslator::applyGlobalOptimizations(HqlExprArray & exprs)
         if (options.percolateConstants) foldOptions |= HFOpercolateconstants;
         if (options.percolateFilters) foldOptions |= HFOpercolatefilters;
         if (options.optimizeMax) foldOptions |= HFOx_op_not_x;
+        if (options.preserveCaseExternalParameter) foldOptions |= HFOpreserveCaseExternalParameter;
         if (options.globalFoldOptions != (unsigned)-1)
             foldOptions = options.globalFoldOptions;
 
