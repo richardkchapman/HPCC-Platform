@@ -1511,84 +1511,6 @@ class DummyContext: implements ICodeContext
 
 };
 
-bool serializeConstantSet(ITypeInfo *paramType, IHqlExpression *set, type_t &typeCode, bool &isAll, MemoryBuffer &result)
-{
-    ITypeInfo *childType = paramType->queryChildType();
-    typeCode = childType->getTypeCode();
-    if (childType->isInteger() && !childType->isSigned())
-        typeCode = type_unsigned;
-
-    switch (set->getOperator())
-    {
-    case no_all:
-        isAll = true;
-        break;
-    case no_null:
-        isAll = false;
-        break;
-    case no_list:
-    {
-        isAll = false;
-        ForEachChild(idx, set)
-        {
-            IValue *elem = set->queryChild(idx)->queryValue();
-            assertex(elem != nullptr);
-            size32_t size = childType->getSize();
-            switch (childType->getTypeCode())
-            {
-            case type_int:
-                rtlWriteInt(result.reserve(size), elem->getIntValue(), size);
-                break;
-            case type_real:
-            case type_boolean:
-                elem->serialize(result);
-                break;
-            case type_utf8:
-            {
-                if (size==UNKNOWN_LENGTH)
-                {
-                    size = elem->getSize();
-                    rtlWriteInt4(result.reserve(4), size);
-                }
-                size32_t lenBytes = rtlUtf8Size(size, elem->queryValue());
-                rtlStrToStr(lenBytes, result.reserve(lenBytes), lenBytes, elem->queryValue());
-                break;
-            }
-            case type_varstring:
-                if (size==UNKNOWN_LENGTH)
-                    result.append(elem->getSize(), elem->queryValue());  // Note that getSize() includes the null terminator
-                else
-                    rtlStrToVStr(size, result.reserve(size), elem->getSize(), elem->queryValue());
-                break;
-            case type_string:
-            case type_data:
-                if (size==UNKNOWN_LENGTH)
-                {
-                    size = elem->getSize();
-                    rtlWriteInt4(result.reserve(4), size);
-                }
-                memcpy(result.reserve(size), elem->queryValue(), size);
-                break;
-            case type_unicode:
-                if (size==UNKNOWN_LENGTH)
-                {
-                    size = elem->getSize();
-                    rtlWriteInt4(result.reserve(4), size/sizeof(UChar));
-                }
-                memcpy(result.reserve(size), elem->queryValue(), size);
-                break;
-            default:
-                return false;
-            }
-        }
-        break;
-    }
-    default:
-        return false;
-    }
-    return true;
-}
-
 IHqlExpression *deserializeConstantSet(ITypeInfo *type, bool isAll, size32_t len, const void *vdata)
 {
     ITypeInfo *childType = type->queryChildType();
@@ -1822,12 +1744,18 @@ IHqlExpression * foldEmbeddedCall(IHqlExpression* expr, unsigned foldOptions, IT
             return NULL;
         case type_set:
         {
-            type_t typeCode;
-            bool isAll;
             MemoryBuffer setValue;
-            if (!serializeConstantSet(paramType, curParam, typeCode, isAll, setValue))
-                return nullptr;
-            __ctx->bindSetParam(name, (unsigned) typeCode, paramType->queryChildType()->getSize(), false, setValue.length(), setValue.toByteArray());
+            if (!createConstantField(setValue, curArg, curParam))
+                return NULL;
+            bool isAll;
+            size32_t totalSize;
+            setValue.read(isAll);
+            setValue.read(totalSize);
+            ITypeInfo *childType = paramType->queryChildType();
+            type_t typeCode = childType->getTypeCode();
+            if (childType->isInteger() && !childType->isSigned())
+                typeCode = type_unsigned;
+            __ctx->bindSetParam(name, (unsigned) typeCode, paramType->queryChildType()->getSize(), isAll, totalSize, setValue.readDirect(totalSize));
             break;
         }
         default:
