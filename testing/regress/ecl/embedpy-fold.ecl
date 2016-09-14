@@ -113,3 +113,4 @@ ASSERT(testSet7([U'On', U'der', U'Straße'])=[U'On', U'der'], CONST);
 ASSERT(testSet8([U'Aus', U'zum', U'Straße'])=[U'Aus', U'zum'], CONST);
 ASSERT(testSet9([D'Aus', D'zum', D'Strade'])=[D'Aus', D'zum'], CONST);
 
+OUTPUT('ok');

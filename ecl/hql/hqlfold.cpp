@@ -1526,6 +1526,7 @@ IHqlExpression *deserializeConstantSet(ITypeInfo *type, bool isAll, size32_t len
         while (data < end)
         {
             size32_t size = childType->getSize();
+            size32_t numChars = childType->getStringLen();
             switch (childType->getTypeCode())
             {
             case type_int:
@@ -1567,24 +1568,23 @@ IHqlExpression *deserializeConstantSet(ITypeInfo *type, bool isAll, size32_t len
             case type_unicode:
                 if (size==UNKNOWN_LENGTH)
                 {
-                    size = *(size32_t *) data;
+                    numChars = *(size32_t *) data;  // in characters
                     data += sizeof(size32_t);
-                    values.append(*createConstant(createUnicodeValue((const UChar *) data, size, LINK(childType))));
-                    size = size * sizeof(UChar);
+                    values.append(*createConstant(createUnicodeValue((const UChar *) data, numChars, LINK(childType))));
+                    size = numChars * sizeof(UChar);
                 }
                 else
                 {
-                    values.append(*createConstant(createUnicodeValue((const UChar *) data, size/sizeof(UChar), LINK(childType))));
+                    values.append(*createConstant(createUnicodeValue((const UChar *) data, numChars, LINK(childType))));
                 }
                 break;
             case type_utf8:
-                if (size==UNKNOWN_LENGTH)
-                {
-                    size = *(size32_t *) data;
-                    data += sizeof(size32_t);
-                }
-                values.append(*createConstant(createUtf8Value(size, data, LINK(childType))));
-                size = rtlUtf8Size(size, data);
+                // size is always UNKNOWN_LENGTH for uft8
+                assertex(size==UNKNOWN_LENGTH);
+                numChars = *(size32_t *) data;  // in characters
+                data += sizeof(size32_t);
+                values.append(*createConstant(createUtf8Value(numChars, data, LINK(childType))));
+                size = rtlUtf8Size(numChars, data);
                 break;
             default:
                 return NULL;
