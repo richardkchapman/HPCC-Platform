@@ -679,7 +679,8 @@ IValue * doFoldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplat
             library = fullLibraryPath.str();
         }
     }
-    if (streq(library, "libpyembed.dylib"))
+#ifdef _DEBUG
+    if (streq(library, "libpyembed.dylib") || streq(library, "libv8embed.dylib"))
     {
         Dl_info info;
         if (dladdr((const void *) rtlStrToUInt4, &info))  // Any function in eclrtl would do...
@@ -689,6 +690,7 @@ IValue * doFoldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplat
             library = fullLibraryPath.str();
         }
     }
+#endif
 #endif
 
     HINSTANCE hDLL=LoadSharedObject(library, false, false);
