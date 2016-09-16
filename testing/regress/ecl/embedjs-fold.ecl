@@ -42,52 +42,48 @@ val+'1'
 ENDEMBED;
 
 utf8 add6(utf8 val) := EMBED(javascript:FOLD)
-return val+'1'
+val+'1'
 ENDEMBED;
 
 unicode add7(unicode val) := EMBED(javascript:FOLD)
-return val+'1'
+val+'1'
 ENDEMBED;
 
 data testData(data val) := EMBED(javascript:FOLD)
-val[0] = val[0] + 1
-return val
+val[0] = val[0] + 1;
+val;
 ENDEMBED;
 
 set of integer testSet(set of integer val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 set of string testSet2(set of string val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 set of string testSet3(set of string8 val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 set of utf8 testSet4(set of utf8 val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 set of varstring testSet5(set of varstring val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 set of varstring8 testSet6(set of varstring8 val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 set of unicode testSet7(set of unicode val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 set of unicode8 testSet8(set of unicode8 val) := EMBED(javascript:FOLD)
-return val[0:2]
-ENDEMBED;
-
-set of data testSet9(set of data val) := EMBED(javascript:FOLD)
-return val[0:2]
+val.slice(0,2);
 ENDEMBED;
 
 ASSERT(add1(10)=11, CONST);
@@ -111,6 +107,5 @@ ASSERT(testSet6(['Uno','Dos','Tre'])=['Uno','Dos'], CONST);
 
 ASSERT(testSet7([U'On', U'der', U'Straße'])=[U'On', U'der'], CONST);
 ASSERT(testSet8([U'Aus', U'zum', U'Straße'])=[U'Aus', U'zum'], CONST);
-ASSERT(testSet9([D'Aus', D'zum', D'Strade'])=[D'Aus', D'zum'], CONST);
 
 OUTPUT('ok');
