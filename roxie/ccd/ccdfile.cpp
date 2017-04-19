@@ -1625,6 +1625,10 @@ template <class X> class PerChannelCacheOf
     IPointerArrayOf<X> cache;
     IntArray channels;
 public:
+    ~PerChannelCacheOf<X>()
+    {
+        cache.kill();
+    }
     void set(X *value, unsigned channel)
     {
         cache.append(value);
@@ -1768,6 +1772,12 @@ public:
                 addFile(dFile->queryLogicalName(), fDesc.getClear(), remoteFDesc.getClear());
             }
         }
+    }
+    ~CResolvedFile()
+    {
+        subFiles.kill();
+        remoteSubFiles.kill();
+        diskMeta.kill();
     }
     virtual void beforeDispose()
     {
