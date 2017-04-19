@@ -97,11 +97,25 @@ protected:
 #endif
 
 public:
-    IMPLEMENT_IINTERFACE;
+//    IMPLEMENT_IINTERFACE;
+    virtual void Link(void) const
+    {
+        DBGLOG("Link file");
+        printStackReport();
+        CInterface::Link();
+    }
+    virtual bool Release(void) const
+    {
+        DBGLOG("Release file");
+        printStackReport();
+        return CInterface::Release();
+    }
 
     CRoxieLazyFileIO(IFile *_logical, offset_t size, const CDateTime &_date, bool _isCompressed)
         : logical(_logical), fileSize(size), isCompressed(_isCompressed), fileStats(diskLocalStatistics)
     {
+        DBGLOG("Create file");
+        printStackReport();
         fileDate.set(_date);
         currentIdx = 0;
         current.set(&failure);
@@ -121,12 +135,16 @@ public:
 
     virtual void beforeDispose()
     {
+        DBGLOG("Dispose file %p", cached);
+        printStackReport();
         if (cached)
             cached->removeCache(this);
     }
 
     void setCache(const IRoxieFileCache *cache)
     {
+        DBGLOG("setCache file %p", cache);
+        printStackReport();
         assertex(!cached);
         cached = cache;
     }
