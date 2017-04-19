@@ -100,13 +100,13 @@ public:
 //    IMPLEMENT_IINTERFACE;
     virtual void Link(void) const
     {
-        DBGLOG("Link file");
+        DBGLOG("Link CRoxieLazyFileIO");
         printStackReport();
         CInterface::Link();
     }
     virtual bool Release(void) const
     {
-        DBGLOG("Release file");
+        DBGLOG("Release CRoxieLazyFileIO");
         printStackReport();
         return CInterface::Release();
     }
@@ -114,7 +114,7 @@ public:
     CRoxieLazyFileIO(IFile *_logical, offset_t size, const CDateTime &_date, bool _isCompressed)
         : logical(_logical), fileSize(size), isCompressed(_isCompressed), fileStats(diskLocalStatistics)
     {
-        DBGLOG("Create file");
+        DBGLOG("Create CRoxieLazyFileIO");
         printStackReport();
         fileDate.set(_date);
         currentIdx = 0;
@@ -135,7 +135,7 @@ public:
 
     virtual void beforeDispose()
     {
-        DBGLOG("Dispose file %p", cached);
+        DBGLOG("Dispose CRoxieLazyFileIO %p", cached);
         printStackReport();
         if (cached)
             cached->removeCache(this);
@@ -143,7 +143,7 @@ public:
 
     void setCache(const IRoxieFileCache *cache)
     {
-        DBGLOG("setCache file %p", cache);
+        DBGLOG("setCache CRoxieLazyFileIO %p", cache);
         printStackReport();
         assertex(!cached);
         cached = cache;
@@ -1738,10 +1738,25 @@ protected:
     mutable PerChannelCacheOf<IKeyArray> keyArrayMap;
 
 public:
-    IMPLEMENT_IINTERFACE;
+//    IMPLEMENT_IINTERFACE;
+    virtual void Link(void) const
+    {
+        DBGLOG("Link CResolvedFile");
+        printStackReport();
+        CInterface::Link();
+    }
+    virtual bool Release(void) const
+    {
+        DBGLOG("Release CResolvedFile");
+        printStackReport();
+        return CInterface::Release();
+    }
+
     CResolvedFile(const char *_lfn, const char *_physicalName, IDistributedFile *_dFile, RoxieFileType _fileType, IRoxieDaliHelper* _daliHelper, bool isDynamic, bool cacheIt, bool writeAccess, bool _isSuperFile)
     : daliHelper(_daliHelper), lfn(_lfn), physicalName(_physicalName), dFile(_dFile), fileType(_fileType), isSuper(_isSuperFile)
     {
+        DBGLOG("Create CResolvedFile");
+        printStackReport();
         cached = NULL;
         fileSize = 0;
         fileCheckSum = 0;
@@ -1789,6 +1804,8 @@ public:
     }
     virtual void beforeDispose()
     {
+        DBGLOG("Dispose CResolvedFile");
+        printStackReport();
         if (notifier)
             daliHelper->releaseSubscription(notifier);
         notifier.clear();
