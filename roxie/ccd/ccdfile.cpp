@@ -97,7 +97,17 @@ protected:
 #endif
 
 public:
-    IMPLEMENT_IINTERFACE;
+//    IMPLEMENT_IINTERFACE;
+    virtual void Link(void) const
+    {
+        DBGLOG("CRoxieLazyFileIO::Link()");
+        CInterface::Link();
+    }
+    virtual bool Release(void) const
+    {
+        DBGLOG("CRoxieLazyFileIO::Release()");
+        return CInterface::Release();
+    }
 
     CRoxieLazyFileIO(IFile *_logical, offset_t size, const CDateTime &_date, bool _isCompressed)
         : logical(_logical), fileSize(size), isCompressed(_isCompressed), fileStats(diskLocalStatistics)
@@ -112,6 +122,7 @@ public:
         lastAccess = msTick();
         copying = false;
         cached = NULL;
+        DBGLOG("CRoxieLazyFileIO");
     }
     
     ~CRoxieLazyFileIO()
@@ -122,6 +133,7 @@ public:
 
     virtual void beforeDispose()
     {
+        DBGLOG("CRoxieLazyFileIO::beforeDispose");
         if (cached)
             cached->removeCache(this);
     }
@@ -1628,6 +1640,7 @@ template <class X> class PerChannelCacheOf
 public:
     ~PerChannelCacheOf<X>()
     {
+        DBGLOG("~PerChannelCacheOf<X>");
         cache.kill();
     }
     void set(X *value, unsigned channel)
@@ -1725,10 +1738,22 @@ protected:
     mutable PerChannelCacheOf<IKeyArray> keyArrayMap;
 
 public:
-    IMPLEMENT_IINTERFACE;
+//    IMPLEMENT_IINTERFACE;
+    virtual void Link(void) const
+    {
+        DBGLOG("Link CResolvedFile");
+        CInterface::Link();
+    }
+    virtual bool Release(void) const
+    {
+        DBGLOG("Release CResolvedFile");
+        return CInterface::Release();
+    }
+
     CResolvedFile(const char *_lfn, const char *_physicalName, IDistributedFile *_dFile, RoxieFileType _fileType, IRoxieDaliHelper* _daliHelper, bool isDynamic, bool cacheIt, bool writeAccess, bool _isSuperFile)
     : daliHelper(_daliHelper), lfn(_lfn), physicalName(_physicalName), dFile(_dFile), fileType(_fileType), isSuper(_isSuperFile)
     {
+        DBGLOG("Create CResolvedFile");
         cached = NULL;
         fileSize = 0;
         fileCheckSum = 0;
@@ -1776,12 +1801,14 @@ public:
     }
     ~CResolvedFile()
     {
+        DBGLOG("Release CResolvedFile");
         subFiles.kill();
         remoteSubFiles.kill();
         diskMeta.kill();
     }
     virtual void beforeDispose()
     {
+        DBGLOG("Dispose CResolvedFile");
         if (notifier)
             daliHelper->releaseSubscription(notifier);
         notifier.clear();
