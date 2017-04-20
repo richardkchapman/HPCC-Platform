@@ -116,6 +116,7 @@ public:
     
     ~CRoxieLazyFileIO()
     {
+        DBGLOG("~CRoxieLazyFileIO");
         setFailure(); // ensures the open file count properly maintained
     }
 
