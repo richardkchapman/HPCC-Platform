@@ -1150,8 +1150,10 @@ public:
                     {
                         // jhtree cache can keep files active and thus prevent us from loading a new version
                         DBGLOG("Trying to clear key cache entry");
+                        f.clear();
                         clearKeyStoreCacheEntry(localLocation);  // Will release iff that is the only link
-                        if (!files.getValue(localLocation))
+                        f.set(files.getValue(localLocation));
+                        if (!f)
                             continue;
                     }
                     StringBuffer modifiedDt;
