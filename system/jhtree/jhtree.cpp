@@ -1282,6 +1282,7 @@ void CKeyStore::clearCacheEntry(const char *keyName)
 {
     if (!keyName || !*keyName)
         return;  // nothing to do
+    DBGLOG("Want to clear %s", keyName);
 
     Owned<CKeyIndexMRUCache::CMRUIterator> iter = keyIndexCache.getIterator();
 
@@ -1290,6 +1291,7 @@ void CKeyStore::clearCacheEntry(const char *keyName)
     {           
         CKeyIndexMapping &mapping = iter->query();
         IKeyIndex &index = mapping.query();
+        DBGLOG("Should I clear %s ?", mapping.queryFindString());
         if (!index.IsShared())
         {
             const char *name = mapping.queryFindString();

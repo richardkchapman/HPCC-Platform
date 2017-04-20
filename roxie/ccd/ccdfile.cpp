@@ -1149,6 +1149,7 @@ public:
                     if (fileType == ROXIE_KEY)
                     {
                         // jhtree cache can keep files active and thus prevent us from loading a new version
+                        DBGLOG("Trying to clear key cache entry");
                         clearKeyStoreCacheEntry(localLocation);  // Will release iff that is the only link
                         if (!files.getValue(localLocation))
                             continue;
