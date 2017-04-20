@@ -1141,11 +1141,18 @@ public:
         {
             CriticalBlock b(crit);
             Linked<ILazyFileIO> f = files.getValue(localLocation);
-            if (f && f->isAlive())
+            while (f && f->isAlive())
             {
                 if ((dfsSize != (offset_t) -1 && dfsSize != f->getSize()) ||
                     (!dfsDate.isNull() && !dfsDate.equals(*f->queryDateTime(), false)))
                 {
+                    if (fileType == ROXIE_KEY)
+                    {
+                        // jhtree cache can keep files active and thus prevent us from loading a new version
+                        clearKeyStoreCacheEntry(localLocation);  // Will release iff that is the only link
+                        if (!files.getValue(localLocation))
+                            continue;
+                    }
                     StringBuffer modifiedDt;
                     if (!dfsDate.isNull())
                         dfsDate.getString(modifiedDt);
