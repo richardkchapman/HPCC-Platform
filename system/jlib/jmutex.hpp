@@ -261,7 +261,7 @@ public:
 /**
  * Mutex locking wrapper. Use enter/leave to lock/unlock.
  */
-class CriticalSection 
+class jlib_decl CriticalSection
 {
 private:
     MutexId mutex;
@@ -317,6 +317,20 @@ public:
 #endif
     }
 
+    inline void wait()
+    {
+        pthread_mutex_lock(&mutex);
+#ifdef _ASSERT_LOCK_SUPPORT
+        if (owner)
+        {
+            assertex(owner==GetCurrentThreadId());
+            depth++;
+        }
+        else
+            owner = GetCurrentThreadId();
+#endif
+    }
+
     inline void leave()
     {
 #ifdef _ASSERT_LOCK_SUPPORT
@@ -351,6 +365,13 @@ public:
     inline ~CriticalBlock()                             { crit.leave(); }
 };
 
+class SlowCriticalBlock
+{
+    CriticalSection &crit;
+public:
+    inline SlowCriticalBlock(CriticalSection &c) : crit(c)  { crit.wait(); }
+    inline ~SlowCriticalBlock()                             { crit.leave(); }
+};
 /**
  * Critical section delimiter, using scope to define lifetime of
  * the lock on a critical section (parameter).

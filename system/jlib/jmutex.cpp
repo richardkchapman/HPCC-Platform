@@ -214,7 +214,7 @@ cycle_t CriticalSection::waitThresholdCycles;
 
 MODULE_INIT(INIT_PRIORITY_JDEBUG1-1)
 {
-    CriticalSection::waitThresholdCycles = nanosec_to_cycle(100000000);
+    CriticalSection::waitThresholdCycles = nanosec_to_cycle(1000);
     return true;
 }
 
@@ -224,6 +224,7 @@ void CriticalSection::reportSlow(cycle_t wait)
     {
         DBGLOG("Waited %" I64F "u ns for CriticalSection", cycle_to_nanosec(wait));
         printStackReport();
+        waitThresholdCycles = wait;
     }
 }
 
