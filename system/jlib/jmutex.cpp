@@ -214,7 +214,7 @@ cycle_t CriticalSection::waitThresholdCycles;
 
 MODULE_INIT(INIT_PRIORITY_JDEBUG1-1)
 {
-    CriticalSection::waitThresholdCycles = nanosec_to_cycle(1000);
+    CriticalSection::waitThresholdCycles = nanosec_to_cycle(10000);
     return true;
 }
 
@@ -222,7 +222,10 @@ void CriticalSection::reportSlow(cycle_t wait)
 {
     if (LOGMSGREPORTER)
     {
-        DBGLOG("Waited %" I64F "u ns for CriticalSection", cycle_to_nanosec(wait));
+        DBGLOG("Waited %" I64F "u ns for CriticalSection %s", cycle_to_nanosec(wait), label);
+#ifdef _ASSERT_LOCK_SUPPORT
+        DBGLOG("Owned by %" I64F "u", (uint64_t) owner);
+#endif
         printStackReport();
         waitThresholdCycles = wait;
     }
@@ -465,6 +468,11 @@ void spinUntilReady(atomic_t &value)
         if (i++ == maxSpins)
         {
             i = 0;
+            if (LOGMSGREPORTER)
+            {
+                DBGLOG("spinUntilReady loop exceeded");
+                printStackReport();
+            }
             ThreadYield();
         }
     }
@@ -479,6 +487,11 @@ void spinUntilReady(std::atomic_uint &value)
         if (i++ == maxSpins)
         {
             i = 0;
+            if (LOGMSGREPORTER)
+            {
+                DBGLOG("spinUntilReady loop exceeded");
+                printStackReport();
+            }
             ThreadYield();
         }
     }

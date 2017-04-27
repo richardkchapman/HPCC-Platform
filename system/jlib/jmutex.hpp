@@ -269,8 +269,9 @@ private:
     ThreadId owner;
     unsigned depth;
 #endif
+    const char *label = "unnamed";
     CriticalSection (const CriticalSection &);  
-    static void reportSlow(cycle_t wait);
+    void reportSlow(cycle_t wait);
 public:
     inline CriticalSection()
     {
@@ -287,6 +288,11 @@ public:
         owner = 0;
         depth = 0;
 #endif
+    }
+    inline CriticalSection(const char *_label)
+    : CriticalSection()
+    {
+        label = _label;
     }
 
     inline ~CriticalSection()
