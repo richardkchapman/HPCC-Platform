@@ -230,7 +230,7 @@ public:
     rowcount_t writeahead(rowcount_t current, const bool &stopped, Semaphore &writeBlockSem, unsigned outIdx)
     {
         // NB: readers call writeahead, which will block others
-        CriticalBlock b(writeAheadCrit);
+        SlowCriticalBlock b(writeAheadCrit);
         for (;;)
         {
             if (eofHit)
