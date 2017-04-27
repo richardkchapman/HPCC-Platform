@@ -21,6 +21,7 @@
 #include "jsuperhash.hpp"
 #include "jmisc.hpp"
 #include "jfile.hpp"
+#include "jcycle.hpp"
 
 #include <stdio.h>
 #include <assert.h>
@@ -207,6 +208,23 @@ static void unlock_file(const char *lfpath)
         Sleep(500);
     }
     ERRLOG("NamedMutex cannot unlock file (%d)",errno);
+}
+
+cycle_t CriticalSection::waitThresholdCycles;
+
+MODULE_INIT(INIT_PRIORITY_JDEBUG1-1)
+{
+    CriticalSection::waitThresholdCycles = nanosec_to_cycle(100000000);
+    return true;
+}
+
+void CriticalSection::reportSlow(cycle_t wait)
+{
+    if (LOGMSGREPORTER)
+    {
+        DBGLOG("Waited %" I64F "u ns for CriticalSection", cycle_to_nanosec(wait));
+        printStackReport();
+    }
 }
 
 static CriticalSection lockPrefixCS;

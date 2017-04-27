@@ -80,6 +80,7 @@ void parseCommandLine(int argc, char* argv[], Esdl2Esxdl * cmd)
 
 int main(int argc, char* argv[])
 {
+    InitModuleObjects();
     Owned<Esdl2Esxdl> cmd = new Esdl2Esxdl();
     parseCommandLine(argc, argv, cmd.get());
     cmd->transform(gArgv[1], (char*)gArgv[2]);

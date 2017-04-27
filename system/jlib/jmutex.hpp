@@ -24,6 +24,7 @@
 #include <atomic>
 #include "jiface.hpp"
 #include "jsem.hpp"
+#include "jcycle.hpp"
 
 extern jlib_decl void ThreadYield();
 extern jlib_decl void spinUntilReady(atomic_t &value);
@@ -269,6 +270,7 @@ private:
     unsigned depth;
 #endif
     CriticalSection (const CriticalSection &);  
+    static void reportSlow(cycle_t wait);
 public:
     inline CriticalSection()
     {
@@ -297,7 +299,13 @@ public:
 
     inline void enter()
     {
+        cycle_t start = get_cycles_now();
         pthread_mutex_lock(&mutex);
+        cycle_t wait = get_cycles_now() - start;
+        if (wait > waitThresholdCycles)
+        {
+            reportSlow(wait);
+        }
 #ifdef _ASSERT_LOCK_SUPPORT
         if (owner)
         {
@@ -326,6 +334,7 @@ public:
         assertex(owner == GetCurrentThreadId());
 #endif
     }
+    static cycle_t waitThresholdCycles;
 };
 #endif
 
