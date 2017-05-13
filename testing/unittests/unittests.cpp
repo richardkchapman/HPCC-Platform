@@ -102,11 +102,13 @@ void loadDlls(IArray &objects, const char * libDirectory)
     {
         const char *thisDll = libFiles->query().queryFilename();
         if (!strstr(thisDll, "javaembed"))  // Bit of a hack, but loading this if java not present terminates...
-        {
-            LoadedObject *loaded = loadDll(thisDll);
-            if (loaded)
-                objects.append(*loaded);
-        }
+            if (!strstr(thisDll, "pyembed"))      // These two clash, so ...
+                if (!strstr(thisDll, "py3embed"))  // ... best to load neither...
+                {
+                    LoadedObject *loaded = loadDll(thisDll);
+                    if (loaded)
+                        objects.append(*loaded);
+                }
     }
 }
 
@@ -279,6 +281,142 @@ class InternalStatisticsTest : public CppUnit::TestFixture
 
 CPPUNIT_TEST_SUITE_REGISTRATION( InternalStatisticsTest );
 CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( InternalStatisticsTest, "StatisticsTest" );
+
+class CSharedStringTable
+{
+protected:
+    unsigned htn = 0;
+    unsigned n = 0;
+    const char **table = nullptr;
+    const char *shared_start = nullptr;
+    const char *shared_end = nullptr;
+
+    static unsigned hash(const char *key)
+    {
+        return hashc((const unsigned char *) key, strlen(key), 0);
+    }
+
+    void expand()
+    {
+        const char **t = table+htn; // more interesting going backwards
+        htn = htn*2+1;
+        const char **newtable = (const char **)calloc(sizeof(const char *),htn);
+        while (t--!=table)
+        {
+            const char *c = *t;
+            if (c)
+            {
+                unsigned h = hash(c) % htn;
+                while (newtable[h])
+                {
+                    h++;
+                    if (h==htn)
+                        h = 0;
+                }
+                newtable[h] = c;
+            }
+        }
+        ::free(table);
+        table = newtable;
+    }
+
+    void add(const char *c)
+    {
+        if (n*4>htn*3)
+            expand();
+        unsigned i = hash(c) % htn;
+        while (table[i])
+            if (++i==htn)
+                i = 0;
+        table[i] = c;
+        n++;
+    }
+
+public:
+    CSharedStringTable(const char *init)
+    {
+        htn = 7;
+        n = 0;
+        table = (const char **)calloc(sizeof(const char *), htn);
+        shared_start = init;
+        while (*init)
+        {
+            add(init);
+            init += strlen(init)+1;
+        }
+        shared_end = init;
+    }
+
+    ~CSharedStringTable()
+    {
+        ::free(table);
+    }
+    const char *lookup(const char *key)
+    {
+        unsigned i = hash(key) % htn;
+        while (table[i])
+        {
+            if (streq(table[i], key))
+                return table[i];
+            if (++i==htn)
+                i = 0;
+        }
+        return key;
+    }
+    const char *strdup(const char *key)
+    {
+        const char *found = lookup(key);
+        if (found)
+            return found;
+        return ::strdup(key);
+    }
+    void free(const char *str)
+    {
+        if (!is_shared_string(str))
+            ::free((char *) str);
+    }
+    inline bool is_shared_string(const char *str)
+    {
+        return str >= shared_start && str < shared_end;
+    }
+    inline static int strcmp(const char *str1, const char *str2)
+    {
+        // This is only worth doing if (a) both strings have at some point resulted from a call to lookup() or strdup() above
+        // and (b) the standard strdup does not already perform this optimization
+        if (str1==str2)
+            return 0;
+        return ::strcmp(str1, str2);
+    }
+};
+
+class SharedStringTest : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE( SharedStringTest  );
+        CPPUNIT_TEST(testSimple);
+    CPPUNIT_TEST_SUITE_END();
+
+    void testSimple()
+    {
+        const char *initstr = "A\0B\0C\0";
+        CSharedStringTable table(initstr);
+        const char * A = table.strdup("A");
+        ASSERT(streq(A, "A"));
+        ASSERT(A==initstr);
+        ASSERT(table.is_shared_string(A));
+        table.free(A);
+        const char * C = table.strdup("C");
+        ASSERT(streq(C, "C"));
+        ASSERT(table.is_shared_string(C));
+        table.free(C);
+        const char * D = table.strdup("D");
+        ASSERT(streq(D, "D"));
+        ASSERT(!table.is_shared_string(D));
+        table.free(D);
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION( SharedStringTest );
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( SharedStringTest, "SharedStringTest" );
 
 //MORE: This can't be included in jlib because of the dll dependency
 class StringBufferTest : public CppUnit::TestFixture
