@@ -351,8 +351,7 @@ public:
     {
         ::free(table);
     }
-
-    const char *strdup(const char *key)
+    const char *lookup(const char *key)
     {
         unsigned i = hash(key) % htn;
         while (table[i])
@@ -362,18 +361,31 @@ public:
             if (++i==htn)
                 i = 0;
         }
+        return key;
+    }
+    const char *strdup(const char *key)
+    {
+        const char *found = lookup(key);
+        if (found)
+            return found;
         return ::strdup(key);
     }
-
     void free(const char *str)
     {
         if (!is_shared_string(str))
             ::free((char *) str);
     }
-
     inline bool is_shared_string(const char *str)
     {
         return str >= shared_start && str < shared_end;
+    }
+    inline static int strcmp(const char *str1, const char *str2)
+    {
+        // This is only worth doing if (a) both strings have at some point resulted from a call to lookup() or strdup() above
+        // and (b) the standard strdup does not already perform this optimization
+        if (str1==str2)
+            return 0;
+        return ::strcmp(str1, str2);
     }
 };
 
