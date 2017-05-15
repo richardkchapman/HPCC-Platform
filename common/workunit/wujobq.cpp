@@ -886,7 +886,7 @@ public:
                             StringBuffer cpath;
                             cpath.appendf("Queue[@name=\"%s\"]",qd->qname.get());
                             if (!proot->hasProp(cpath.str())) {
-                                IPropertyTree *pt = proot->addPropTree("Queue"));
+                                IPropertyTree *pt = proot->addPropTree("Queue");
                                 pt->setProp("@name",qd->qname.get());
                                 pt->setProp("@state","active");
                                 pt->setPropInt("@count", 0);
