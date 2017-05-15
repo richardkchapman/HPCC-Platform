@@ -428,7 +428,7 @@ struct PtrStrUnion
     {
         if (key)
         {
-            size32_t l = strlen(key);
+            size32_t l = strnlen(key, sizeof(PTR *));  // technically sizeof(PTR)-1 would do, but I suspect 8 bytes is actually more optimal to search than 7
             if (l <= sizeof(PTR *)-2)
             {
                 flag=1;
@@ -540,7 +540,7 @@ public:
     ChildMap *queryChildren() { return children; }
     aindex_t findChild(IPropertyTree *child, bool remove=false);
     inline bool isnocase() const { return IptFlagTst(flags, ipt_caseInsensitive); }
-    ipt_flags queryFlags() const { return (ipt_flags) flags; }
+    ipt_flags queryFlags() const override { return (ipt_flags) flags; }
     void serializeSelf(MemoryBuffer &tgt);
     void serializeCutOff(MemoryBuffer &tgt, int cutoff=-1, int depth=0);
     void deserializeSelf(MemoryBuffer &src);

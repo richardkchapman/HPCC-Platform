@@ -1451,7 +1451,7 @@ public:
         const char *_name = owner.queryName();
         if (!_name) _name = "";
         mb.append(_name);
-        byte flags = ((PTree &)owner).queryFlags();
+        byte flags = owner.queryFlags();
         mb.append(IptFlagSet(flags, ipt_binary));
 
         serializeVisibleAttributes(owner, mb);
@@ -1558,7 +1558,7 @@ public:
         size32_t sz = (size32_t)iFile->size();
         if ((unsigned)-1 == sz)
         {
-            byte flags = ((PTree &)owner).queryFlags();
+            byte flags = owner.queryFlags();
             IptFlagClr(flags, ipt_binary);
             mb.append(flags);
             serializeVisibleAttributes(owner, mb);
@@ -1579,7 +1579,7 @@ public:
         }
         else
         {
-            byte flags = ((PTree &)owner).queryFlags();
+            byte flags = owner.queryFlags();
             mb.append(flags);
             serializeVisibleAttributes(owner, mb);
             if (withValue)
