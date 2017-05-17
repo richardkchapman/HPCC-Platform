@@ -2612,6 +2612,7 @@ public:
         if(!mode) return;
         unsigned memused=0;
         unsigned memtot=0;
+        str.appendf("LPT=%d ", localTrees.load());
         if(mode & PerfMonProcMem)
         {
             if (!outofhandles)

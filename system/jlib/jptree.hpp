@@ -79,6 +79,8 @@ jlib_decl IPropertyTree *createPTree(MemoryBuffer &src, byte flags=ipt_none);
 jlib_decl IPropertyTree *createPTree(byte flags=ipt_none);
 jlib_decl IPropertyTree *createPTree(const char *name, byte flags=ipt_none);
 
+extern jlib_decl std::atomic<unsigned> localTrees;
+
 interface jlib_decl IPropertyTree : extends serializable
 {
     virtual bool hasProp(const char *xpath) const = 0;

@@ -2916,10 +2916,13 @@ AttrValue *PTree::getNextAttribute(AttrValue *cur) const
 
 // LocalPTree
 
+std::atomic<unsigned> localTrees;
+
 LocalPTree::LocalPTree(const char *_name, byte _flags, IPTArrayValue *_value, ChildMap *_children) : PTree(_flags, _value, _children)
 {
     if (_name)
         setName(_name);
+    localTrees++;
 }
 
 LocalPTree::~LocalPTree()
@@ -2934,6 +2937,7 @@ LocalPTree::~LocalPTree()
         a->value.destroy();
     }
     free(attrs);
+    localTrees--;
 }
 
 const char *LocalPTree::queryName() const
