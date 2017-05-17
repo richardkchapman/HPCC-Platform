@@ -3434,7 +3434,7 @@ IPropertyTreeIterator *PTStackIterator::popFromStack(StringAttr &path)
     return stack[--stacklen].get(path);
 }
 
-#define DEFAULT_PTREE_TYPE LocalPTree
+#define DEFAULT_PTREE_TYPE CAtomPTree
 
 // factory methods
 
