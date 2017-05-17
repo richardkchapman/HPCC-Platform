@@ -80,6 +80,7 @@ jlib_decl IPropertyTree *createPTree(byte flags=ipt_none);
 jlib_decl IPropertyTree *createPTree(const char *name, byte flags=ipt_none);
 
 extern jlib_decl std::atomic<unsigned> localTrees;
+extern jlib_decl std::atomic<unsigned> atomTrees;
 
 interface jlib_decl IPropertyTree : extends serializable
 {
@@ -118,8 +119,8 @@ interface jlib_decl IPropertyTree : extends serializable
     virtual IPropertyTree *setPropTree(const char *xpath, IPropertyTree *val) = 0;
     virtual IPropertyTree *addPropTree(const char *xpath, IPropertyTree *val) = 0;
 
-    inline IPropertyTree *setPropTree(const char *xpath) { return setPropTree(xpath, ::createPTree(xpath, queryFlags())); }
-    inline IPropertyTree *addPropTree(const char *xpath) { return addPropTree(xpath, ::createPTree(xpath, queryFlags())); }
+    virtual IPropertyTree *setPropTree(const char *xpath) = 0;
+    virtual IPropertyTree *addPropTree(const char *xpath) = 0;
 
     virtual bool removeProp(const char *xpath) = 0;
     virtual bool removeTree(IPropertyTree *child) = 0;

@@ -2918,7 +2918,7 @@ AttrValue *PTree::getNextAttribute(AttrValue *cur) const
 
 std::atomic<unsigned> localTrees;
 
-LocalPTree::LocalPTree(const char *_name, byte _flags, IPTArrayValue *_value, ChildMap *_children) : PTree(_flags, _value, _children)
+LocalPTree::LocalPTree(const char *_name, byte _flags, IPTArrayValue *_value, ChildMap *_children) : PTree(_flags|ipt_fast, _value, _children)
 {
     if (_name)
         setName(_name);
@@ -2927,6 +2927,7 @@ LocalPTree::LocalPTree(const char *_name, byte _flags, IPTArrayValue *_value, Ch
 
 LocalPTree::~LocalPTree()
 {
+    localTrees--;
     name.destroy();
     if (!attrs)
         return;
@@ -2937,7 +2938,6 @@ LocalPTree::~LocalPTree()
         a->value.destroy();
     }
     free(attrs);
-    localTrees--;
 }
 
 const char *LocalPTree::queryName() const
@@ -3010,14 +3010,18 @@ std::atomic<__int64> AttrStrAtom::maxsize { 0 };
 
 ///////////////////
 
-CAtomPTree::CAtomPTree(const char *_name, byte _flags, IPTArrayValue *_value, ChildMap *_children) : PTree(_flags, _value, _children)
+std::atomic<unsigned> atomTrees;
+
+CAtomPTree::CAtomPTree(const char *_name, byte _flags, IPTArrayValue *_value, ChildMap *_children) : PTree(_flags|ipt_lowmem, _value, _children)
 {
+    atomTrees++;
     if (_name)
         setName(_name);
 }
 
 CAtomPTree::~CAtomPTree()
 {
+    atomTrees--;
     bool nc = isnocase();
     HashKeyElement *name_ptr = name.getPtr();
     if (name_ptr)

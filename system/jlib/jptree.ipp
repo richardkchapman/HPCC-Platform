@@ -599,6 +599,8 @@ public:
     virtual IPropertyTree *queryBranch(const char *xpath) const override { return queryPropTree(xpath); }
     virtual IPropertyTree *setPropTree(const char *xpath, IPropertyTree *val) override;
     virtual IPropertyTree *addPropTree(const char *xpath, IPropertyTree *val) override;
+    virtual IPropertyTree *setPropTree(const char *xpath) override { return setPropTree(xpath, create()); }
+    virtual IPropertyTree *addPropTree(const char *xpath) override { return addPropTree(xpath, create()); }
     virtual bool removeTree(IPropertyTree *child) override;
     virtual bool removeProp(const char *xpath) override;
     virtual aindex_t queryChildIndex(IPropertyTree *child) override;

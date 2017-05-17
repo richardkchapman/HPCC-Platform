@@ -2613,6 +2613,7 @@ public:
         unsigned memused=0;
         unsigned memtot=0;
         str.appendf("LPT=%d ", localTrees.load());
+        str.appendf("APT=%d ", atomTrees.load());
         if(mode & PerfMonProcMem)
         {
             if (!outofhandles)

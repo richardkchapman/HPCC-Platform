@@ -9040,10 +9040,10 @@ extern WORKUNIT_API ILocalWorkUnit * createLocalWorkUnit(const char *xml)
 {
     Owned<CLocalWorkUnit> cw = new CLocalWorkUnit((ISecManager *) NULL, NULL);
     if (xml)
-        cw->loadPTree(createPTreeFromXMLString(xml));
+        cw->loadPTree(createPTreeFromXMLString(xml, ipt_lowmem));
     else
     {
-        Owned<IPropertyTree> p = createPTree("W_LOCAL",ipt_lowmem);
+        Owned<IPropertyTree> p = createPTree("W_LOCAL", ipt_lowmem);
         p->setProp("@xmlns:xsi", "http://www.w3.org/1999/XMLSchema-instance");
         cw->loadPTree(p.getClear());
     }
