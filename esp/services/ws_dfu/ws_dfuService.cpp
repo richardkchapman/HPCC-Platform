@@ -1568,8 +1568,10 @@ void CWsDfuEx::getDefFile(IUserDescriptor* udesc, const char* FileName,StringBuf
 
     if(!record)
         throw MakeStringException(ECLWATCH_CANNOT_PARSE_ECL_QUERY, "Failed in parsing ECL query.");
-
-    Owned<IPropertyTree> data = createPTree("Table", ipt_caseInsensitive);
+    exportJsonType(returnStr, record);
+/*
+ *
+     Owned<IPropertyTree> data = createPTree("Table", ipt_caseInsensitive);
     exportData(data, record);
 
     const char* fname=strrchr(FileName,':');
@@ -1577,6 +1579,7 @@ void CWsDfuEx::getDefFile(IUserDescriptor* udesc, const char* FileName,StringBuf
     data->setProp("filename",fname ? fname+1 : FileName);
 
     toXML(data, returnStr, 0, 0);
+    */
 }
 
 bool CWsDfuEx::checkFileContent(IEspContext &context, IUserDescriptor* udesc, const char * logicalName, const char * cluster)

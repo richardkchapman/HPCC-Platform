@@ -30,6 +30,8 @@
 #include "jmutex.hpp"
 #include "junicode.hpp"
 #include "jutil.hpp"
+#include "rtldynfield.hpp"
+
 #include "hql.hpp"
 #include "hqlexpr.ipp"
 #include "hqlattr.hpp"
@@ -14041,6 +14043,13 @@ void exportMap(IPropertyTree *dataNode, IHqlExpression *destTable, IHqlExpressio
     map->setProp("@destTable", getExportName(destTable, name).str());
     map->setProp("@sourceTable", getExportName(sourceTable, name.clear()).str());
     maps->addPropTree("MapTables", map);
+}
+
+void exportJsonType(StringBuffer &ret, IHqlExpression *table)
+{
+    Owned<IRtlFieldTypeDeserializer> deserializer(createRtlFieldTypeDeserializer());
+    const RtlTypeInfo *typeInfo = buildRtlType(*deserializer.get(), table->queryType());
+    dumpTypeInfo(ret, typeInfo);
 }
 
 void exportData(IPropertyTree *data, IHqlExpression *table, bool flatten)
