@@ -2446,6 +2446,11 @@ void HqlCppTranslator::buildExprAssign(BuildCtx & ctx, const CHqlBoundTarget & t
         doBuildAssignIf(ctx, target, expr);
         break;
     case no_index:
+        if (expr->queryChild(0)->queryType()->getTypeCode()==type_row)
+        {
+            EclIR::dump_ir(expr);
+            UNIMPLEMENTED;
+        }
         doBuildAssignIndex(ctx, target, expr);
         break;
     case no_in:

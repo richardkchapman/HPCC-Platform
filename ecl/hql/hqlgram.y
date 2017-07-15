@@ -5786,6 +5786,12 @@ primexpr
 
 primexpr1
     : atomicValue
+    | dataRow '[' expr ']'
+                        {
+                            OwnedHqlExpr field = createField(unnamedId, LINK(parser->defaultIntegralType), $3.getExpr());
+                            $$.setExpr(parser->createSelect($1.getExpr(), field.getClear(), $1));
+                            $$.setPosition($1);
+                        }
     | primexpr1 '[' rangeOrIndices ']'
                         {
                             parser->normalizeExpression($1);
