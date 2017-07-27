@@ -555,11 +555,16 @@ public:
     : destRecInfo(_destRecInfo), sourceRecInfo(_srcRecInfo)
     {
         matchInfo = new MatchInfo[destRecInfo.getNumFields()];
+        unsigned sourceCount = sourceRecInfo.getNumFields();
+        sourceMatch = new unsigned[sourceCount];
+        for (unsigned idx = 0; idx < sourceCount; idx++)
+            sourceMatch[idx] = (unsigned) -1;
         createMatchInfo();
     }
     ~GeneralRecordTranslator()
     {
         delete [] matchInfo;
+        delete [] sourceMatch;
     }
     void describe(unsigned indent = 0) const
     {
@@ -791,6 +796,7 @@ private:
             delete subTrans;
         }
     } *matchInfo;
+    unsigned *sourceMatch;  // contains idx of dest field for each source
 
     static size32_t translateScalar(ARowBuilder &builder, size32_t offset, const RtlFieldInfo *field, const RtlTypeInfo *destType, const RtlTypeInfo *sourceType, const byte *source)
     {
@@ -1017,6 +1023,7 @@ private:
                 // Not sure it would help much though - usually need to know the total record size anyway in real life
                 if (idx != info.matchIdx)
                     matchFlags |= match_move;
+                sourceMatch[info.matchIdx] = idx;
             }
             matchFlags |= info.matchType;
         }
@@ -1026,11 +1033,11 @@ private:
         {
             for (unsigned idx = 0; idx < sourceRecInfo.getNumFields(); idx++)
             {
-                const RtlFieldInfo *field = sourceRecInfo.queryField(idx);
-                const RtlTypeInfo *type = field->type;
-                if (destRecInfo.getFieldNum(field->name) == (unsigned) -1)
+                if (sourceMatch[idx] == (unsigned) -1)
                 {
                     // unmatched field
+                    const RtlFieldInfo *field = sourceRecInfo.queryField(idx);
+                    const RtlTypeInfo *type = field->type;
                     if (type->isFixedSize())
                     {
                         //DBGLOG("Reducing estimated size by %d for (fixed size) omitted field %s", (int) type->getMinSize(), field->name);
