@@ -3101,7 +3101,7 @@ void DiskAggregateBuilder::buildMembers(IHqlExpression * expr)
     {
         BuildCtx rowctx(instance->startctx);
         rowctx.addQuotedFunction("virtual void processRow(ARowBuilder & crSelf, const void * src)");
-        rowctx.addQuotedLiteral("doProcessRow(crSelf, (byte *)src);");
+        rowctx.addQuotedLiteral("doProcessRow(crSelf, (const byte *)src);");
     }
 
     //virtual void processRows(void * self, size32_t srcLen, const void * src) = 0;
@@ -3124,7 +3124,7 @@ void DiskAggregateBuilder::buildMembers(IHqlExpression * expr)
 
 void DiskAggregateBuilder::buildTransform(IHqlExpression * expr)
 {
-    MemberFunction func(translator, instance->startctx, "void doProcessRow(ARowBuilder & crSelf, byte * left)");
+    MemberFunction func(translator, instance->startctx, "void doProcessRow(ARowBuilder & crSelf, const byte * left)");
     translator.ensureRowAllocated(func.ctx, "crSelf");
     buildTransformBody(func.ctx, expr, false, false, true);
 }
@@ -6616,7 +6616,7 @@ void IndexAggregateBuilder::buildMembers(IHqlExpression * expr)
     {
         BuildCtx rowctx(instance->startctx);
         rowctx.addQuotedFunction("virtual void processRow(ARowBuilder & crSelf, const void * src)");
-        rowctx.addQuotedLiteral("doProcessRow(crSelf, (byte *)src);");
+        rowctx.addQuotedLiteral("doProcessRow(crSelf, (const byte *)src);");
     }
 
     {
@@ -6638,7 +6638,7 @@ void IndexAggregateBuilder::buildMembers(IHqlExpression * expr)
 
 void IndexAggregateBuilder::buildTransform(IHqlExpression * expr)
 {
-    MemberFunction func(translator, instance->startctx, "void doProcessRow(ARowBuilder & crSelf, byte * left)");
+    MemberFunction func(translator, instance->startctx, "void doProcessRow(ARowBuilder & crSelf, const byte * left)");
     translator.ensureRowAllocated(func.ctx, "crSelf");
     translator.associateBlobHelper(func.ctx, tableExpr, "fpp");
     buildTransformBody(func.ctx, expr, false, false, true);
