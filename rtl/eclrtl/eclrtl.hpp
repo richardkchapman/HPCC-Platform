@@ -175,17 +175,17 @@ ECLRTL_API int rtlVStrToInt4(const char * t);
 ECLRTL_API __int64 rtlVStrToInt8(const char * t);
 ECLRTL_API bool rtlVStrToBool(const char * t);
 
-ECLRTL_API int rtlSearchTableStringN(unsigned count, char * * table, unsigned width, const char * search);
-ECLRTL_API int rtlSearchTableVStringN(unsigned count, char * * table, const char * search);
+ECLRTL_API int rtlSearchTableStringN(unsigned count, const char * * table, unsigned width, const char * search);
+ECLRTL_API int rtlSearchTableVStringN(unsigned count, const char * * table, const char * search);
 
-ECLRTL_API int rtlNewSearchDataTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search);
-ECLRTL_API int rtlNewSearchEStringTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search);
-ECLRTL_API int rtlNewSearchQStringTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search);
-ECLRTL_API int rtlNewSearchStringTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search);
+ECLRTL_API int rtlNewSearchDataTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search);
+ECLRTL_API int rtlNewSearchEStringTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search);
+ECLRTL_API int rtlNewSearchQStringTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search);
+ECLRTL_API int rtlNewSearchStringTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search);
 
-ECLRTL_API int rtlNewSearchUnicodeTable(unsigned count, unsigned elemlen, UChar * * table, unsigned width, const UChar * search, const char * locale);
-ECLRTL_API int rtlNewSearchVUnicodeTable(unsigned count, UChar * * table, const UChar * search, const char * locale);
-ECLRTL_API int rtlNewSearchUtf8Table(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search, const char * locale);
+ECLRTL_API int rtlNewSearchUnicodeTable(unsigned count, unsigned elemlen, const UChar * * table, unsigned width, const UChar * search, const char * locale);
+ECLRTL_API int rtlNewSearchVUnicodeTable(unsigned count, const UChar * * table, const UChar * search, const char * locale);
+ECLRTL_API int rtlNewSearchUtf8Table(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search, const char * locale);
 
 
 ECLRTL_API int rtlSearchTableInteger8(unsigned count, __int64 * table, __int64 search);

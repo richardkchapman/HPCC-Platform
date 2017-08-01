@@ -339,6 +339,10 @@ class TypeNameBuilder
 public:
     TypeNameBuilder(const char * name) { typeOnLeft = false; str.append(name); }
 
+    void addConst()
+    {
+        isConst = true;
+    }
     void addPrefix(const char * text)
     {
         if (str.length())
@@ -362,11 +366,17 @@ public:
         return addSuffix().append("[").append(length ? length : 1).append("]");
     }
     
-    void get(StringBuffer & out) { out.append(str); }
+    void get(StringBuffer & out)
+    {
+        if (isConst)
+            out.append("const ");
+        out.append(str);
+    }
 
 protected:
     StringBuffer str;
     bool typeOnLeft;
+    bool isConst = false;
 };
 
 void HqlCppWriter::generateType(StringBuffer & result, ITypeInfo * type, const char * name)
@@ -391,7 +401,7 @@ void HqlCppWriter::generateType(ITypeInfo * type, const char * name)
             switch (tmod)
             {
             case typemod_const:
-//              result.addPrefix("const");
+                result.addConst();
                 break;
             case typemod_outofline:
                 outOfLine = false;

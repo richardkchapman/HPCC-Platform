@@ -2785,7 +2785,7 @@ int searchTableStringN(unsigned count, const char * * table, unsigned width, con
     return -1;
 }
 
-int rtlSearchTableStringN(unsigned count, char * * table, unsigned width, const char * search)
+int rtlSearchTableStringN(unsigned count, const char * * table, unsigned width, const char * search)
 {
     int left = 0;
     int right = count;
@@ -2807,7 +2807,7 @@ int rtlSearchTableStringN(unsigned count, char * * table, unsigned width, const 
 }
 
 
-int rtlSearchTableVStringN(unsigned count, char * * table, const char * search)
+int rtlSearchTableVStringN(unsigned count, const char * * table, const char * search)
 {
     int left = 0;
     int right = count;
@@ -2825,7 +2825,7 @@ int rtlSearchTableVStringN(unsigned count, char * * table, const char * search)
     return -1;
 }
 
-int rtlNewSearchDataTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search)
+int rtlNewSearchDataTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search)
 {
     int left = 0;
     int right = count;
@@ -2847,7 +2847,7 @@ int rtlNewSearchDataTable(unsigned count, unsigned elemlen, char * * table, unsi
     return -1;
 }
 
-int rtlNewSearchEStringTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search)
+int rtlNewSearchEStringTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search)
 {
     int left = 0;
     int right = count;
@@ -2869,7 +2869,7 @@ int rtlNewSearchEStringTable(unsigned count, unsigned elemlen, char * * table, u
     return -1;
 }
 
-int rtlNewSearchQStringTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search)
+int rtlNewSearchQStringTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search)
 {
     int left = 0;
     int right = count;
@@ -2891,7 +2891,7 @@ int rtlNewSearchQStringTable(unsigned count, unsigned elemlen, char * * table, u
     return -1;
 }
 
-int rtlNewSearchStringTable(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search)
+int rtlNewSearchStringTable(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search)
 {
     int left = 0;
     int right = count;
@@ -2915,7 +2915,7 @@ int rtlNewSearchStringTable(unsigned count, unsigned elemlen, char * * table, un
 
 
 #ifdef _USE_ICU
-int rtlNewSearchUnicodeTable(unsigned count, unsigned elemlen, UChar * * table, unsigned width, const UChar * search, const char * locale)
+int rtlNewSearchUnicodeTable(unsigned count, unsigned elemlen, const UChar * * table, unsigned width, const UChar * search, const char * locale)
 {
     UCollator * coll = queryRTLLocale(locale)->queryCollator();
     int left = 0;
@@ -2940,7 +2940,7 @@ int rtlNewSearchUnicodeTable(unsigned count, unsigned elemlen, UChar * * table, 
     return -1;
 }
 
-int rtlNewSearchVUnicodeTable(unsigned count, UChar * * table, const UChar * search, const char * locale)
+int rtlNewSearchVUnicodeTable(unsigned count, const UChar * * table, const UChar * search, const char * locale)
 {
     UCollator * coll = queryRTLLocale(locale)->queryCollator();
     int left = 0;
@@ -5034,7 +5034,7 @@ unsigned rtlCrcUtf8(unsigned length, const char * k, unsigned initval)
     return rtlCrcData(rtlUtf8Size(length, k), k, initval);
 }
 
-int rtlNewSearchUtf8Table(unsigned count, unsigned elemlen, char * * table, unsigned width, const char * search, const char * locale)
+int rtlNewSearchUtf8Table(unsigned count, unsigned elemlen, const char * * table, unsigned width, const char * search, const char * locale)
 {
     //MORE: Hopelessly inefficient....  Should rethink - possibly introducing a class for doing string searching, and the Utf8 variety pre-converting the
     //search strings into unicode.
