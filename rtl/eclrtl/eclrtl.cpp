@@ -105,7 +105,7 @@ ECLRTL_API void rtlReleaseRow(const void * row)
     ReleaseRoxieRow(row);
 }
 
-ECLRTL_API void rtlReleaseRowset(unsigned count, byte * * rowset)
+ECLRTL_API void rtlReleaseRowset(unsigned count, const byte * * rowset)
 {
     ReleaseRoxieRowset(count, rowset);
 }
@@ -116,7 +116,7 @@ ECLRTL_API void * rtlLinkRow(const void * row)
     return const_cast<void *>(row);
 }
 
-ECLRTL_API byte * * rtlLinkRowset(byte * * rowset)
+ECLRTL_API const byte * * rtlLinkRowset(const byte * * rowset)
 {
     LinkRoxieRowset(rowset);
     return rowset;
@@ -5850,7 +5850,7 @@ bool RtlCInterface::Release(void) const
 class RtlRowStream : implements IRowStream, public RtlCInterface
 {
 public:
-    RtlRowStream(size32_t _count, byte * * _rowset) : count(_count), rowset(_rowset)
+    RtlRowStream(size32_t _count, const byte * * _rowset) : count(_count), rowset(_rowset)
     {
         rtlLinkRowset(rowset);
         cur = 0;
@@ -5865,7 +5865,7 @@ public:
     {
         if (cur >= count)
             return NULL;
-        byte * ret = rowset[cur];
+        const byte * ret = rowset[cur];
         cur++;
         rtlLinkRow(ret);
         return ret;
@@ -5878,11 +5878,11 @@ public:
 protected:
     size32_t cur;
     size32_t count;
-    byte * * rowset;
+    const byte * * rowset;
 
 };
 
-ECLRTL_API IRowStream * createRowStream(size32_t count, byte * * rowset)
+ECLRTL_API IRowStream * createRowStream(size32_t count, const byte * * rowset)
 {
     return new RtlRowStream(count, rowset);
 }

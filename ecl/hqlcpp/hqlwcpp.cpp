@@ -401,7 +401,7 @@ void HqlCppWriter::generateType(ITypeInfo * type, const char * name)
             switch (tmod)
             {
             case typemod_const:
-                result.addConst();
+                //result.addConst();
                 break;
             case typemod_outofline:
                 outOfLine = false;
@@ -2007,8 +2007,8 @@ void HqlCppWriter::generateStmtDeclare(IHqlStmt * declare)
         out.append("mutable ");
 
     //The following is correct, but causes lots of problems because const isn't currently correctly tracked
-    //if (hasModifier(type, typemod_const))
-    //    out.append("const ");
+    if (hasModifier(type, typemod_const))
+        out.append("const ");
 
     size32_t typeSize = type->getSize();
     bool useConstructor = false;
