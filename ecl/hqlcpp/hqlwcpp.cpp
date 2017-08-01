@@ -890,7 +890,7 @@ void HqlCppWriter::generateParamCpp(IHqlExpression * param, IHqlExpression * att
         out.append(",");
         break;
     case type_row:
-        isConst = true;
+        isConst = false; // bit of a hack - generateType always puts const on these
         break;
     }
     
@@ -1044,7 +1044,7 @@ void HqlCppWriter::generateFunctionReturnType(StringBuffer & params, ITypeInfo *
             params.append("size32_t & __countResult,");
     //      if (hasConstModifier(retType))
     //          params.append("const ");
-            params.append("byte * * & __result");
+            params.append("const byte * * & __result");
             if (hasNonNullRecord(retType) && getBoolAttribute(attrs, allocatorAtom, true))
                 params.append(", IEngineRowAllocator * _resultAllocator");
         }

@@ -573,7 +573,7 @@ ECLRTL_API void serializeQStrX(size32_t len, const char * data, MemoryBuffer &ou
 ECLRTL_API void serializeRowsetX(size32_t count, const  byte * * data, IOutputRowSerializer * serializer, MemoryBuffer &out);
 ECLRTL_API void serializeGroupedRowsetX(size32_t count, const byte * * data, IOutputRowSerializer * serializer, MemoryBuffer &out);
 ECLRTL_API void serializeRow(const void * row, IOutputRowSerializer * serializer, MemoryBuffer & out);
-ECLRTL_API void serializeDictionaryX(size32_t count, byte * * rows, IOutputRowSerializer * serializer, MemoryBuffer & buffer);
+ECLRTL_API void serializeDictionaryX(size32_t count, const byte * * rows, IOutputRowSerializer * serializer, MemoryBuffer & buffer);
 
 ECLRTL_API void serializeFixedString(unsigned len, const char *field, MemoryBuffer &out);
 ECLRTL_API void serializeLPString(unsigned len, const char *field, MemoryBuffer &out);
