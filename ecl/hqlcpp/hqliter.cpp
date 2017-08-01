@@ -268,13 +268,13 @@ void CompoundIteratorBuilder::createSingleIterator(StringBuffer & iterName, IHql
 
     if (isArrayRowset(expr->queryType()))
     {
-        classctx.addQuotedLiteral("byte * * end;");
-        classctx.addQuotedLiteral("byte * * cur;");
+        classctx.addQuotedLiteral("const byte * * end;");
+        classctx.addQuotedLiteral("const byte * * cur;");
     }
     else
     {
-        classctx.addQuotedLiteral("byte * end;");
-        classctx.addQuotedLiteral("byte * cur;");
+        classctx.addQuotedLiteral("const byte * end;");
+        classctx.addQuotedLiteral("const byte * cur;");
     }
 
     IHqlExpression * root = queryRoot(expr);
