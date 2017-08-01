@@ -3178,8 +3178,7 @@ void DiskCountBuilder::buildTransform(IHqlExpression * expr)
 {
     if (transformCanFilter||isNormalize)
     {
-        MemberFunction func(translator, instance->startctx, "size32_t valid(byte * _left)");
-        func.ctx.addQuotedLiteral("unsigned char * left = (unsigned char *)_left;");
+        MemberFunction func(translator, instance->startctx, "size32_t valid(const byte * left)");
         OwnedHqlExpr cnt;
         if (isNormalize)
         {
