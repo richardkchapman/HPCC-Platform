@@ -13871,9 +13871,9 @@ ABoundActivity * HqlCppTranslator::doBuildActivityLinkedRawChildDataset(BuildCtx
     OwnedHqlExpr zero = getSizetConstant(0);
     buildTempExpr(*callctx, *declarectx, boundActiveIndex, zero, FormatNatural, false);
 
-    //virtual byte * next() = 0;
+    //virtual const byte * next() = 0;
     {
-        MemberFunction func(*this, instance->startctx, "virtual byte * next()");
+        MemberFunction func(*this, instance->startctx, "virtual const byte * next()");
         OwnedHqlExpr count = getBoundCount(boundDs);
         OwnedHqlExpr test = createValue(no_lt, makeBoolType(), LINK(boundActiveIndex.expr), LINK(count));
         BuildCtx subctx(func.ctx);
