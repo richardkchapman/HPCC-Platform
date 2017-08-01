@@ -3268,7 +3268,7 @@ void DiskGroupAggregateBuilder::buildMembers(IHqlExpression * expr)
 
 void DiskGroupAggregateBuilder::buildTransform(IHqlExpression * expr)
 {
-    MemberFunction func(translator, instance->startctx, "void doProcessRow(byte * left, IHThorGroupAggregateCallback * callback)");
+    MemberFunction func(translator, instance->startctx, "void doProcessRow(const byte * left, IHThorGroupAggregateCallback * callback)");
     bool accessesCallback = containsOperator(expr, no_filepos) || containsOperator(expr, no_file_logicalname); 
     buildGroupAggregateTransformBody(func.ctx, expr, isNormalize || accessesCallback, true);
 }
@@ -6880,7 +6880,7 @@ void IndexGroupAggregateBuilder::doBuildProcessCountMembers(BuildCtx & ctx, IHql
 
 void IndexGroupAggregateBuilder::buildTransform(IHqlExpression * expr)
 {
-    MemberFunction func(translator, instance->startctx, "void doProcessRow(byte * left, IHThorGroupAggregateCallback * callback)");
+    MemberFunction func(translator, instance->startctx, "void doProcessRow(const byte * left, IHThorGroupAggregateCallback * callback)");
     translator.associateBlobHelper(func.ctx, tableExpr, "fpp");
     buildGroupAggregateTransformBody(func.ctx, expr, isNormalize || transformAccessesCallback, true);
 }
