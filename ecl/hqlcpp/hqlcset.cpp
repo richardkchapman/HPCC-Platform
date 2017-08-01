@@ -615,7 +615,7 @@ BoundRow * InlineLinkedDatasetCursor::doBuildIterateLoop(BuildCtx & ctx, bool ne
     //row = ds;
     OwnedHqlExpr address = getPointer(boundDs.expr);            // ensure no longer a wrapped item
 
-    s.clear().append("byte * * ").append(cursorName).append(" = ");
+    s.clear().append("const byte * * ").append(cursorName).append(" = ");
     translator.generateExprCpp(s, address).append(";");
     ctx.addQuoted(s);
 
