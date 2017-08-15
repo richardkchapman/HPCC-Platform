@@ -489,7 +489,6 @@ void HqlCppWriter::generateType(ITypeInfo * type, const char * name)
             if (hasLinkCountedModifier(fullType))
                 isPointer = true;
             prefix = "byte";
-            result.addConst();
             next = NULL;
             break;
         case type_groupedtable:
@@ -890,7 +889,7 @@ void HqlCppWriter::generateParamCpp(IHqlExpression * param, IHqlExpression * att
         out.append(",");
         break;
     case type_row:
-        isConst = false; // bit of a hack - generateType always puts const on these
+        isConst = true;
         break;
     }
     
