@@ -907,8 +907,7 @@ void HqlCppWriter::generateParamCpp(IHqlExpression * param, IHqlExpression * att
             out.append("IRowStream *");
         else if (hasOutOfLineModifier(paramType) || hasLinkCountedModifier(paramType))
         {
-            //At some point in the future this should change to "const byte * const *"
-            out.append("byte * *");
+            out.append("const byte * const *");
         }
         else
         {
