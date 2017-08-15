@@ -1744,7 +1744,7 @@ RtlCompoundIterator::~RtlCompoundIterator()
 }
 
 
-void RtlCompoundIterator::addIter(unsigned idx, IRtlDatasetSimpleCursor * iter, byte * * cursor)
+void RtlCompoundIterator::addIter(unsigned idx, IRtlDatasetSimpleCursor * iter, const byte * * cursor)
 {
     assertex(idx < numLevels);
     iters[idx] = iter;
@@ -1755,7 +1755,7 @@ void RtlCompoundIterator::init(unsigned _numLevels)
 {
     numLevels = _numLevels;
     iters = new IRtlDatasetSimpleCursor * [numLevels];
-    cursors = new byte * * [numLevels];
+    cursors = new const byte * * [numLevels];
 }
 
 //Could either duplicate this function, N times, or have it as a helper function that accesses pre-defined virtuals.
@@ -1814,7 +1814,7 @@ bool RtlCompoundIterator::next(unsigned level)
 
 //------------------------------------------------------------------------------
 
-void RtlSimpleIterator::addIter(unsigned idx, IRtlDatasetSimpleCursor * _iter, byte * * _cursor)
+void RtlSimpleIterator::addIter(unsigned idx, IRtlDatasetSimpleCursor * _iter, const byte * * _cursor)
 {
     assertex(idx == 0);
     iter = _iter;
@@ -1825,14 +1825,14 @@ void RtlSimpleIterator::addIter(unsigned idx, IRtlDatasetSimpleCursor * _iter, b
 bool RtlSimpleIterator::first()
 {
     const byte * cur = iter->first();
-    *cursor = (byte *)cur;
+    *cursor = cur;
     return (cur != NULL);
 }
 
 bool RtlSimpleIterator::next()
 {
     const byte * cur = iter->next();
-    *cursor = (byte *)cur;
+    *cursor = cur;
     return (cur != NULL);
 }
 

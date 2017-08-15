@@ -627,7 +627,7 @@ public:
     ~RtlCompoundIterator();
 
     void init(unsigned numLevels);
-    void addIter(unsigned idx, IRtlDatasetSimpleCursor * iter, byte * * cursor);
+    void addIter(unsigned idx, IRtlDatasetSimpleCursor * iter, const byte * * cursor);
     bool first(unsigned level);
     bool next(unsigned level);
 
@@ -638,12 +638,12 @@ public:
 protected:
     inline void setCursor(unsigned level, const void * value)
     {
-        *cursors[level] = (byte *)value;
+        *cursors[level] = (const byte *) value;
     }
 
 protected:
     IRtlDatasetSimpleCursor * * iters;
-    byte * * * cursors;
+    const byte * * * cursors;
     unsigned numLevels;
     bool ok;
 };
@@ -653,7 +653,7 @@ protected:
 class ECLRTL_API RtlSimpleIterator
 {
 public:
-    void addIter(unsigned idx, IRtlDatasetSimpleCursor * iter, byte * * cursor);
+    void addIter(unsigned idx, IRtlDatasetSimpleCursor * iter, const byte * * cursor);
     bool first();
     bool next();
 
@@ -661,7 +661,7 @@ public:
 
 protected:
     IRtlDatasetSimpleCursor * iter;
-    byte * * cursor;
+    const byte * * cursor;
 };
 
 #endif
