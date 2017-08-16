@@ -39,7 +39,7 @@ diff=
 query=
 valgrind=
 np=`getconf _NPROCESSORS_ONLN`
-export ECLCC_ECLINCLUDE_PATH=
+#export ECLCC_ECLINCLUDE_PATH=
 
 ## Get cmd line options (overrite default args)
 if [[ $1 = '' ]]; then

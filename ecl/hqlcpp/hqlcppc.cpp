@@ -41,7 +41,6 @@ IHqlExpression * convertAddressToValue(IHqlExpression * address, ITypeInfo * col
     assertex(address->getOperator() == no_externalcall || pointerType == address->queryType());
     if (columnType->getTypeCode()==type_table)
         pointerType.setown(makePointerType(makeConstantModifier(LINK(columnType))));
-    EclIR::dump_ir(columnType);
     IHqlExpression * temp = createValue(no_implicitcast, LINK(pointerType), LINK(address));
     return createValue(no_deref, LINK(columnType), temp);
 }
