@@ -251,7 +251,7 @@ void CompoundIteratorBuilder::createSingleLevelIterator(StringBuffer & iterName,
     createSingleIterator(iterName, cur, cursors);
 
     translator.getUniqueId(cursorName.append("row"));
-    OwnedHqlExpr row = createVariable(cursorName, makeRowReferenceType(cur));
+    OwnedHqlExpr row = createVariable(cursorName, makeConstantModifier(makeRowReferenceType(cur)));
     declarectx.addDeclare(row);
     cursors.append(*translator.createTableCursor(cur, row, false, no_none, NULL));
 }
