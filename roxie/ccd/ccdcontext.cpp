@@ -755,7 +755,7 @@ CRoxieWorkflowMachine *createRoxieWorkflowMachine(IPropertyTree *_workflowInfo, 
 //=======================================================================================================================
 
 typedef const byte *row_t;
-typedef const byte ** rowset_t;
+typedef const byte * const * rowset_t;
 
 class DeserializedDataReader : implements IWorkUnitRowReader, public CInterface
 {
@@ -781,7 +781,7 @@ public:
         }
         return NULL;
     }
-    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt) override
+    virtual void getResultRowset(size32_t & tcount, const byte * const * & tgt) override
     {
         tcount = count;
         if (data)
@@ -792,7 +792,7 @@ public:
 
 class CDeserializedResultStore : implements IDeserializedResultStore, public CInterface
 {
-    PointerArrayOf<row_t> stored;
+    ConstPointerArrayOf<const row_t> stored;
     UnsignedArray counts;
     IPointerArrayOf<IOutputMetaData> metas;
     mutable SpinLock lock;
@@ -809,7 +809,7 @@ public:
             }
         }
     }
-    virtual int addResult(size32_t count, rowset_t data, IOutputMetaData *meta) override
+    virtual int addResult(size32_t count, const byte * const *data, IOutputMetaData *meta) override
     {
         SpinBlock b(lock);
         stored.append(data);
@@ -870,7 +870,7 @@ public:
 
     }
 
-    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt) override
+    virtual void getResultRowset(size32_t & tcount, const byte * const * & tgt) override
     {
         bool atEOG = true;
         RtlLinkedDatasetBuilder builder(rowAllocator);
@@ -1734,7 +1734,7 @@ public:
             return createRoxieRowAllocator(cache, *rowManager, meta, activityId, id, flags);
     }
 
-    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) override
+    virtual void getResultRowset(size32_t & tcount, const byte * const * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) override
     {
         try
         {
@@ -1754,7 +1754,7 @@ public:
         }
     }
 
-    virtual void getResultDictionary(size32_t & tcount, const byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) override
+    virtual void getResultDictionary(size32_t & tcount, const byte * const * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) override
     {
         try
         {

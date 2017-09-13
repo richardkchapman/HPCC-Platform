@@ -1039,13 +1039,13 @@ IHThorGraphResult * EclSubGraph::createGraphLoopResult(IEngineRowAllocator * own
     return graphLoopResults->createResult(ownedRowsetAllocator);
 }
 
-void EclSubGraph::getLinkedResult(unsigned & count, const byte * * & ret, unsigned id)
+void EclSubGraph::getLinkedResult(unsigned & count, const byte * const * & ret, unsigned id)
 {
     localResults->queryResult(id)->getLinkedResult(count, ret);
 }
 
 
-void EclSubGraph::getDictionaryResult(unsigned & count, const byte * * & ret, unsigned id)
+void EclSubGraph::getDictionaryResult(unsigned & count, const byte * const * & ret, unsigned id)
 {
     localResults->queryResult(id)->getLinkedResult(count, ret);
 }
@@ -1295,7 +1295,7 @@ const void * UninitializedGraphResult::queryRow(unsigned whichRow)
     throw MakeStringException(99, "Graph Result %d accessed before it is created", id);
 }
 
-void UninitializedGraphResult::getLinkedResult(unsigned & count, const byte * * & ret)
+void UninitializedGraphResult::getLinkedResult(unsigned & count, const byte * const * & ret)
 {
     throw MakeStringException(99, "Graph Result %d accessed before it is created", id);
 }
@@ -1329,7 +1329,7 @@ const void * GraphResult::queryRow(unsigned whichRow)
     return NULL;
 }
 
-void GraphResult::getLinkedResult(unsigned & count, const byte * * & ret)
+void GraphResult::getLinkedResult(unsigned & count, const byte * const * & ret)
 {
     unsigned max = rows.ordinality();
     const byte * * rowset = rowsetAllocator->createRowset(max);

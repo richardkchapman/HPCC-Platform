@@ -6376,7 +6376,7 @@ public:
 class CGraphResult : implements IGraphResult, public CInterface
 {
     CriticalSection cs;
-    const byte **rowset;
+    const byte * const *rowset;
     size32_t count;
     bool complete;
 
@@ -6398,7 +6398,7 @@ public:
         count = 0;
     }
 
-    CGraphResult(size32_t _count, const byte **_rowset)
+    CGraphResult(size32_t _count, const byte * const *_rowset)
     : count(_count), rowset(_rowset)
     { 
         complete = true;
@@ -6416,7 +6416,7 @@ public:
         return new CGraphResultIterator(this);
     }
 
-    virtual void getLinkedResult(unsigned & countResult, const byte * * & result) override
+    virtual void getLinkedResult(unsigned & countResult, const byte * const * & result) override
     {
         if (!complete)
             throw MakeStringException(ROXIE_GRAPH_PROCESSING_ERROR, "Internal Error: Reading uninitialised graph result"); 
@@ -14676,7 +14676,7 @@ public:
         rowcount = 0;
         curRow = 0;
     }
-    void init(size32_t _rowcount, const byte **_rowset)
+    void init(size32_t _rowcount, const byte * const *_rowset)
     {
         rowset = _rowset;
         rowcount = _rowcount;
@@ -14695,7 +14695,7 @@ public:
         return NULL;
     }
 protected:
-    const byte **rowset;
+    const byte * const * rowset;
     size32_t rowcount;
     size32_t curRow;
 };
@@ -26922,11 +26922,11 @@ public:
     {
         return select(id).createIterator();
     }
-    virtual void getLinkedResult(unsigned & count, const byte * * & ret, unsigned id) override
+    virtual void getLinkedResult(unsigned & count, const byte * const * & ret, unsigned id) override
     {
         select(id).getLinkedResult(count, ret);
     }
-    virtual void getDictionaryResult(unsigned & count, const byte * * & ret, unsigned id) override
+    virtual void getDictionaryResult(unsigned & count, const byte * const * & ret, unsigned id) override
     {
         select(id).getLinkedResult(count, ret);
     }
@@ -27405,11 +27405,11 @@ public:
         doExecute(parentExtractSize, parentExtract);
         return LINK(results);
     }
-    virtual void getLinkedResult(unsigned & count, const byte * * & ret, unsigned id) override
+    virtual void getLinkedResult(unsigned & count, const byte * const * & ret, unsigned id) override
     {
         results->getLinkedResult(count, ret, id);
     }
-    virtual void getDictionaryResult(unsigned & count, const byte * * & ret, unsigned id) override
+    virtual void getDictionaryResult(unsigned & count, const byte * const * & ret, unsigned id) override
     {
         results->getLinkedResult(count, ret, id);
     }

@@ -512,8 +512,8 @@ ECLRTL_API size32_t rtlGetPackedSizeFromFirst(byte first);
 
 ECLRTL_API void rtlReleaseRow(const void * row);
 ECLRTL_API void * rtlLinkRow(const void * row);
-ECLRTL_API void rtlReleaseRowset(unsigned count, const byte * * rowset);
-ECLRTL_API const byte * * rtlLinkRowset(const byte * * rowset);
+ECLRTL_API void rtlReleaseRowset(unsigned count, const byte * const * rowset);
+ECLRTL_API const byte * const * rtlLinkRowset(const byte * const * rowset);
 
 ECLRTL_API void ensureRtlLoaded();      // call this to create a static link to the rtl...
 
@@ -555,9 +555,9 @@ ECLRTL_API void deserializeUnicodeX(size32_t & len, UChar * & data, MemoryBuffer
 ECLRTL_API void deserializeUtf8X(size32_t & len, char * & data, MemoryBuffer &in);
 ECLRTL_API UChar * deserializeVUnicodeX(MemoryBuffer &in);
 ECLRTL_API void deserializeQStrX(size32_t & len, char * & data, MemoryBuffer &out);
-ECLRTL_API void deserializeRowsetX(size32_t & count, const byte * * & data, IEngineRowAllocator * _rowAllocator, IOutputRowDeserializer * deserializer, MemoryBuffer &in);
-ECLRTL_API void deserializeGroupedRowsetX(size32_t & count, const byte * * & data, IEngineRowAllocator * _rowAllocator, IOutputRowDeserializer * deserializer, MemoryBuffer &in);
-ECLRTL_API void deserializeDictionaryX(size32_t & count, const byte * * & rowset, IEngineRowAllocator * _rowAllocator, IOutputRowDeserializer * deserializer, MemoryBuffer &in);
+ECLRTL_API void deserializeRowsetX(size32_t & count, const byte * const * & data, IEngineRowAllocator * _rowAllocator, IOutputRowDeserializer * deserializer, MemoryBuffer &in);
+ECLRTL_API void deserializeGroupedRowsetX(size32_t & count, const byte * const * & data, IEngineRowAllocator * _rowAllocator, IOutputRowDeserializer * deserializer, MemoryBuffer &in);
+ECLRTL_API void deserializeDictionaryX(size32_t & count, const byte * const * & rowset, IEngineRowAllocator * _rowAllocator, IOutputRowDeserializer * deserializer, MemoryBuffer &in);
 
 ECLRTL_API byte * rtlDeserializeRow(IEngineRowAllocator * rowAllocator, IOutputRowDeserializer * deserializer, const void * src);
 ECLRTL_API byte * rtlDeserializeBufferRow(IEngineRowAllocator * rowAllocator, IOutputRowDeserializer * deserializer, MemoryBuffer & buffer);

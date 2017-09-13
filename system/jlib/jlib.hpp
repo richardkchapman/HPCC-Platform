@@ -204,6 +204,25 @@ public:
     inline bool zap(TYPE * x)                   { return PointerArray::zap(x); }
 };
 
+template <class TYPE>
+class ConstPointerArrayOf : public ConstPointerArray
+{
+    typedef int (*PointerOfCompareFunc)(TYPE **, TYPE **);
+public:
+    inline void add(TYPE * x, aindex_t pos)     { ConstPointerArray::add(x, pos); }
+    inline void append(TYPE * x)                { ConstPointerArray::append(x); }
+    inline aindex_t bAdd(TYPE * & newItem, PointerOfCompareFunc f, bool & isNew) { return ConstPointerArray::bAdd(*(void * *)&newItem, (CompareFunc)f, isNew); }
+    inline aindex_t bSearch(const TYPE * & key, CompareFunc f) const    { return ConstPointerArray:: bSearch(*(const void * *)&key, f); }
+    inline aindex_t find(TYPE * x) const        { return ConstPointerArray::find(x); }
+    inline TYPE **getArray(aindex_t pos = 0)    { return (TYPE **)ConstPointerArray::getArray(pos); }
+    inline TYPE * item(aindex_t pos) const      { return (TYPE *)ConstPointerArray::item(pos); }
+    inline TYPE * popGet()                      { return (TYPE *)ConstPointerArray::popGet(); }
+    inline void replace(TYPE * x, aindex_t pos) { ConstPointerArray::replace(x, pos); }
+    inline TYPE * tos(void) const               { return (TYPE *)ConstPointerArray::tos(); }
+    inline TYPE * tos(aindex_t num) const       { return (TYPE *)ConstPointerArray::tos(num); }
+    inline bool zap(TYPE * x)                   { return ConstPointerArray::zap(x); }
+};
+
 enum DAFSConnectCfg { SSLNone = 0, SSLOnly, SSLFirst, UnsecureFirst };
 
 #include "jstring.hpp"

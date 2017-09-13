@@ -870,7 +870,7 @@ public:
                     // a 32-bit record count, and a (linked) pointer to an array of record pointers
                     byte *dest = builder.ensureCapacity(offset+sizeof(size32_t)+sizeof(byte **), field->name)+offset;
                     *(size32_t *)dest = *(size32_t *)source;
-                    *(const byte ***)(dest + sizeof(size32_t)) = rtlLinkRowset(*(const byte ***)(source + sizeof(size32_t)));
+                    *(const byte * const **)(dest + sizeof(size32_t)) = rtlLinkRowset(*(const byte * const **)(source + sizeof(size32_t)));
                     offset += sizeof(size32_t)+sizeof(byte **);
                     break;
                 }

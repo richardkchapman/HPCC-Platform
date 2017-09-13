@@ -3000,8 +3000,8 @@ class EclccEngineRowAllocator : public CInterfaceOf<IEngineRowAllocator>
 {
 public:
     virtual const byte * * createRowset(unsigned _numItems) override { return (const byte * *)malloc(_numItems * sizeof(byte *)); }
-    virtual const byte * * linkRowset(const byte * * rowset) override { throwUnexpected(); }
-    virtual void releaseRowset(unsigned count, const byte * * rowset) override { free(rowset); }
+    virtual const byte * const * linkRowset(const byte * const * rowset) override { throwUnexpected(); }
+    virtual void releaseRowset(unsigned count, const byte * const * rowset) override { free((void *) rowset); }
     virtual const byte * * appendRowOwn(const byte * * rowset, unsigned newRowCount, void * row) override
     {
         const byte * * expanded = reallocRows(rowset, newRowCount-1, newRowCount);

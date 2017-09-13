@@ -139,12 +139,12 @@ public:
         return (const byte **) rowManager.allocate(count * sizeof(void *), allocatorId | ACTIVITY_FLAG_ISREGISTERED);
     }
 
-    virtual void releaseRowset(unsigned count, const byte * * rowset) override
+    virtual void releaseRowset(unsigned count, const byte * const * rowset) override
     {
         rtlReleaseRowset(count, rowset);
     }
 
-    virtual const byte * * linkRowset(const byte * * rowset) override
+    virtual const byte * const * linkRowset(const byte * const * rowset) override
     {
         return rtlLinkRowset(rowset);
     }
