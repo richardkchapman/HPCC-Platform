@@ -488,6 +488,7 @@ void HqlCppWriter::generateType(ITypeInfo * type, const char * name)
         case type_sortlist:
             if (hasLinkCountedModifier(fullType))
                 isPointer = true;
+            result.addConst();  // Bit of a hack - see below in
             prefix = "byte";
             next = NULL;
             break;
@@ -889,7 +890,7 @@ void HqlCppWriter::generateParamCpp(IHqlExpression * param, IHqlExpression * att
         out.append(",");
         break;
     case type_row:
-        isConst = true;
+        isConst = false; // bit of a hack - we forced it on in generateType above, and this avoids duplicates.
         break;
     }
     

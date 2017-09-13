@@ -786,7 +786,7 @@ interface IRowStream;
 
 //-----------------------------------------------------------------------------
 
-ECLRTL_API IRowStream * createRowStream(size32_t count, const byte * * rowset);
+ECLRTL_API IRowStream * createRowStream(size32_t count, const byte * const * rowset);
 
 //-----------------------------------------------------------------------------
 struct RtlTypeInfo;
@@ -822,7 +822,7 @@ interface IEmbedFunctionContext : extends IInterface
     virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator) = 0;
     virtual byte * getRowResult(IEngineRowAllocator * _resultAllocator) = 0;
     virtual size32_t getTransformResult(ARowBuilder & builder) = 0;
-    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, byte *val) = 0;
+    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, const byte *val) = 0;
     virtual void bindDatasetParam(const char *name, IOutputMetaData & metaVal, IRowStream * val) = 0;
 
     virtual void bindFloatParam(const char *name, float val) = 0;
