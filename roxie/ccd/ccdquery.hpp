@@ -144,6 +144,7 @@ interface IQueryFactory : extends IInterface
     virtual IActivityGraph *lookupGraph(IRoxieSlaveContext *ctx, const char *name, IProbeManager *probeManager, const IRoxieContextLogger &logctx, IRoxieServerActivity *parentActivity) const = 0;
     virtual ISlaveActivityFactory *getSlaveActivityFactory(unsigned id) const = 0;
     virtual IRoxieServerActivityFactory *getRoxieServerActivityFactory(unsigned id) const = 0;
+    virtual IHThorArg *createDynamicHelper(ThorActivityKind kind, IPropertyTree &node) const = 0;
     virtual hash64_t queryHash() const = 0;
     virtual const char *queryQueryName() const = 0;
     virtual const char *queryErrorMessage() const = 0;
@@ -235,14 +236,14 @@ protected:
     ThorActivityKind kind;
     ActivityArrayArray childQueries;
     UnsignedArray childQueryIndexes;
-    CachedOutputMetaData meta;
+    Owned<IPropertyTree> graphNode;   // Only set if no helper factory (dynamic mode)
     mutable CriticalSection statsCrit;
     mutable CRuntimeStatisticCollection mystats;
     // MORE: Could be CRuntimeSummaryStatisticCollection to include derived stats, but stats are currently converted
     // to IPropertyTrees.  Would need to serialize/deserialize and then merge/derived so that they merged properly
 
 public:
-    CActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind);
+    CActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode);
     ~CActivityFactory() 
     { 
         ForEachItemIn(idx, childQueries)
@@ -297,6 +298,7 @@ interface IQueryDll : public IInterface
     virtual HelperFactory *getFactory(const char *name) const = 0;
     virtual ILoadedDllEntry *queryDll() const = 0;
     virtual IConstWorkUnit *queryWorkUnit() const = 0;
+    virtual IPropertyTree *queryGraph() const = 0;
 };
 
 extern const IQueryDll *createQueryDll(const char *dllName);

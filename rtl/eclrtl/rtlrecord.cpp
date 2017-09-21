@@ -495,12 +495,21 @@ COutputMetaData::~COutputMetaData()
 const RtlRecord &COutputMetaData::queryRecordAccessor(bool expand) const
 {
     // NOTE: the recordAccessor field cannot be declared as atomic, since the class definition is included in generated
-    // code which is not (yet) compiled using C++11. If that changes then the reinterpret_cast can be removed.
+    // code which does not include <atomic>. If that changes then the reinterpret_cast can be removed.
     std::atomic<const RtlRecord *> &aRecordAccessor = reinterpret_cast<std::atomic<const RtlRecord *> &>(recordAccessor[expand]);
     const RtlRecord *useAccessor = aRecordAccessor.load(std::memory_order_relaxed);
     if (!useAccessor)
         useAccessor = setupRecordAccessor(*this, expand, aRecordAccessor);
     return *useAccessor;
+}
+
+size32_t COutputMetaData::getRecordSize(const void * data)
+{
+    const RtlRecord &r = queryRecordAccessor(false);
+    unsigned numOffsets = r.getNumVarFields() + 1;
+    size_t * variableOffsets = (size_t *)alloca(numOffsets * sizeof(size_t));
+    RtlRow offsetCalculator(r, data, numOffsets, variableOffsets);
+    return offsetCalculator.getRecordSize();
 }
 
 class CVariableOutputRowSerializer : public COutputRowSerializer
@@ -574,6 +583,15 @@ ISourceRowPrefetcher *COutputMetaData::defaultCreateDiskPrefetcher(ICodeContext 
     }
     return NULL;
 }
+
+IOutputRowDeserializer *CDynamicOutputMetaData::createDiskDeserializer(ICodeContext * ctx, unsigned activityId)
+{
+    if (getFixedSize())
+        return new CFixedOutputRowDeserializer(activityId, getFixedSize());
+    else
+        UNIMPLEMENTED; // TBD
+}
+
 
 IOutputRowSerializer *CFixedOutputMetaData::createDiskSerializer(ICodeContext * ctx, unsigned activityId)
 {

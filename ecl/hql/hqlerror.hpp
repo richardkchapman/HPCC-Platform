@@ -39,6 +39,7 @@ public:
     virtual void report(IError* err);
     virtual size32_t errCount() { return errs; }
     virtual size32_t warnCount() { return warns; }
+    void clear() { errs = warns = 0; }
 
 private:
     unsigned errs;
@@ -96,7 +97,7 @@ public:
     IError* item(size32_t index) { return &msgs.item(index); }
     IError* firstError();
     StringBuffer& toString(StringBuffer& out);
-    void clear() { msgs.kill(); }
+    void clear() { ErrorReceiverSink::clear(); msgs.kill(); }
 
 private:
     IErrorArray msgs;

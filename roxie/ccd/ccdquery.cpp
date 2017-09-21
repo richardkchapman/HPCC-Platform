@@ -17,6 +17,7 @@
 
 #include <platform.h>
 #include <jlib.hpp>
+#include "eclhelper_dyn.hpp"
 
 #include "ccd.hpp"
 #include "ccdquery.hpp"
@@ -27,6 +28,9 @@
 
 #include "thorplugin.hpp"
 #include "layouttrans.hpp"
+
+#include "hqlerror.hpp"
+#include "hqlexpr.hpp"
 
 void ActivityArray::append(IActivityFactory &cur)
 {
@@ -79,6 +83,7 @@ class CQueryDll : implements IQueryDll, public CInterface
     StringAttr dllName;
     Owned <ILoadedDllEntry> dll;
     Owned <IConstWorkUnit> wu;
+    Owned <IPropertyTree> graph;
     static CriticalSection dllCacheLock;
     static CopyMapStringToMyClass<CQueryDll> dllCache;
 
@@ -87,11 +92,60 @@ public:
 
     CQueryDll(const char *_dllName, ILoadedDllEntry *_dll) : dllName(_dllName), dll(_dll)
     {
-        StringBuffer wuXML;
-        if (!selfTestMode && getEmbeddedWorkUnitXML(dll, wuXML))
+        if (!selfTestMode)
         {
-            Owned<ILocalWorkUnit> localWU = createLocalWorkUnit(wuXML);
-            wu.setown(localWU->unlock());
+            StringBuffer wuXML;
+            if (getEmbeddedGraphXML(dll, wuXML))
+            {
+                graph.setown(createPTreeFromXMLString(wuXML));
+                if (!graph->hasProp("node"))
+                {
+                    assert(streq(graph->queryName(), "node"));
+                    graph->setPropInt("@id", 2);
+                    if (!graph->hasProp("hint[@name='dynamic']"))
+                        graph->addPropTree("hint", createPTreeFromXMLString("<hint name='dynamic' value='1'/>"));
+                    const char *kindName = graph->queryProp("att[@name='_kind']/@value");
+                    ThorActivityKind kind;
+                    if (!kindName)
+                        kind = TAKdiskread;
+                    else if (strieq(kindName, "DiskRead"))
+                        kind = TAKdiskread;
+                    else
+                        throw MakeStringException(ROXIE_UNIMPLEMENTED_ERROR, "Unsupported dynamic activity: %s", kindName);
+                    graph->removeProp("att[@name='_kind']");
+                    graph->addPropTree("att", createPTreeFromXMLString("<att name='_kind'/>"));
+                    graph->setPropInt("att[@name='_kind']/@value", kind);
+                    // Do ECL parsing here as we don't want lower dlls dependent on libhql.so
+                    parseTypeInfo(graph, "input");
+                    parseTypeInfo(graph, "output");
+                    Owned<IPropertyTree> newGraph = createPTreeFromXMLString(
+                    "<graph>"
+                    "<node id='1'>"
+                    " <att>"
+                    "  <graph>"
+                    "   <att name='rootGraph' value='1'/>"
+                    "    <edge id='2_0' source='2' target='3'/>"
+                    "    <node id='3'>"
+                    "     <att name='_kind' value='16'/>"
+                    "     <att name='input_binary'/>"        // value filled in shortly
+                    "     <hint name='dynamic' value='1'/>"
+                    "    </node>"
+                    "   </graph>"
+                    "  </att>"
+                    " </node>"
+                    "</graph>");
+                    MemoryBuffer outformat;
+                    graph->getPropBin("att[@name='output_binary']/value", outformat);
+                    newGraph->setPropBin("node/att/graph/node/att[@name='input_binary']/value", outformat.length(), outformat.toByteArray());
+                    newGraph->addPropTree("node/att/graph/node", graph.getClear());
+                    graph.setown(newGraph.getClear());
+                }
+            }
+            else if (   getEmbeddedWorkUnitXML(dll, wuXML))
+            {
+                Owned<ILocalWorkUnit> localWU = createLocalWorkUnit(wuXML);
+                wu.setown(localWU->unlock());
+            }
         }
         CriticalBlock b(dllCacheLock);
         dllCache.setValue(dllName, this);
@@ -140,10 +194,48 @@ public:
     {
         return dll;
     }
+    virtual IPropertyTree *queryGraph() const
+    {
+        return graph;
+    }
     virtual IConstWorkUnit *queryWorkUnit() const
     {
         return wu;
     }
+private:
+    void parseTypeInfo(IPropertyTree *node, const char *key)
+    {
+        VStringBuffer xpath("att[@name='%s_binary']", key);
+        if (!node->hasProp(xpath))
+        {
+            const char *inrec = node->queryProp(xpath.setf("att[@name='%s']/@value", key));
+            if (!inrec)
+                inrec = node->queryProp(xpath.setf("att[@name='%s']/value", key));
+            if (!inrec)
+                throw MakeStringException(ROXIE_DATA_ERROR, "Missing %s record format", key);
+            // Let's be kind to the users...
+            StringBuffer ecl(inrec);
+            ecl.trimRight();
+            if (!ecl.length())
+                throw MakeStringException(ROXIE_DATA_ERROR, "Missing %s record format", key);
+            if (ecl.charAt(ecl.length()-1) != ';')
+                ecl.append(';');
+            ErrorReceiverSink errs;
+            OwnedHqlExpr record = parseQuery(ecl, &errs);
+            if (errs.errCount() || !record)
+            {
+                errs.clear();
+                record.setown(parseQuery(ecl.insert(0, '{').append("};"), &errs));
+                if (errs.errCount() || !record)
+                    throw MakeStringException(ROXIE_DATA_ERROR, "Failed to parse ECL record definition.");
+            }
+            MemoryBuffer bintype;
+            exportBinaryType(bintype, record);
+            node->addPropTree("att", createPTreeFromXMLString(xpath.setf("<att name='%s_binary'/>", key)));
+            node->setPropBin(xpath.setf("att[@name='%s_binary']/value", key), bintype.length(), bintype.toByteArray());
+        }
+    }
+
 };
 CriticalSection CQueryDll::dllCacheLock;
 CopyMapStringToMyClass<CQueryDll> CQueryDll::dllCache;
@@ -541,14 +633,19 @@ protected:
             rid |= ROXIE_SLA_PRIORITY;
             break;
         }
-        StringBuffer helperName;
-        node.getProp("att[@name=\"helper\"]/@value", helperName);
-        if (!helperName.length())
-            helperName.append("fAc").append(id);
-        HelperFactory *helperFactory = dll->getFactory(helperName);
-        if (!helperFactory)
-            throw MakeStringException(ROXIE_INTERNAL_ERROR, "Internal error: helper function %s not exported", helperName.str());
-
+        HelperFactory *helperFactory;
+        if (dll && !node.getPropBool("hint[@name='dynamic']/@value", false))
+        {
+            StringBuffer helperName;
+            node.getProp("att[@name=\"helper\"]/@value", helperName);
+            if (!helperName.length())
+                helperName.append("fAc").append(id);
+            helperFactory = dll->getFactory(helperName);
+            if (!helperFactory)
+                throw MakeStringException(ROXIE_INTERNAL_ERROR, "Internal error: helper function %s not exported", helperName.str());
+        }
+        else
+            helperFactory = nullptr;
         RemoteActivityId remoteId(rid, hashValue);
         RemoteActivityId remoteId2(rid | ROXIE_ACTIVITY_FETCH, hashValue);
 
@@ -877,6 +974,21 @@ protected:
             break;
         }
         throwUnexpected(); // unreachable, but some compilers will complain about missing return
+    }
+
+    virtual IHThorArg *createDynamicHelper(ThorActivityKind kind, IPropertyTree &node) const override
+    {
+        switch (kind)
+        {
+        case TAKworkunitwrite:
+            return createWorkunitWriteArg(node);
+        case TAKdiskread:
+            if (!node.getPropBool("att[@name='_isSpill']/@value", false) && !node.getPropBool("att[@name='_isSpillGlobal']/@value", false))
+                return createDiskReadArg(node);
+            // fall into...
+        default:
+            throw MakeStringException(ROXIE_UNIMPLEMENTED_ERROR, "Unimplemented dynamic activity %s required", getActivityText(kind));
+        }
     }
 
     IActivityFactory *findActivity(unsigned id) const
@@ -1244,6 +1356,23 @@ public:
                 }
             }
         }
+        else if (dll->queryGraph())
+        {
+            try
+            {
+                ActivityArray *activities = loadGraph(*dll->queryGraph(), "graph1");
+                graphMap.setValue("graph1", activities);
+            }
+            catch (IException *E)
+            {
+                StringBuffer m;
+                E->errorMessage(m);
+                suspend(m.str());
+                ERRLOG("Query %s suspended: %s", id.get(), m.str());
+                E->Release();
+            }
+
+        }
         hash64_t hv = rtlHash64Data(sizeof(channelNo), &channelNo, hashValue);
         SpinBlock b(queriesCrit);
         queryMap.setValue(hv, this);
@@ -1530,8 +1659,9 @@ public:
 protected:
     IPropertyTree *queryWorkflowTree() const
     {
-        assertex(dll->queryWorkUnit());
-        return dll->queryWorkUnit()->queryWorkflowTree();
+        if (dll->queryWorkUnit())
+            return dll->queryWorkUnit()->queryWorkflowTree();
+        return nullptr;
     }
 
     bool hasOnceSection() const
@@ -1655,7 +1785,8 @@ public:
 
 unsigned checkWorkunitVersionConsistency(const IConstWorkUnit *wu)
 {
-    assertex(wu);
+    if (!wu)
+        return ACTIVITY_INTERFACE_VERSION;
     unsigned wuVersion = wu->getCodeVersion();
     if (wuVersion == 0)
         throw makeStringException(ROXIE_MISMATCH, "Attempting to execute a workunit that hasn't been compiled");
@@ -1695,9 +1826,13 @@ extern IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *
     {
         checkWorkunitVersionConsistency(dll);
         Owned<ISharedOnceContext> sharedOnceContext;
-        IPropertyTree *workflow = dll->queryWorkUnit()->queryWorkflowTree();
-        if (workflow && workflow->hasProp("Item[@mode='once']"))
-            sharedOnceContext.setown(new CSharedOnceContext);
+        if (dll->queryWorkUnit())
+        {
+            assertex(dll->queryWorkUnit());
+            IPropertyTree *workflow = dll->queryWorkUnit()->queryWorkflowTree();
+            if (workflow && workflow->hasProp("Item[@mode='once']"))
+                sharedOnceContext.setown(new CSharedOnceContext);
+        }
         Owned<CRoxieServerQueryFactory> newFactory = new CRoxieServerQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, sharedOnceContext, isDynamic);
         newFactory->load(stateInfo);
         if (sharedOnceContext && preloadOnceData)

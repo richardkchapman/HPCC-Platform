@@ -37,6 +37,7 @@
 #include "ccdstate.hpp"
 #include "roxiehelper.hpp"
 #include "enginecontext.hpp"
+#include "eclhelper_dyn.hpp"
 
 using roxiemem::IRowManager;
 
@@ -2927,16 +2928,22 @@ public:
     {
         MTIME_SECTION(myTimer, "Process");
         QueryTerminationCleanup threadCleanup;
-        EclProcessFactory pf = (EclProcessFactory) factory->queryDll()->getEntry("createProcess");
-        Owned<IEclProcess> p = pf();
+        Owned<IEclProcess> p;
         try
         {
             if (debugContext)
                 debugContext->checkBreakpoint(DebugStateReady, NULL, NULL);
             if (workflow)
+            {
+                EclProcessFactory pf = (EclProcessFactory) factory->queryDll()->getEntry("createProcess");
+                p.setown(pf());
                 workflow->perform(this, p);
+            }
             else
-                p->perform(this, 0);
+            {
+                p.setown(createDynamicEclProcess());
+                p->perform(this, 1);
+            }
         }
         catch(WorkflowException *E)
         {
