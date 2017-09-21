@@ -48,7 +48,6 @@ class ECLRTL_API RtlDatasetBuilder : protected ARowBuilder, public RtlCInterface
 public:
     RtlDatasetBuilder();
     ~RtlDatasetBuilder();
-    RTLIMPLEMENT_IINTERFACE
 
     void getData(size32_t & len, void * & data);
     size32_t getSize();
