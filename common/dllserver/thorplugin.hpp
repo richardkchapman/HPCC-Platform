@@ -35,6 +35,7 @@ interface ILoadedDllEntry : extends IInterface
 
 extern DLLSERVER_API ILoadedDllEntry * createDllEntry(const char *name, bool isGlobal, const IFileIO *dllFile, bool resourcesOnly);
 extern DLLSERVER_API ILoadedDllEntry * createExeDllEntry(const char *name);
+extern DLLSERVER_API bool getEmbeddedGraphXML(ILoadedDllEntry *dll, StringBuffer &xml);
 extern DLLSERVER_API bool getEmbeddedWorkUnitXML(ILoadedDllEntry *dll, StringBuffer &xml);
 extern DLLSERVER_API bool getEmbeddedManifestXML(ILoadedDllEntry *dll, StringBuffer &xml);
 extern DLLSERVER_API bool checkEmbeddedWorkUnitXML(ILoadedDllEntry *dll);

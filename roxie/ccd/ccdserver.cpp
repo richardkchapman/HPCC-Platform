@@ -393,7 +393,7 @@ public:
     IMPLEMENT_IINTERFACE;
 
     CRoxieServerActivityFactoryBase(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
-        : CActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind)
+        : CActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
         processed = 0;
         started = 0;
@@ -406,6 +406,7 @@ public:
     ~CRoxieServerActivityFactoryBase()
     {
     }
+
 
     StringBuffer &toString(StringBuffer &ret) const
     {
@@ -442,10 +443,6 @@ public:
     virtual unsigned queryId() const { return id; }
     virtual unsigned querySubgraphId() const { return subgraphId; }
     virtual ThorActivityKind getKind() const { return kind; }
-    virtual IOutputMetaData * queryOutputMeta() const
-    {
-        return meta;
-    }
     virtual bool isSink() const
     {
         return false;
@@ -460,7 +457,11 @@ public:
     }
     virtual IHThorArg &getHelper() const
     {
-        return *helperFactory();
+        // dynamic mode not yet implemented...
+        if (helperFactory)
+            return *helperFactory();
+        assertex(graphNode);
+        return *queryFactory.createDynamicHelper(kind, *graphNode);
     }
     virtual IRoxieServerActivity *createFunction(IHThorArg &arg, IProbeManager *_probeManager) const
     {
@@ -6692,7 +6693,7 @@ public:
         : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode, _usageCount, _isRoot), graphId(_graphId)
     {
         isInternal = true;
-        Owned<IHThorLocalResultWriteArg> helper = (IHThorLocalResultWriteArg *) helperFactory();
+        Owned<IHThorLocalResultWriteArg> helper = (IHThorLocalResultWriteArg *) &getHelper();
     }
 
     virtual IRoxieServerActivity *createActivity(IRoxieSlaveContext *_ctx, IProbeManager *_probeManager) const
@@ -7054,7 +7055,7 @@ public:
         : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode, _usageCount, true), graphId(_graphId)
     {
         isInternal = true;
-        Owned<IHThorGraphLoopResultWriteArg> helper = (IHThorGraphLoopResultWriteArg *) helperFactory();
+        Owned<IHThorGraphLoopResultWriteArg> helper = (IHThorGraphLoopResultWriteArg *) &getHelper();
     }
 
     virtual IRoxieServerActivity *createActivity(IRoxieSlaveContext *_ctx, IProbeManager *_probeManager) const
@@ -7480,7 +7481,7 @@ public:
     CRoxieServerDedupActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorDedupArg> helper = (IHThorDedupArg *) helperFactory();
+        Owned<IHThorDedupArg> helper = (IHThorDedupArg *) &getHelper();
         compareAll = helper->compareAll();
         keepLeft = helper->keepLeft();
         keepBest = helper->keepBest();
@@ -8279,7 +8280,7 @@ public:
     CRoxieServerSortActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorSortArg> sortHelper = (IHThorSortArg *) helperFactory();
+        Owned<IHThorSortArg> sortHelper = (IHThorSortArg *) &getHelper();
         const char *algorithmName = NULL;
         sortFlags = sortHelper->getAlgorithmFlags();
         if (sortFlags & TAFconstant)
@@ -8559,7 +8560,7 @@ public:
     CRoxieServerQuantileActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorQuantileArg> quantileHelper = (IHThorQuantileArg *) helperFactory();
+        Owned<IHThorQuantileArg> quantileHelper = (IHThorQuantileArg *) &getHelper();
         flags = quantileHelper->getFlags();
     }
 
@@ -9158,7 +9159,7 @@ public:
     CRoxieServerThroughSpillActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerMultiOutputFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorSpillArg> helper = (IHThorSpillArg *) helperFactory();
+        Owned<IHThorSpillArg> helper = (IHThorSpillArg *) &getHelper();
         setNumOutputs(helper->getTempUsageCount() + 1);
     }
 
@@ -9193,7 +9194,7 @@ public:
     CRoxieServerSplitActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerMultiOutputFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorSplitArg> helper = (IHThorSplitArg *) helperFactory();
+        Owned<IHThorSplitArg> helper = (IHThorSplitArg *) &getHelper();
         setNumOutputs(helper->numBranches());
     }
 
@@ -10190,10 +10191,18 @@ public:
 class CRoxieServerSideEffectActivityFactory : public CRoxieServerActivityFactory
 {
     bool isRoot;
+    bool sink;
 public:
     CRoxieServerSideEffectActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, bool _isRoot)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), isRoot(_isRoot)
     {
+        if (isRoot)
+        {
+            Owned<IHThorArg> helper = &getHelper();
+            sink = helper->queryOutputMeta()==nullptr;
+        }
+        else
+            sink = false;
     }
 
     virtual IRoxieServerActivity *createActivity(IRoxieSlaveContext *_ctx, IProbeManager *_probeManager) const
@@ -10203,7 +10212,7 @@ public:
 
     virtual bool isSink() const
     {
-        return isRoot && !meta.queryOriginal();
+        return sink;
     }
 };
 
@@ -11061,7 +11070,7 @@ public:
     CRoxieServerAggregateActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), strandOptions(_graphNode)
     {
-        Owned<IHThorAggregateArg> helper = (IHThorAggregateArg *) helperFactory();
+        Owned<IHThorAggregateArg> helper = (IHThorAggregateArg *) &getHelper();
         if (!(helper->getAggregateFlags() & TAForderedmerge))
             optStableInput = false;
     }
@@ -11881,7 +11890,7 @@ public:
     CRoxieServerDiskWriteActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, bool _isRoot)
         : CRoxieServerMultiOutputFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), isRoot(_isRoot)
     {
-        Owned<IHThorDiskWriteArg> helper = (IHThorDiskWriteArg *) helperFactory();
+        Owned<IHThorDiskWriteArg> helper = (IHThorDiskWriteArg *) &getHelper();
         isTemp = (helper->getFlags() & TDXtemporary) != 0;
         setNumOutputs(helper->getTempUsageCount());
         if (_kind!=TAKdiskwrite)
@@ -13375,7 +13384,7 @@ public:
     CRoxieServerConcatActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerMultiInputFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned <IHThorFunnelArg> helper = (IHThorFunnelArg *) helperFactory();
+        Owned <IHThorFunnelArg> helper = (IHThorFunnelArg *) &getHelper();
         ordered = helper->isOrdered();
         grouped = helper->queryOutputMeta()->isGrouped();
     }
@@ -15436,7 +15445,7 @@ public:
     CRoxieServerLoopActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, unsigned _loopGraphId)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), loopGraphId(_loopGraphId)
     {
-        Owned<IHThorLoopArg> helper = (IHThorLoopArg *) helperFactory();
+        Owned<IHThorLoopArg> helper = (IHThorLoopArg *) &getHelper();
         flags = helper->getFlags();
         counterMeta.setown(new CCounterRowMetaData);
     }
@@ -15863,7 +15872,7 @@ public:
     CRoxieServerGraphLoopActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, unsigned _loopGraphId)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), loopGraphId(_loopGraphId)
     {
-        Owned<IHThorGraphLoopArg> helper = (IHThorGraphLoopArg *) helperFactory();
+        Owned<IHThorGraphLoopArg> helper = (IHThorGraphLoopArg *) &getHelper();
         flags = helper->getFlags();
         counterMeta.setown(new CCounterRowMetaData);
     }
@@ -16986,7 +16995,7 @@ public:
     CRoxieServerNWayMergeJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerMultiInputFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorNWayMergeJoinArg> helper = (IHThorNWayMergeJoinArg *) helperFactory();
+        Owned<IHThorNWayMergeJoinArg> helper = (IHThorNWayMergeJoinArg *) &getHelper();
         flags = helper->getJoinFlags();
     }
 
@@ -17224,10 +17233,18 @@ class CRoxieServerRemoteActivityFactory : public CRoxieServerActivityFactory
 public:
     RemoteActivityId remoteId;
     bool isRoot;
+    bool sink;
 
     CRoxieServerRemoteActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, const RemoteActivityId &_remoteId, bool _isRoot)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), remoteId(_remoteId), isRoot(_isRoot)
     {
+        if (isRoot)
+        {
+            Owned<IHThorArg> helper = &getHelper();
+            sink = helper->queryOutputMeta()==nullptr;
+        }
+        else
+            sink = false;
     }
 
     virtual IRoxieServerActivity *createActivity(IRoxieSlaveContext *_ctx, IProbeManager *_probeManager) const
@@ -17242,8 +17259,7 @@ public:
 
     virtual bool isSink() const
     {
-        //I don't think the action version of this is implemented - but this would be the code
-        return isRoot && !meta.queryOriginal();
+        return sink;
     }
     virtual const StatisticsMapping &queryStatsMapping() const
     {
@@ -18943,7 +18959,7 @@ public:
     CRoxieServerLookupJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerJoinActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorHashJoinArg> helper = (IHThorHashJoinArg *) helperFactory();
+        Owned<IHThorHashJoinArg> helper = (IHThorHashJoinArg *) &getHelper();
         useFewTable = _graphNode.getPropBool("hint[@name='usefewtable']/@value", false);
         if((helper->getJoinFlags() & (JFfirst | JFfirstleft | JFfirstright | JFslidingmatch)) != 0)
             throw MakeStringException(ROXIE_INVALID_FLAGS, "Invalid flags for lookup join activity"); // code generator should never create such an activity
@@ -19342,7 +19358,7 @@ public:
     CRoxieServerAllJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerJoinActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode)
     {
-        Owned<IHThorAllJoinArg> helper = (IHThorAllJoinArg *) helperFactory();
+        Owned<IHThorAllJoinArg> helper = (IHThorAllJoinArg *) &getHelper();
         if((helper->getJoinFlags() & (JFfirst | JFfirstleft | JFfirstright)) != 0)
             throw MakeStringException(ROXIE_INVALID_FLAGS, "Invalid flags for join all activity"); // code generator should never create such an activity
     }
@@ -20945,7 +20961,7 @@ public:
     CRoxieServerParseActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, IResourceContext *rc)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), strandOptions(_graphNode)
     {
-        helper.setown((IHThorParseArg *) helperFactory());
+        helper.setown((IHThorParseArg *) &getHelper());
         algorithm.setown(createThorParser(rc, *helper));
         optStableInput = false;
     }
@@ -21140,7 +21156,7 @@ public:
         : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode, _usageCount, _isRoot)
     {
         isReread = usageCount > 0;
-        Owned<IHThorWorkUnitWriteArg> helper = (IHThorWorkUnitWriteArg *) helperFactory();
+        Owned<IHThorWorkUnitWriteArg> helper = (IHThorWorkUnitWriteArg *) &getHelper();
         isInternal = (helper->getSequence()==ResultSequenceInternal);
     }
 
@@ -21210,7 +21226,7 @@ public:
     CRoxieServerWorkUnitWriteDictActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, unsigned _usageCount, bool _isRoot)
         : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode, _usageCount, _isRoot)
     {
-        Owned<IHThorDictionaryWorkUnitWriteArg> helper = (IHThorDictionaryWorkUnitWriteArg *) helperFactory();
+        Owned<IHThorDictionaryWorkUnitWriteArg> helper = (IHThorDictionaryWorkUnitWriteArg *) &getHelper();
         isInternal = (helper->getSequence()==ResultSequenceInternal);
     }
 
@@ -21253,7 +21269,7 @@ public:
     CRoxieServerRemoteResultActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, unsigned _usageCount, bool _isRoot)
         : CRoxieServerInternalSinkFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode, _usageCount, _isRoot)
     {
-        Owned<IHThorRemoteResultArg> helper = (IHThorRemoteResultArg *) helperFactory();
+        Owned<IHThorRemoteResultArg> helper = (IHThorRemoteResultArg *) &getHelper();
         isInternal = (helper->getSequence()==ResultSequenceInternal);
     }
 
@@ -22561,7 +22577,7 @@ public:
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), remoteId(_remoteId)
     {
         isLocal = _graphNode.getPropBool("att[@name='local']/@value") && queryFactory.queryChannel()!=0;
-        Owned<IHThorDiskReadBaseArg> helper = (IHThorDiskReadBaseArg *) helperFactory();
+        Owned<IHThorDiskReadBaseArg> helper = (IHThorDiskReadBaseArg *) &getHelper();
         sorted = (helper->getFlags() & TDRunsorted) == 0;
         variableFileName = allFilesDynamic || _queryFactory.isDynamic() || ((helper->getFlags() & (TDXvarfilename|TDXdynamicfilename)) != 0);
         maySkip = (helper->getFlags() & (TDRkeyedlimitskips|TDRkeyedlimitcreates|TDRlimitskips|TDRlimitcreates)) != 0;
@@ -22664,7 +22680,7 @@ public:
         else
         {
             // Temporarily resolve the file
-            Owned<IHThorDiskReadBaseArg> helper = (IHThorDiskReadBaseArg *) helperFactory();
+            Owned<IHThorDiskReadBaseArg> helper = (IHThorDiskReadBaseArg *) &getHelper();
             if ((helper->getFlags() & (TDXvarfilename|TDXdynamicfilename)) == 0)
             {
                 OwnedRoxieString fileName(helper->getFileName());
@@ -23732,7 +23748,7 @@ public:
     CRoxieServerBaseIndexActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, const RemoteActivityId &_remoteId)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), remoteId(_remoteId)
     {
-        Owned<IHThorIndexReadBaseArg> indexHelper = (IHThorIndexReadBaseArg *) helperFactory();
+        Owned<IHThorIndexReadBaseArg> indexHelper = (IHThorIndexReadBaseArg *) &getHelper();
         unsigned flags = indexHelper->getFlags();
         sorted = (flags & TIRunordered) == 0;
         isLocal = _graphNode.getPropBool("att[@name='local']/@value") && queryFactory.queryChannel()!=0;
@@ -23779,7 +23795,7 @@ public:
             addXrefFileInfo(reply, indexfile);
         else
         {
-            Owned<IHThorIndexReadBaseArg> indexHelper = (IHThorIndexReadBaseArg *) helperFactory();
+            Owned<IHThorIndexReadBaseArg> indexHelper = (IHThorIndexReadBaseArg *) &getHelper();
             if ((indexHelper->getFlags() & (TIRvarfilename|TIRdynamicfilename)) == 0)
             {
                 OwnedRoxieString indexName(indexHelper->getFileName());
@@ -24759,7 +24775,7 @@ public:
     CRoxieServerFetchActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, const RemoteActivityId &_remoteId)
         : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), remoteId(_remoteId)
     {
-        Owned<IHThorFetchBaseArg> helper = (IHThorFetchBaseArg *) helperFactory();
+        Owned<IHThorFetchBaseArg> helper = (IHThorFetchBaseArg *) &getHelper();
         variableFileName = allFilesDynamic || _queryFactory.isDynamic() || ((helper->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
         if (!variableFileName)
         {
@@ -24785,7 +24801,7 @@ public:
         else
         {
             // Temporarily resolve the file
-            Owned<IHThorFetchBaseArg> helper = (IHThorFetchBaseArg *) helperFactory();
+            Owned<IHThorFetchBaseArg> helper = (IHThorFetchBaseArg *) &getHelper();
             if ((helper->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) == 0)
             {
                 OwnedRoxieString fileName(helper->getFileName());
@@ -26449,7 +26465,7 @@ public:
     CRoxieServerKeyedJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode, const RemoteActivityId &_headId, const RemoteActivityId &_tailId)
         : CRoxieServerMultiInputFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode), headId(_headId), tailId(_tailId)
     {
-        Owned<IHThorKeyedJoinArg> helper = (IHThorKeyedJoinArg *) helperFactory();
+        Owned<IHThorKeyedJoinArg> helper = (IHThorKeyedJoinArg *) &getHelper();
         isLocal = _graphNode.getPropBool("att[@name='local']/@value") && queryFactory.queryChannel()!=0;
         isSimple = isLocal;
         rtlDataAttr indexLayoutMeta;

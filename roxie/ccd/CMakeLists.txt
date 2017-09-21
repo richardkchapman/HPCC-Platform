@@ -72,6 +72,7 @@ include_directories (
          ${HPCC_SOURCE_DIR}/common/environment
          ${HPCC_SOURCE_DIR}/ecl/hthor
          ${HPCC_SOURCE_DIR}/ecl/schedulectrl
+         ${HPCC_SOURCE_DIR}/ecl/hql
          ${HPCC_SOURCE_DIR}/rtl/nbcd
          ${HPCC_SOURCE_DIR}/common/deftype
          ${HPCC_SOURCE_DIR}/system/include
@@ -107,6 +108,7 @@ target_link_libraries ( ccd
          udplib 
          remote 
          eclrtl 
+         hql
          dalibase 
          deftype 
          thorhelper 

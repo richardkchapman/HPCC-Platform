@@ -209,7 +209,6 @@ interface IRoxieServerActivityFactory : extends IActivityFactory
     virtual IntArray &queryDependencyControlIds() = 0;
     virtual StringArray &queryDependencyEdgeIds() = 0;
     virtual ThorActivityKind getKind() const = 0;
-    virtual IOutputMetaData *queryOutputMeta() const = 0;
     virtual IHThorArg &getHelper() const = 0;
     virtual IRoxieServerActivity *createFunction(IHThorArg &helper, IProbeManager *_probeManager) const = 0;
     virtual void noteProcessed(unsigned idx, unsigned processed) const = 0;
