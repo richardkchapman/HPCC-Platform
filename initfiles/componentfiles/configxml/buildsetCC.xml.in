@@ -44,6 +44,11 @@
              processName="DaliServerProcess"
              schema="dali.xsd"/>
    <BuildSet installSet="deploy_map.xml"
+             name="backupnode"
+             path="componentfiles/backupnode"
+             processName="BackupNodeProcess"
+             schema="backupnode.xsd"/>
+   <BuildSet installSet="deploy_map.xml"
              name="daliplugin"
              path="componentfiles/daliplugin"
              processName="DaliServerPlugin"
@@ -162,6 +167,10 @@
                           path="FileIOAccess"
                           resource="FileIOAccess"
                           service="ws_fileio"/>
+     <AuthenticateFeature description="Access to package map"
+                          path="PackageMapAccess"
+                          resource="PackageMapAccess"
+                          service="ws_packageprocess"/>
      <AuthenticateFeature description="Access to permissions for file scopes"
                           path="FileScopeAccess"
                           resource="FileScopeAccess"
@@ -182,10 +191,6 @@
                           path="OthersWorkunitsAccess"
                           resource="OthersWorkunitsAccess"
                           service="ws_workunits"/>
-     <AuthenticateFeature description="Access to ECL direct service"
-                          path="EclDirectAccess"
-                          resource="EclDirectAccess"
-                          service="ecldirect"/>
     <AuthenticateFeature description="Access to ESDL configuration service"
                           path="ESDLConfigAccess"
                           resource="ESDLConfigAccess"
@@ -292,29 +297,6 @@
                              service="ws_ecl"/>
       </Properties>
     </BuildSet>
-   <BuildSet deployable="no"
-             installSet="deploy_map.xml"
-             name="ecldirect"
-             path="componentfiles/ecldirect"
-             processName="EspService"
-             schema="esp_service_ecldirect.xsd">
-    <Properties bindingType="EclDirectSoapBinding"
-                defaultPort="8008"
-                defaultResourcesBasedn="ou=EclDirectAccess,ou=EspServices,ou=ecl"
-                defaultSecurePort="18008"
-                plugin="ecldirect"
-                type="ecldirect">
-     <Authenticate access="Read"
-                   description="Root access to ECL Direct service"
-                   path="/"
-                   required="Read"
-                   resource="EclDirectAccess"/>
-     <AuthenticateFeature description="Access to ECL Direct service"
-                          path="EclDirectAccess"
-                          resource="EclDirectAccess"
-                          service="ecldirect"/>
-    </Properties>
-   </BuildSet>
    <BuildSet deployable="no"
              installSet="deploy_map.xml"
              name="DynamicESDL"

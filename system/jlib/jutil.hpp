@@ -220,6 +220,7 @@ public:
     void appendList(const char *list, const char *delim);
     // Appends a list in a string delimited by 'delim' without duplicates
     void appendListUniq(const char *list, const char *delim);
+    StringBuffer &getString(StringBuffer &ret, const char *delim); // get CSV string of array contents
     void sortAscii(bool nocase=false);
     void sortAsciiReverse(bool nocase=false);
     void sortCompare(int (*compare)(const char * const * l, const char * const * r));
@@ -359,10 +360,18 @@ extern jlib_decl bool getConfigurationDirectory(const IPropertyTree *dirtree, //
                                                 const char *instance, 
                                                 StringBuffer &dirout);
 
-extern jlib_decl bool querySecuritySettings(bool *          _useSSL,
+extern jlib_decl bool querySecuritySettings(DAFSConnectCfg *_connectMethod,
                                             unsigned short *_port,
                                             const char * *  _certificate,
-                                            const char * *  _privateKey);
+                                            const char * *  _privateKey,
+                                            const char * *  _passPhrase);
+
+extern jlib_decl bool queryDafsSecSettings(DAFSConnectCfg *_connectMethod,
+                                           unsigned short *_port,
+                                           unsigned short *_sslport,
+                                           const char * *  _certificate,
+                                           const char * *  _privateKey,
+                                           const char * *  _passPhrase);
 
 extern jlib_decl const char * matchConfigurationDirectoryEntry(const char *path,const char *mask,StringBuffer &name, StringBuffer &component, StringBuffer &instance);
 extern jlib_decl bool replaceConfigurationDirectoryEntry(const char *path,const char *frommask,const char *tomask,StringBuffer &out);
@@ -379,9 +388,13 @@ interface jlib_thrown_decl ICorruptDllException: extends IException
 {
 };
 
-struct mapEnums { int val; const char *str; };
+struct EnumMapping { int val; const char *str; };
 
-extern jlib_decl const char *getEnumText(int value, const mapEnums *map);
+extern jlib_decl const char *getEnumText(int value, const EnumMapping *map); // fails if no match
+extern jlib_decl int getEnum(const char *v, const EnumMapping *map); //fails if no match
+extern jlib_decl const char *getEnumText(int value, const EnumMapping *map, const char * defval);
+extern jlib_decl int getEnum(const char *v, const EnumMapping *map, int defval);
+
 
 class jlib_decl QuantilePositionIterator
 {

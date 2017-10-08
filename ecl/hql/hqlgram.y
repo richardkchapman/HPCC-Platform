@@ -1008,6 +1008,13 @@ goodObject
                             OwnedHqlExpr value = $2.getExpr();
                             $$.setExpr(parser->convertToOutOfLineFunction($2.pos, value), $1);
                         }
+    | INLINE goodObject
+                        {
+                            //Ugly internal unsupported syntax for defining an out of line function
+                            //Needs a lot more work.
+                            OwnedHqlExpr value = $2.getExpr();
+                            $$.setExpr(parser->convertToInlineFunction($2.pos, value), $1);
+                        }
     ;
 
 goodTypeObject
@@ -2352,17 +2359,17 @@ actionStmt
                         }
     | BUILD '(' startTopFilter ',' ',' thorFilenameOrList optBuildFlags ')' endTopFilter
                         {
-                            $$.setExpr(parser->processIndexBuild($3, NULL, NULL, $6, $7), $1);
+                            $$.setExpr(parser->processIndexBuild($1, $3, NULL, NULL, $6, $7), $1);
                             parser->processUpdateAttr($$);
                         }
     | BUILD '(' startTopFilter ',' recordDef ',' thorFilenameOrList optBuildFlags ')' endTopFilter
                         {
-                            $$.setExpr(parser->processIndexBuild($3, &$5, NULL, $7, $8), $1);
+                            $$.setExpr(parser->processIndexBuild($1, $3, &$5, NULL, $7, $8), $1);
                             parser->processUpdateAttr($$);
                         }
     | BUILD '(' startTopFilter ',' recordDef ',' nullRecordDef ',' thorFilenameOrList optBuildFlags ')' endTopFilter
                         {
-                            $$.setExpr(parser->processIndexBuild($3, &$5, &$7, $9, $10), $1);
+                            $$.setExpr(parser->processIndexBuild($1, $3, &$5, &$7, $9, $10), $1);
                             parser->processUpdateAttr($$);
                         }
     | BUILD '(' startTopFilter optBuildFlags ')' endTopFilter
@@ -2697,7 +2704,10 @@ actionStmt
                             if (!recordTypesMatch($3.queryExpr(), $5.queryExpr()))
                                 parser->reportError(ERR_TYPEMISMATCH_RECORD, $4, "Indexes must have the same structure");
                             parser->normalizeExpression($7, type_string, false);
-                            $$.setExpr(createValueFromCommaList(no_keydiff, makeVoidType(), createComma($3.getExpr(), $5.getExpr(), $7.getExpr(), $8.getExpr())));
+
+                            OwnedHqlExpr options = createComma($3.getExpr(), $5.getExpr(), $7.getExpr(), $8.getExpr());
+                            parser->saveDiskAccessInformation($1, options);
+                            $$.setExpr(createValueFromCommaList(no_keydiff, makeVoidType(), options.getClear()));
                             $$.setPosition($1);
                         }
     | KEYPATCH '(' dataSet ',' expression ',' expression keyDiffFlags ')'
@@ -2706,7 +2716,10 @@ actionStmt
                                 parser->reportError(ERR_EXPECTED_INDEX,$3,"Expected an index");
                             parser->normalizeExpression($5, type_string, false);
                             parser->normalizeExpression($7, type_string, false);
-                            $$.setExpr(createValueFromCommaList(no_keypatch, makeVoidType(), createComma($3.getExpr(), $5.getExpr(), $7.getExpr(), $8.getExpr())));
+                            OwnedHqlExpr options = createComma($3.getExpr(), $5.getExpr(), $7.getExpr(), $8.getExpr());
+
+                            parser->saveDiskAccessInformation($1, options);
+                            $$.setExpr(createValueFromCommaList(no_keypatch, makeVoidType(), options.getClear()));
                             $$.setPosition($1);
                         }
     | EVALUATE '(' expression ')'
@@ -2934,7 +2947,7 @@ buildFlag
     | skewAttribute
     | THRESHOLD '(' expression ')'
                         {
-                            parser->normalizeExpression($3, type_numeric, true);
+                            parser->normalizeExpression($3, type_int, true);
                             $$.setExpr(createExprAttribute(thresholdAtom, $3.getExpr()));
                         }
     | FEW               {
@@ -4192,6 +4205,8 @@ recordDef
     | simpleRecord
     | recordDef AND recordDef
                         {
+                            parser->checkConcreteRecord($1);
+                            parser->checkConcreteRecord($3);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = $3.getExpr();
                             $$.setExpr(parser->createRecordIntersection(left, right, $1));
@@ -4200,6 +4215,8 @@ recordDef
                         }
     | recordDef OR recordDef
                         {
+                            parser->checkConcreteRecord($1);
+                            parser->checkConcreteRecord($3);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = $3.getExpr();
                             $$.setExpr(parser->createRecordUnion(left, right, $1));
@@ -4207,6 +4224,8 @@ recordDef
                         }
     | recordDef '-' recordDef
                         {
+                            parser->checkConcreteRecord($1);
+                            parser->checkConcreteRecord($3);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = $3.getExpr();
                             $$.setExpr(parser->createRecordDifference(left, right, $1));
@@ -4215,6 +4234,7 @@ recordDef
                         }
     | recordDef '-' UNKNOWN_ID
                         {
+                            parser->checkConcreteRecord($1);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = createId($3.getId());
                             $$.setExpr(parser->createRecordExcept(left, right, $1));
@@ -4223,6 +4243,7 @@ recordDef
                         }
     | recordDef '-' '[' UnknownIdList ']'
                         {
+                            parser->checkConcreteRecord($1);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = $4.getExpr();
                             $$.setExpr(parser->createRecordExcept(left, right, $1));
@@ -4231,6 +4252,8 @@ recordDef
                         }
     | recordDef AND NOT recordDef
                         {
+                            parser->checkConcreteRecord($1);
+                            parser->checkConcreteRecord($4);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = $4.getExpr();
                             $$.setExpr(parser->createRecordDifference(left, right, $1));
@@ -4239,6 +4262,7 @@ recordDef
                         }
     | recordDef AND NOT UNKNOWN_ID
                         {
+                            parser->checkConcreteRecord($1);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = createId($4.getId());
                             $$.setExpr(parser->createRecordExcept(left, right, $1));
@@ -4247,6 +4271,7 @@ recordDef
                         }
     | recordDef AND NOT '[' UnknownIdList ']'
                         {
+                            parser->checkConcreteRecord($1);
                             OwnedHqlExpr left = $1.getExpr();
                             OwnedHqlExpr right = $5.getExpr();
                             $$.setExpr(parser->createRecordExcept(left, right, $1));
@@ -4256,14 +4281,18 @@ recordDef
     | RECORDOF '(' goodObject ')'
                         {
                             OwnedHqlExpr ds = $3.getExpr();
-                            IHqlExpression * record = queryOriginalRecord(ds);
+                            LinkedHqlExpr record = queryOriginalRecord(ds);
                             if (!record)
                             {
                                 parser->reportError(ERR_EXPECTED, $3, "The argument does not have a associated record");
-                                record = queryNullRecord();
+                                record.set(queryNullRecord());
                             }
                             else if (ds->isFunction() && !record->isFullyBound())
-                                parser->reportError(ERR_EXPECTED, $1, "RECORDOF(function-definition), result record depends on the function parameters");
+                            {
+                                record.setown(getUnadornedRecordOrField(record));
+                                if (!record->isFullyBound())
+                                    parser->reportError(ERR_EXPECTED, $1, "RECORDOF(function-definition), result record depends on the function parameters");
+                            }
 
                             $$.setExpr(LINK(record));
                             $$.setPosition($1);
@@ -4751,6 +4780,14 @@ fieldAttr
                             $$.setExpr(getEmbeddedAttr());
                             $$.setPosition($1);
                         }
+    | SET '(' hintList ')'
+                        {
+                            HqlExprArray args;
+                            $3.unwindCommaList(args);
+                            $$.setExpr(createExprAttribute(setAtom, args));
+                            $$.setPosition($1);
+                        }
+    | hintAttribute
     ;
 
 
@@ -6477,6 +6514,14 @@ primexpr1
                         {
                             $$.setExpr(createValue(no_matched, makeBoolType(), $3.getExpr())); //, parser->createUniqueId()));
                         }
+    | MATCHED '(' dataRow ')'
+                        {
+                            $$.setExpr(createValue(no_matched_injoin, makeBoolType(), $3.getExpr()), $1);
+                        }
+    | MATCHED '(' dataSet ')'
+                        {
+                            $$.setExpr(createValue(no_matched_injoin, makeBoolType(), $3.getExpr()), $1);
+                        }
     | MATCHTEXT '(' patternReference ')'
                         {
                             $$.setExpr(createValue(no_matchtext, makeStringType(UNKNOWN_LENGTH, NULL, NULL), $3.getExpr())); //, parser->createUniqueId()));
@@ -8194,7 +8239,8 @@ simpleDataSet
                             IHqlExpression *join = createDataset(no_join, left, createComma(right, cond, createComma(transform.getClear(), flags.getClear(), $12.getExpr())));
 
                             bool isLocal = join->hasAttribute(localAtom);
-                            parser->checkDistribution($3, left, isLocal, true);
+                            if (!join->hasAttribute(lookupAtom) && !isKeyedJoin(join))
+                                parser->checkDistribution($3, left, isLocal, true);
                             parser->checkDistribution($5, right, isLocal, true);
                             parser->checkJoinFlags($1, join);
                             parser->checkOnFailRecord(join, $1);
@@ -8596,8 +8642,9 @@ simpleDataSet
                                 counter = createAttribute(_countProject_Atom, counter);
 
                             //MORE: This should require local otherwise it needs to do a full join type thing.
-                            IHqlExpression * extra = createComma($5.getExpr(), $7.getExpr(), transform, createComma($12.getExpr(), counter, $14.getExpr()));
-                            $$.setExpr(createDataset(no_denormalize, ds, extra));
+                            OwnedHqlExpr extra = createComma($5.getExpr(), $7.getExpr(), transform, createComma($12.getExpr(), counter, $14.getExpr()));
+                            parser->saveDiskAccessInformation($1, extra);
+                            $$.setExpr(createDataset(no_denormalize, ds, extra.getClear()));
                             $$.setPosition($1);
                             parser->checkJoinFlags($1, $$.queryExpr());
                         }
@@ -8606,8 +8653,9 @@ simpleDataSet
                             parser->normalizeExpression($7, type_boolean, false);
                             IHqlExpression * ds = $3.getExpr();
                             IHqlExpression * transform = $13.getExpr();
-                            IHqlExpression * extra = createComma($5.getExpr(), $7.getExpr(), transform, createComma($14.getExpr(), $16.getExpr(), $17.getExpr()));
-                            $$.setExpr(createDataset(no_denormalizegroup, ds, extra));
+                            OwnedHqlExpr extra = createComma($5.getExpr(), $7.getExpr(), transform, createComma($14.getExpr(), $16.getExpr(), $17.getExpr()));
+                            parser->saveDiskAccessInformation($1, extra);
+                            $$.setExpr(createDataset(no_denormalizegroup, ds, extra.getClear()));
                             $$.setPosition($1);
                             $11.release();
                             parser->checkJoinFlags($1, $$.queryExpr());
@@ -8804,6 +8852,8 @@ simpleDataSet
 
                             bool hasFileposition = getBoolAttributeInList(extra, filepositionAtom, true);
                             record.setown(parser->checkIndexRecord(record, $5, extra));
+
+                            parser->saveDiskAccessInformation($1, extra);
                             if (transform)
                             {
                                 if (!recordTypesMatch(dataset, transform))
@@ -8829,6 +8879,7 @@ simpleDataSet
                             OwnedHqlExpr record = $3.getExpr();
                             OwnedHqlExpr extra = $4.getExpr();
                             parser->extractIndexRecordAndExtra(record, extra);
+                            parser->saveDiskAccessInformation($1, extra);
                             IHqlExpression *index = parser->createIndexFromRecord(record, extra, $3);
                             parser->checkValidLookupFlag(index, index->queryChild(3), $1);
                             parser->checkIndexRecordTypes(index, $1);
@@ -8850,6 +8901,9 @@ simpleDataSet
                                 else
                                     args.replace(*newName.getLink(), 3);
                                 $6.unwindCommaList(args);
+                                OwnedHqlExpr options;
+                                parser->saveDiskAccessInformation($1, options);
+                                if (options) args.append(*options.getClear());
                                 dataset.setown(createDataset(keyOp, args));
                                 parser->checkValidLookupFlag(dataset, newName, $5);
                             }
@@ -8887,7 +8941,8 @@ simpleDataSet
                                 filename.setown(createValue(no_assertconstant, filename->getType(), LINK(filename->queryChild(0))));
                                 options.setown(createComma(options.getClear(), createAttribute(localUploadAtom)));
                             }
-                            IHqlExpression * dataset = createNewDataset(filename.getLink(), $6.getExpr(), mode.getClear(), NULL, NULL, parser->getGpgSignature(), options.getClear());
+                            parser->saveDiskAccessInformation($1, options);
+                            IHqlExpression * dataset = createNewDataset(filename.getLink(), $6.getExpr(), mode.getClear(), NULL, NULL, options.getClear());
                             parser->checkValidRecordMode(dataset, $4, $9);
                             parser->checkValidLookupFlag(dataset, filename, $3);
                             $$.setExpr(dataset);
@@ -8917,7 +8972,7 @@ simpleDataSet
                             default:
                                 parser->reportError(ERR_EXPECTED, $1, "Expected STRING/UTF8/UNICODE");
                             }
-                            
+
                             OwnedHqlExpr empty = createList(no_list, makeSetType(NULL), NULL);
                             OwnedHqlExpr quoted = createExprAttribute(quoteAtom, LINK(empty));
                             OwnedHqlExpr separator = createExprAttribute(separatorAtom, LINK(empty));
@@ -8931,7 +8986,8 @@ simpleDataSet
                                 filename.setown(createValue(no_assertconstant, filename->getType(), LINK(filename->queryChild(0))));
                                 options.setown(createComma(options.getClear(), createAttribute(localUploadAtom)));
                             }
-                            IHqlExpression * dataset = createNewDataset(filename.getLink(), record.getClear(), mode.getClear(), NULL, NULL, parser->getGpgSignature(), options.getClear());
+                            parser->saveDiskAccessInformation($1, options);
+                            IHqlExpression * dataset = createNewDataset(filename.getLink(), record.getClear(), mode.getClear(), NULL, NULL, options.getClear());
                             parser->checkValidRecordMode(dataset, $4, $9);
                             parser->checkValidLookupFlag(dataset, filename, $3);
                             $$.setExpr(dataset, $1);
@@ -8945,8 +9001,10 @@ simpleDataSet
                             IHqlExpression * origin = $3.getExpr();
                             OwnedHqlExpr filename = $5.getExpr();
                             IHqlExpression * mode = $7.getExpr();
-                            IHqlExpression * attrs = createComma(createAttribute(_origin_Atom, origin), $8.getExpr());
-                            IHqlExpression * dataset = createNewDataset(filename.getLink(), LINK(origin->queryRecord()), mode, NULL, NULL, parser->getGpgSignature(), attrs);
+                            OwnedHqlExpr attrs = createComma(createAttribute(_origin_Atom, origin), $8.getExpr());
+                            parser->saveDiskAccessInformation($1, attrs);
+
+                            IHqlExpression * dataset = createNewDataset(filename.getLink(), LINK(origin->queryRecord()), mode, NULL, NULL, attrs.getClear());
 
                             parser->checkValidRecordMode(dataset, $3, $7);
                             parser->checkValidLookupFlag(dataset, filename, $3);
@@ -9047,7 +9105,7 @@ simpleDataSet
                                 attrs.setown(createComma(attrs.getClear(), createAttribute(_disallowed_Atom)));
                             parser->normalizeExpression($3, type_string, false);
                             parser->checkValidPipeRecord($5, $5.queryExpr(), attrs, NULL);
-                            $$.setExpr(createNewDataset(createBlankString(), $5.getExpr(), createValue(no_pipe, makeNullType(), $3.getExpr()), NULL, NULL, NULL, LINK(attrs)));
+                            $$.setExpr(createNewDataset(createBlankString(), $5.getExpr(), createValue(no_pipe, makeNullType(), $3.getExpr()), NULL, NULL, LINK(attrs)));
                             $$.setPosition($1);
                         }
     | PIPE '(' startTopFilter ',' expression optPipeOptions endTopFilter ')'
@@ -9274,7 +9332,7 @@ simpleDataSet
                                 {
                                     if (compareDs)
                                     {
-                                        if (isGrouped(cur) != isGrouped(compareDs))
+                                        if (parser->lookupCtx.queryParseContext().expandCallsWhenBound && (isGrouped(cur) != isGrouped(compareDs)))
                                             parser->reportError(ERR_GROUPING_MISMATCH, $1, "Branches of the condition have different grouping");
                                         OwnedHqlExpr mapped = parser->checkEnsureRecordsMatch(compareDs, cur, $5.pos, false);
                                         if (mapped != cur)
@@ -9816,6 +9874,7 @@ loopOptions
 
 loopOption
     : commonAttribute
+    | FEW               {   $$.setExpr(createAttribute(fewAtom), $1); }
     ;
 
 graphOptions
@@ -10647,7 +10706,7 @@ JoinFlag
                         }
     | THRESHOLD '(' expression ')'
                         {
-                            parser->normalizeExpression($3, type_numeric, true);
+                            parser->normalizeExpression($3, type_int, true);
                             $$.setExpr(createAttribute(thresholdAtom, $3.getExpr()));
                             $$.setPosition($1);
                         }
@@ -11692,7 +11751,7 @@ sortItem
                         }
     | THRESHOLD '(' expression ')'
                         {
-                            parser->normalizeExpression($3, type_numeric, true);
+                            parser->normalizeExpression($3, type_int, true);
                             $$.setExpr(createAttribute(thresholdAtom, $3.getExpr()));
                         }
     | WHOLE RECORD      {   $$.setExpr(createAttribute(recordAtom)); }

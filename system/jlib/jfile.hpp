@@ -622,5 +622,12 @@ extern jlib_decl IFile * createSentinelTarget();
 extern jlib_decl void writeSentinelFile(IFile * file);
 extern jlib_decl void removeSentinelFile(IFile * file);
 extern jlib_decl StringBuffer & appendCurrentDirectory(StringBuffer & target, bool blankIfFails);
+extern jlib_decl timestamp_type getTimeStamp(IFile * file);
+
+#ifdef _WIN32
+const static bool filenamesAreCaseSensitive = false;
+#else
+const static bool filenamesAreCaseSensitive = true;
+#endif
 
 #endif

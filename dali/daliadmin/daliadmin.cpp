@@ -102,7 +102,7 @@ void usage(const char *exe)
   printf("  dfscompratio <logicalname>      -- returns compression ratio of file\n");
   printf("  dfsscopes <mask>                -- lists logical scopes (mask = * for all)\n");
   printf("  cleanscopes                     -- remove empty scopes\n");
-  printf("  dfsreplication <clustermask> <logicalnamemask> <redundancy-count> -- set redundancy for files matching mask, on specified clusters only\n");
+  printf("  dfsreplication <clustermask> <logicalnamemask> <redundancy-count> [dryrun] -- set redundancy for files matching mask, on specified clusters only\n");
   printf("  holdlock <logicalfile> <read|write> -- hold a lock to the logical-file until a key is pressed");
   printf("\n");
   printf("Workunit commands:\n");
@@ -123,12 +123,12 @@ void usage(const char *exe)
   printf("  validatestore [fix=<true|false>]\n"
          "                [verbose=<true|false>]\n"
          "                [deletefiles=<true|false>]-- perform some checks on dali meta data an optionally fix or remove redundant info \n");
-  printf("  stats <workunit> [<creator-type> <creator> <scope-type> <scope> <kind>|category'['value']',...]\n"
-         "                                  -- dump the statistics for a workunit\n");
   printf("  workunit <workunit> [true]      -- dump workunit xml, if 2nd parameter equals true, will also include progress data\n");
   printf("  wuidcompress <wildcard> <type>  --  scan workunits that match <wildcard> and compress resources of <type>\n");
   printf("  wuiddecompress <wildcard> <type> --  scan workunits that match <wildcard> and decompress resources of <type>\n");
   printf("  xmlsize <filename> [<percentage>] --  analyse size usage in xml file, display individual items above 'percentage' \n");
+  printf("  migratefiles <src-group> <target-group> [<filemask>] [dryrun] [createmaps] [listonly] [verbose]\n");
+  printf("  translatetoxpath logicalfile [File|SuperFile|Scope]\n");
   printf("\n");
   printf("Common options\n");
   printf("  server=<dali-server-ip>         -- server ip\n");
@@ -1830,6 +1830,7 @@ static void dfsreplication(const char *clusterMask, const char *lfnMask, unsigne
 
     const char *basePath = "/Files";
     const char *propToSet = "@redundancy";
+    const char *defVal = "1"; // default reduncancy value, attribute not set/stored if equal to default.
     StringBuffer value;
     value.append(redundancy);
 
@@ -1847,7 +1848,7 @@ static void dfsreplication(const char *clusterMask, const char *lfnMask, unsigne
         {
             IPropertyTree &cluster = clusterIter->query();
             const char *oldValue = cluster.queryProp(propToSet);
-            if (!oldValue || !streq(value, oldValue))
+            if ((!oldValue && !streq(value, defVal)) || (oldValue && !streq(value, oldValue)))
             {
                 const char *fileName = file.queryProp("OrigName");
                 const char *clusterName = cluster.queryProp("@name");
@@ -1856,7 +1857,12 @@ static void dfsreplication(const char *clusterMask, const char *lfnMask, unsigne
                     msg.appendf(" [old value = %s]", oldValue);
                 PROGLOG("%s", msg.str());
                 if (!dryRun)
-                    cluster.setProp(propToSet, value);
+                {
+                    if (!streq(value, defVal))
+                        cluster.setProp(propToSet, value);
+                    else
+                        cluster.removeProp(propToSet);
+                }
             }
         }
     }
@@ -2421,6 +2427,14 @@ static void xmlSize(const char *filename, double pc)
     }
 }
 
+static void translateToXpath(const char *logicalfile, DfsXmlBranchKind tailType=DXB_File)
+{
+    CDfsLogicalFileName lfn;
+    lfn.set(logicalfile);
+    StringBuffer str;
+    OUTLOG("%s", lfn.makeFullnameQuery(str, tailType).str());
+}
+
 //=============================================================================
 
 static bool begins(const char *&ln,const char *pat)
@@ -2522,120 +2536,88 @@ static void dumpProgress(const char *wuid, const char * graph)
     saveXML("stdout:", tree);
 }
 
-static const char * checkDash(const char * s)
+/* Callback used to output the different scope properties as xml */
+class ScopeDumper : public IWuScopeVisitor
 {
-    //Supplying * on the command line is a pain because it needs quoting. Allow - instead.
-    if (streq(s, ".") || streq(s, "-"))
-        return "*";
-    return s;
-}
-
-static void dumpStats(IConstWorkUnit * workunit, const StatisticsFilter & filter, bool csv)
-{
-    Owned<IConstWUStatisticIterator> stats = &workunit->getStatistics(&filter);
-    if (!csv)
-        printf("<Statistics wuid=\"%s\">\n", workunit->queryWuid());
-    ForEach(*stats)
+public:
+    virtual void noteStatistic(StatisticKind kind, unsigned __int64 value, IConstWUStatistic & cur) override
     {
-        IConstWUStatistic & cur = stats->query();
         StringBuffer xml;
         SCMStringBuffer curCreator;
-        SCMStringBuffer curScope;
         SCMStringBuffer curDescription;
         SCMStringBuffer curFormattedValue;
 
         StatisticCreatorType curCreatorType = cur.getCreatorType();
         StatisticScopeType curScopeType = cur.getScopeType();
         StatisticMeasure curMeasure = cur.getMeasure();
-        StatisticKind curKind = cur.getKind();
-        unsigned __int64 value = cur.getValue();
         unsigned __int64 count = cur.getCount();
         unsigned __int64 max = cur.getMax();
         unsigned __int64 ts = cur.getTimestamp();
+        const char * curScope = cur.queryScope();
         cur.getCreator(curCreator);
-        cur.getScope(curScope);
         cur.getDescription(curDescription, false);
         cur.getFormattedValue(curFormattedValue);
 
-        if (csv)
+        if (kind != StKindNone)
+            xml.append(" kind='").append(queryStatisticName(kind)).append("'");
+        xml.append(" value='").append(value).append("'");
+        xml.append(" formatted='").append(curFormattedValue).append("'");
+        if (curMeasure != SMeasureNone)
+            xml.append(" unit='").append(queryMeasureName(curMeasure)).append("'");
+        if (curCreatorType != SCTnone)
+            xml.append(" ctype='").append(queryCreatorTypeName(curCreatorType)).append("'");
+        if (curCreator.length())
+            xml.append(" creator='").append(curCreator.str()).append("'");
+        if (count != 1)
+            xml.append(" count='").append(count).append("'");
+        if (max)
+            xml.append(" max='").append(value).append("'");
+        if (ts)
         {
-            xml.append(workunit->queryWuid());
-            xml.append(",");
-            if (curCreatorType != SCTnone)
-                xml.append(queryCreatorTypeName(curCreatorType));
-            xml.append(",");
-            if (curCreator.length())
-                xml.append(curCreator.str());
-            xml.append(",");
-            if (curScopeType != SSTnone)
-                xml.append(queryScopeTypeName(curScopeType));
-            xml.append(",");
-            if (curScope.length())
-                xml.append(curScope.str());
-            xml.append(",");
-            if (curMeasure != SMeasureNone)
-                xml.append(queryMeasureName(curMeasure));
-            xml.append(",");
-            if (curKind != StKindNone)
-                xml.append(queryStatisticName(curKind));
-            xml.append(",");
-            xml.append(value);
-            xml.append(",");
-            xml.append(curFormattedValue);
-            xml.append(",");
-            if (count != 1)
-                xml.append(count);
-            xml.append(",");
-            if (max)
-                xml.append(max);
-            xml.append(",");
-            if (ts)
-                formatStatistic(xml, ts, SMeasureTimestampUs);
-            xml.append(",");
-            if (curDescription.length())
-                xml.append('"').append(curDescription.str()).append('"');
-            printf("%s\n", xml.str());
+            xml.append(" ts='");
+            formatStatistic(xml, ts, SMeasureTimestampUs);
+            xml.append("'");
         }
-        else
-        {
-            if (curCreatorType != SCTnone)
-                xml.append("<ctype>").append(queryCreatorTypeName(curCreatorType)).append("</ctype>");
-            if (curCreator.length())
-                xml.append("<creator>").append(curCreator.str()).append("</creator>");
-            if (curScopeType != SSTnone)
-                xml.append("<stype>").append(queryScopeTypeName(curScopeType)).append("</stype>");
-            if (curScope.length())
-                xml.append("<scope>").append(curScope.str()).append("</scope>");
-            if (curMeasure != SMeasureNone)
-                xml.append("<unit>").append(queryMeasureName(curMeasure)).append("</unit>");
-            if (curKind != StKindNone)
-                xml.append("<kind>").append(queryStatisticName(curKind)).append("</kind>");
-            xml.append("<rawvalue>").append(value).append("</rawvalue>");
-            xml.append("<value>").append(curFormattedValue).append("</value>");
-            if (count != 1)
-                xml.append("<count>").append(count).append("</count>");
-            if (max)
-                xml.append("<max>").append(value).append("</max>");
-            if (ts)
-            {
-                xml.append("<ts>");
-                formatStatistic(xml, ts, SMeasureTimestampUs);
-                xml.append("</ts>");
-            }
-            if (curDescription.length())
-                xml.append("<desc>").append(curDescription.str()).append("</desc>");
-            printf("<stat>%s</stat>\n", xml.str());
-        }
+        if (curDescription.length())
+            xml.append(" desc='").append(curDescription.str()).append("'");
+        printf(" <attr%s/>\n", xml.str());
     }
-    if (!csv)
-        printf("</Statistics>\n");
+    virtual void noteAttribute(WuAttr attr, const char * value)
+    {
+        StringBuffer xml;
+        xml.appendf("<attr kind='%s' value='", queryWuAttributeName(attr));
+        encodeXML(value, xml, ENCODE_NEWLINES, (unsigned)-1, true);
+        xml.append("'/>");
+        printf(" %s\n", xml.str());
+    }
+    virtual void noteHint(const char * kind, const char * value)
+    {
+        StringBuffer xml;
+        xml.appendf("<attr kind='hint:%s' value='%s'/>", kind, value);
+        printf(" %s\n", xml.str());
+    }
+};
+
+static void dumpWorkunitAttr(IConstWorkUnit * workunit, const WuScopeFilter & filter)
+{
+    ScopeDumper dumper;
+
+    printf("<Workunit wuid=\"%s\">\n", workunit->queryWuid());
+
+    Owned<IConstWUScopeIterator> iter = &workunit->getScopeIterator(filter);
+    ForEach(*iter)
+    {
+        printf("<scope scope='%s' type='%s'>\n", iter->queryScope(), queryScopeTypeName(iter->getScopeType()));
+        iter->playProperties(PTall, dumper);
+        printf("</scope>\n");
+    }
+
+    printf("</Workunit>\n");
 }
 
-static void dumpStats(const char *wuid, const char * creatorTypeText, const char * creator, const char * scopeTypeText, const char * scope, const char * kindText, const char * userFilter, bool csv)
+static void dumpWorkunitAttr(const char *wuid, const char * userFilter)
 {
-    StatisticsFilter filter(checkDash(creatorTypeText), checkDash(creator), checkDash(scopeTypeText), checkDash(scope), NULL, checkDash(kindText));
-    if (userFilter)
-        filter.setFilter(userFilter);
+    WuScopeFilter filter(userFilter);
 
     Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
     const char * star = strchr(wuid, '*');
@@ -2652,7 +2634,7 @@ static void dumpStats(const char *wuid, const char * creatorTypeText, const char
         {
             Owned<IConstWorkUnit> workunit = factory->openWorkUnit(iter->query().queryWuid());
             if (workunit)
-                dumpStats(workunit, filter, csv);
+                dumpWorkunitAttr(workunit, filter);
         }
     }
     else
@@ -2660,7 +2642,7 @@ static void dumpStats(const char *wuid, const char * creatorTypeText, const char
         Owned<IConstWorkUnit> workunit = factory->openWorkUnit(wuid);
         if (!workunit)
             return;
-        dumpStats(workunit, filter, csv);
+        dumpWorkunitAttr(workunit, filter);
     }
 }
 
@@ -2808,6 +2790,285 @@ static void validateStore(bool fix, bool deleteFiles, bool verbose)
 
 //=============================================================================
 
+static void migrateFiles(const char *srcGroup, const char *tgtGroup, const char *filemask, const char *_options)
+{
+    if (strieq(srcGroup, tgtGroup))
+        throw makeStringExceptionV(0, "source and target cluster groups cannot be the same! cluster = %s", srcGroup);
+
+    enum class mg_options : unsigned { nop, createmaps=1, listonly=2, dryrun=4, verbose=8};
+
+    StringArray options;
+    options.appendList(_options, ",");
+    mg_options opts = mg_options::nop;
+    ForEachItemIn(o, options)
+    {
+        const char *opt = options.item(o);
+        if (strieq("CREATEMAPS", opt))
+            opts = (mg_options)((unsigned)opts | (unsigned)mg_options::createmaps);
+        else if (strieq("LISTONLY", opt))
+            opts = (mg_options)((unsigned)opts | (unsigned)mg_options::listonly);
+        else if (strieq("DRYRUN", opt))
+            opts = (mg_options)((unsigned)opts | (unsigned)mg_options::dryrun);
+        else if (strieq("VERBOSE", opt))
+            opts = (mg_options)((unsigned)opts | (unsigned)mg_options::verbose);
+        else
+            WARNLOG("Unknown option: %s", opt);
+    }
+
+    /*
+     * CMatchScanner scans logical files, looking for files that are in the source group
+     * and matching against the logical file names against filemask.
+     * Then (depending on options) manipulates the meta data to point to new target group
+     * and outputs a file per node of the source group, with a list of all matching
+     * physical files in the format: srcIP,dstIP,physical file
+     */
+    class CMatchScanner : public CSDSFileScanner
+    {
+        StringAttr srcGroup, tgtGroup;
+        mg_options options;
+        StringBuffer tgtClusterGroupText;
+        Owned<IGroup> srcClusterGroup, tgtClusterGroup;
+        IPointerArrayOf<IFileIOStream> fileLists;
+        unsigned matchingFiles = 0;
+        Linked<IRemoteConnection> conn;
+        StringAttr filemask;
+        bool wild = false;
+        unsigned srcClusterSize = 0;
+        unsigned tgtClusterSize = 0;
+
+        bool mgOpt(mg_options o)
+        {
+            return ((unsigned)o & (unsigned)options);
+        }
+        IFileIOStream *getFileIOStream(unsigned p)
+        {
+            while (fileLists.ordinality()<=p)
+                fileLists.append(nullptr);
+
+            Linked<IFileIOStream> stream = fileLists.item(p);
+            if (nullptr == stream)
+            {
+                VStringBuffer filePartList("fileparts%u_%s_%u.lst", GetCurrentProcessId(), srcGroup.get(), p);
+                Owned<IFile> iFile = createIFile(filePartList);
+                Owned<IFileIO> iFileIO = iFile->open(IFOcreate);
+                if (!iFileIO)
+                    throw makeStringExceptionV(0, "Failed to open: %s", filePartList.str());
+                stream.setown(createBufferedIOStream(iFileIO));
+                fileLists.replace(stream.getLink(), p);
+            }
+            return stream.getClear();
+        }
+        unsigned find(IGroup *group, const IpAddress &ip) const
+        {
+            unsigned c = group->ordinality();
+            for (unsigned i=0; i<c; i++)
+            {
+                const IpAddress &nodeIP = group->queryNode(i).endpoint();
+                if (ip.ipequals(nodeIP))
+                    return i;
+            }
+            return NotFound;
+        }
+    public:
+        CMatchScanner(const char *_srcGroup, const char *_tgtGroup, mg_options _options) : srcGroup(_srcGroup), tgtGroup(_tgtGroup), options(_options)
+        {
+            srcClusterGroup.setown(queryNamedGroupStore().lookup(srcGroup));
+            if (!srcClusterGroup)
+                throw makeStringExceptionV(0, "Could not find source cluster group: %s", _srcGroup);
+            tgtClusterGroup.setown(queryNamedGroupStore().lookup(tgtGroup));
+            if (!tgtClusterGroup)
+                throw makeStringExceptionV(0, "Could not find target cluster group: %s", _tgtGroup);
+
+            srcClusterSize = srcClusterGroup->ordinality();
+            tgtClusterSize = tgtClusterGroup->ordinality();
+            if (tgtClusterSize>srcClusterSize)
+                throw makeStringExceptionV(0, "Unsupported - target cluster is wider than source (target size=%u, source size=%u", tgtClusterSize, srcClusterSize);
+            if (0 != (srcClusterSize%tgtClusterSize))
+                throw makeStringExceptionV(0, "Unsupported - target cluster must be a factor of source cluster size (target size=%u, source size=%u", tgtClusterSize, srcClusterSize);
+
+            tgtClusterGroup->getText(tgtClusterGroupText);
+        }
+        virtual bool checkFileOk(IPropertyTree &file, const char *filename) override
+        {
+            const char *group = file.queryProp("@group");
+            if (!group)
+            {
+                if (mgOpt(mg_options::verbose))
+                    PROGLOG("No group defined - filename=%s, mask=%s, srcGroup=%s", filename, filemask.get(), srcGroup.get());
+                return false;
+            }
+            else if (nullptr == strstr(file.queryProp("@group"), srcGroup)) // crude match, could be rejected in processFile
+            {
+                if (mgOpt(mg_options::verbose))
+                    PROGLOG("GROUP-MISMATCH - filename=%s, mask=%s, srcGroup=%s, file group=%s", filename, filemask.get(), srcGroup.get(), group);
+                return false;
+            }
+            else if (wild)
+            {
+                if (WildMatch(filename, filemask, false))
+                {
+                    if (mgOpt(mg_options::verbose))
+                        PROGLOG("WILD-MISMATCH - filename=%s, mask=%s, srcGroup=%s, file group=%s", filename, filemask.get(), srcGroup.get(), group);
+                    return true;
+                }
+            }
+            else if (strieq(filename, filemask))
+                return true;
+            if (mgOpt(mg_options::verbose))
+                PROGLOG("EXACT-MISMATCH - filename=%s, mask=%s, srcGroup=%s, file group=%s", filename, filemask.get(), srcGroup.get(), group);
+            return false;
+        }
+        virtual bool checkScopeOk(const char *scopename) override
+        {
+            if (mgOpt(mg_options::verbose))
+                PROGLOG("Processing scope %s", scopename);
+            return true;
+        }
+        virtual void processFile(IPropertyTree &root, StringBuffer &name) override
+        {
+            try
+            {
+                bool doCommit = false;
+                StringBuffer _tgtClusterGroupText = tgtClusterGroupText;
+
+                Owned<IFileDescriptor> fileDesc = deserializeFileDescriptorTree(&root, &queryNamedGroupStore());
+                unsigned numClusters = fileDesc->numClusters();
+                for (unsigned clusterNum=0; clusterNum<numClusters; clusterNum++)
+                {
+                    StringBuffer srcFileGroup;
+                    fileDesc->getClusterGroupName(clusterNum, srcFileGroup);
+
+                    StringBuffer srcFileGroupName, srcFileGroupRange;
+                    if (!decodeChildGroupName(srcFileGroup, srcFileGroupName, srcFileGroupRange))
+                        srcFileGroupName.append(srcFileGroup);
+                    if (streq(srcFileGroupName, srcGroup))
+                    {
+                        IGroup *srcFileClusterGroup = fileDesc->queryClusterGroup(clusterNum);
+                        unsigned srcFileClusterGroupWidth = srcFileClusterGroup->ordinality();
+
+                        StringBuffer _tgtGroup(tgtGroup);
+                        unsigned groupOffset = NotFound;
+                        if (srcFileGroupRange.length())
+                        {
+                            SocketEndpointArray epas;
+                            UnsignedArray dstPositions;
+                            Owned<INodeIterator> nodeIter = srcFileClusterGroup->getIterator();
+                            ForEach(*nodeIter)
+                            {
+                                const IpAddress &ip = nodeIter->query().endpoint();
+                                unsigned srcRelPos = find(srcClusterGroup, ip);
+                                if (NotFound == groupOffset)
+                                    groupOffset = srcRelPos;
+                                unsigned dstRelPos = srcRelPos % tgtClusterSize;
+                                dstPositions.append(dstRelPos+1);
+                            }
+                            StringBuffer rangeText;
+                            encodeChildGroupRange(dstPositions, rangeText);
+                            _tgtGroup.append(rangeText);
+                        }
+                        else
+                            groupOffset = 0;
+                        unsigned numParts = fileDesc->numParts();
+                        PROGLOG("Processing file %s (width=%u), cluster group=%s (%u of %u), new group = %s", name.str(), numParts, srcFileGroup.str(), clusterNum+1, numClusters, _tgtGroup.str());
+                        if (!mgOpt(mg_options::listonly))
+                        {
+                            if (!mgOpt(mg_options::dryrun))
+                            {
+                                doCommit = true;
+                                VStringBuffer clusterXPath("Cluster[%u]", clusterNum+1);
+                                IPropertyTree *cluster = root.queryPropTree(clusterXPath);
+                                root.setProp("@group", _tgtGroup);
+                                if (cluster)
+                                    cluster->setProp("@name", _tgtGroup);
+                                else
+                                    WARNLOG("No Cluster found for file: %s", name.str());
+                            }
+                            if (mgOpt(mg_options::createmaps))
+                            {
+                                for (unsigned partNum=0; partNum<numParts; partNum++)
+                                {
+                                    unsigned r = partNum % srcFileClusterGroupWidth;
+                                    const SocketEndpoint &srcEp = srcFileClusterGroup->queryNode(r).endpoint();
+                                    unsigned relPos = find(srcClusterGroup, srcEp);
+                                    unsigned dstPos = (partNum+groupOffset) % tgtClusterSize;
+                                    const SocketEndpoint &tgtEp = tgtClusterGroup->queryNode(dstPos).endpoint();
+
+                                    // output srcIP, dstIP, path/file-part-name >> script<N>.lst
+
+                                    Owned<IFileIOStream> iFileIOStream = getFileIOStream(relPos+1);
+
+                                    StringBuffer outputLine;
+                                    srcEp.getIpText(outputLine);
+                                    outputLine.append(",");
+                                    tgtEp.getIpText(outputLine);
+                                    outputLine.append(",");
+
+                                    IPartDescriptor *part = fileDesc->queryPart(partNum);
+                                    StringBuffer filePath;
+                                    part->getPath(filePath);
+
+                                    outputLine.append(filePath);
+                                    outputLine.newline();
+
+                                    iFileIOStream->write(outputLine.length(), outputLine.str());
+                                }
+                            }
+                        }
+                    }
+                }
+                ++matchingFiles;
+                if (doCommit)
+                    conn->commit(); // NB: the scanner rolls back any changes, mainly to reduce cost/exposure to previously lazy fetched scope branches
+            }
+            catch (IException *e)
+            {
+                VStringBuffer errorMsg("Failed to process file : %s", name.str());
+                EXCLOG(e, errorMsg.str());
+                e->Release();
+            }
+        }
+        unsigned scan(IRemoteConnection *_conn, const char *_filemask, bool includefiles=true, bool includesuper=false)
+        {
+            filemask.set(_filemask);
+            conn.set(_conn);
+            wild = containsWildcard(_filemask);
+            CSDSFileScanner::scan(_conn, includefiles, includesuper);
+            return matchingFiles;
+        }
+    } scanner(srcGroup, tgtGroup, opts);
+
+    IUserDescriptor *user = nullptr;
+    Owned<IRemoteConnection> conn = querySDS().connect("/Files", myProcessSession(), 0, 100000);
+    bool success=false;
+    unsigned matchingFiles=0;
+    try
+    {
+        matchingFiles = scanner.scan(conn, filemask, true, false);
+        success=true;
+    }
+    catch (IException *e)
+    {
+        EXCLOG(e, nullptr);
+        e->Release();
+    }
+    if (!success)
+    {
+        WARNLOG("Failed to make changes");
+        conn->rollback();
+    }
+    else if ((unsigned)opts & (unsigned)mg_options::dryrun)
+    {
+        conn->rollback();
+        WARNLOG("Dry-run, no changes committed. %u files matched", matchingFiles);
+    }
+    else
+        PROGLOG("Committed changes: %u files changed", matchingFiles);
+}
+
+
+//=============================================================================
+
+
 
 void testThorRunningWUs()
 {
@@ -2882,7 +3143,7 @@ int main(int argc, char* argv[])
         else if ((i==1)&&(isdigit(*param)||(*param=='.'))&&ep.set(((*param=='.')&&param[1])?(param+1):param,DALI_SERVER_PORT))
             props->setProp("server",ep.getUrlStr(tmps.clear()).str());
         else {
-            if ((0==stricmp(param,"help")) || (0 ==stricmp(param,"-help")) || (0 ==stricmp(param,"--help"))) {
+            if ((strieq(param,"help")) || (strieq(param,"-help")) || (strieq(param,"--help"))) {
                 usage(argv[0]);
                 return -1;
             }
@@ -2925,15 +3186,39 @@ int main(int argc, char* argv[])
         if (!props->getProp("server",daliserv.clear()))
         {
             // external commands
-
-            if (stricmp(cmd,"xmlsize")==0)
+            try
             {
-                CHECKPARAMS(1,2);
-                xmlSize(params.item(1), np>1?atof(params.item(2)):1.0);
+                if (strieq(cmd,"xmlsize"))
+                {
+                    CHECKPARAMS(1,2);
+                    xmlSize(params.item(1), np>1?atof(params.item(2)):1.0);
+                }
+                else if (strieq(cmd,"translatetoxpath"))
+                {
+                    CHECKPARAMS(1,2);
+                    DfsXmlBranchKind branchType;
+                    if (np>1)
+                    {
+                        const char *typeStr = params.item(2);
+                        branchType = queryDfsXmlBranchType(typeStr);
+                    }
+                    else
+                        branchType = DXB_File;
+                    translateToXpath(params.item(1), branchType);
+                }
+                else
+                {
+                    ERRLOG("Unknown command %s",cmd);
+                    ret = 255;
+                }
             }
-            else
-                ERRLOG("Unknown command %s",cmd);
-            return 0;
+            catch (IException *e)
+            {
+                EXCLOG(e,"daliadmin");
+                e->Release();
+                ret = 255;
+            }
+            return ret;
         }
         else
         {
@@ -2962,265 +3247,277 @@ int main(int argc, char* argv[])
                         queryDistributedFileDirectory().setDefaultUser(userDesc);
                     }
                     daliConnectTimeoutMs = 1000 * props->getPropInt("timeout", DEFAULT_DALICONNECT_TIMEOUT);
-                    if (stricmp(cmd,"export")==0) {
+                    if (strieq(cmd,"export")) {
                         CHECKPARAMS(2,2);
                         _export_(params.item(1),params.item(2));
                     }
-                    else if (stricmp(cmd,"import")==0) {
+                    else if (strieq(cmd,"import")) {
                         CHECKPARAMS(2,2);
                         import(params.item(1),params.item(2),false);
                     }
-                    else if (stricmp(cmd,"importadd")==0) {
+                    else if (strieq(cmd,"importadd")) {
                         CHECKPARAMS(2,2);
                         import(params.item(1),params.item(2),true);
                     }
-                    else if (stricmp(cmd,"delete")==0) {
+                    else if (strieq(cmd,"delete")) {
                         CHECKPARAMS(1,1);
                         _delete_(params.item(1),true);
                     }
-                    else if (stricmp(cmd,"set")==0) {
+                    else if (strieq(cmd,"set")) {
                         CHECKPARAMS(2,2);
                         set(params.item(1),params.item(2));
                     }
-                    else if (stricmp(cmd,"get")==0) {
+                    else if (strieq(cmd,"get")) {
                         CHECKPARAMS(1,1);
                         get(params.item(1));
                     }
-                    else if (stricmp(cmd,"bget")==0) {
+                    else if (strieq(cmd,"bget")) {
                         CHECKPARAMS(2,2);
                         bget(params.item(1),params.item(2));
                     }
-                    else if (stricmp(cmd,"wget")==0) {
+                    else if (strieq(cmd,"wget")) {
                         CHECKPARAMS(1,1);
                         wget(params.item(1));
                     }
-                    else if (stricmp(cmd,"xget")==0) {
+                    else if (strieq(cmd,"xget")) {
                         CHECKPARAMS(1,1);
                         wget(params.item(1));
                     }
-                    else if (stricmp(cmd,"add")==0) {
+                    else if (strieq(cmd,"add")) {
                         CHECKPARAMS(1,2);
                         add(params.item(1), (np>1) ? params.item(2) : nullptr);
                     }
-                    else if (stricmp(cmd,"delv")==0) {
+                    else if (strieq(cmd,"delv")) {
                         CHECKPARAMS(1,1);
                         delv(params.item(1));
                     }
-                    else if (stricmp(cmd,"count")==0) {
+                    else if (strieq(cmd,"count")) {
                         CHECKPARAMS(1,1);
                         count(params.item(1));
                     }
-                    else if (stricmp(cmd,"dfsfile")==0) {
+                    else if (strieq(cmd,"dfsfile")) {
                         CHECKPARAMS(1,1);
                         dfsfile(params.item(1),userDesc);
                     }
-                    else if (stricmp(cmd,"dfspart")==0) {
+                    else if (strieq(cmd,"dfspart")) {
                         CHECKPARAMS(2,2);
                         dfspart(params.item(1),userDesc,atoi(params.item(2)));
                     }
-                    else if (stricmp(cmd,"dfscheck")==0) {
+                    else if (strieq(cmd,"dfscheck")) {
                         CHECKPARAMS(0,0);
                         dfsCheck();
                     }
-                    else if (stricmp(cmd,"dfscsv")==0) {
+                    else if (strieq(cmd,"dfscsv")) {
                         CHECKPARAMS(1,1);
                         dfscsv(params.item(1),userDesc);
                     }
-                    else if (stricmp(cmd,"dfsgroup")==0) {
+                    else if (strieq(cmd,"dfsgroup")) {
                         CHECKPARAMS(1,2);
                         dfsGroup(params.item(1),(np>1)?params.item(2):NULL);
                     }
-                    else if (stricmp(cmd,"clusternodes")==0) {
+                    else if (strieq(cmd,"clusternodes")) {
                         CHECKPARAMS(1,2);
                         ret = clusterGroup(params.item(1),(np>1)?params.item(2):NULL);
                     }
-                    else if (stricmp(cmd,"dfsls")==0) {
+                    else if (strieq(cmd,"dfsls")) {
                         CHECKPARAMS(0,2);
                         dfsLs((np>0)?params.item(1):NULL,(np>1)?params.item(2):NULL);
                     }
-                    else if (stricmp(cmd,"dfsmap")==0) {
+                    else if (strieq(cmd,"dfsmap")) {
                         CHECKPARAMS(1,1);
                         dfsmap(params.item(1), userDesc);
                     }
-                    else if (stricmp(cmd,"dfsexist")==0) {
+                    else if (strieq(cmd,"dfsexist")) {
                         CHECKPARAMS(1,1);
                         ret = dfsexists(params.item(1),userDesc);
                     }
-                    else if (stricmp(cmd,"dfsparents")==0) {
+                    else if (strieq(cmd,"dfsparents")) {
                         CHECKPARAMS(1,1);
                         dfsparents(params.item(1),userDesc);
                     }
-                    else if (stricmp(cmd,"dfsunlink")==0) {
+                    else if (strieq(cmd,"dfsunlink")) {
                         CHECKPARAMS(1,1);
                         dfsunlink(params.item(1),userDesc);
                     }
-                    else if (stricmp(cmd,"dfsverify")==0) {
+                    else if (strieq(cmd,"dfsverify")) {
                         CHECKPARAMS(1,1);
                         ret = dfsverify(params.item(1),NULL,userDesc);
                     }
-                    else if (stricmp(cmd,"setprotect")==0) {
+                    else if (strieq(cmd,"setprotect")) {
                         CHECKPARAMS(2,2);
                         setprotect(params.item(1),params.item(2),userDesc);
                     }
-                    else if (stricmp(cmd,"unprotect")==0) {
+                    else if (strieq(cmd,"unprotect")) {
                         CHECKPARAMS(2,2);
                         unprotect(params.item(1),params.item(2),userDesc);
                     }
-                    else if (stricmp(cmd,"listprotect")==0) {
+                    else if (strieq(cmd,"listprotect")) {
                         CHECKPARAMS(0,2);
                         listprotect((np>1)?params.item(1):"*",(np>2)?params.item(2):"*");
 
                     }
-                    else if (stricmp(cmd,"checksuperfile")==0) {
+                    else if (strieq(cmd,"checksuperfile")) {
                         CHECKPARAMS(1,1);
                         bool fix = props->getPropBool("fix");
                         checksuperfile(params.item(1),fix);
                     }
-                    else if (stricmp(cmd,"checksubfile")==0) {
+                    else if (strieq(cmd,"checksubfile")) {
                         CHECKPARAMS(1,1);
                         checksubfile(params.item(1));
                     }
-                    else if (stricmp(cmd,"listexpires")==0) {
+                    else if (strieq(cmd,"listexpires")) {
                         CHECKPARAMS(0,1);
                         listexpires((np>1)?params.item(1):"*",userDesc);
                     }
-                    else if (stricmp(cmd,"listrelationships")==0) {
+                    else if (strieq(cmd,"listrelationships")) {
                         CHECKPARAMS(2,2);
                         listrelationships(params.item(1),params.item(2));
                     }
-                    else if (stricmp(cmd,"dfsperm")==0) {
+                    else if (strieq(cmd,"dfsperm")) {
                         if (!userDesc.get())
                             throw MakeStringException(-1,"dfsperm requires username to be set (user=)");
                         CHECKPARAMS(1,1);
                         ret = dfsperm(params.item(1),userDesc);
                     }
-                    else if (stricmp(cmd,"dfscompratio")==0) {
+                    else if (strieq(cmd,"dfscompratio")) {
                         CHECKPARAMS(1,1);
                         dfscompratio(params.item(1),userDesc);
                     }
-                    else if (stricmp(cmd,"dfsscopes")==0) {
+                    else if (strieq(cmd,"dfsscopes")) {
                         CHECKPARAMS(0,1);
                         dfsscopes((np>1)?params.item(1):"*",userDesc);
                     }
-                    else if (stricmp(cmd,"cleanscopes")==0) {
+                    else if (strieq(cmd,"cleanscopes")) {
                         CHECKPARAMS(0,0);
                         cleanscopes(userDesc);
                     }
-                    else if (stricmp(cmd,"listworkunits")==0) {
+                    else if (strieq(cmd,"listworkunits")) {
                         CHECKPARAMS(0,3);
                         listworkunits((np>0)?params.item(1):NULL,(np>1)?params.item(2):NULL,(np>2)?params.item(3):NULL);
                     }
-                    else if (stricmp(cmd,"listmatches")==0) {
+                    else if (strieq(cmd,"listmatches")) {
                         CHECKPARAMS(0,3);
                         listmatches((np>0)?params.item(1):NULL,(np>1)?params.item(2):NULL,(np>2)?params.item(3):NULL);
                     }
-                    else if (stricmp(cmd,"workunittimings")==0) {
+                    else if (strieq(cmd,"workunittimings")) {
                         CHECKPARAMS(1,1);
                         workunittimings(params.item(1));
                     }
-                    else if (stricmp(cmd,"serverlist")==0) {
+                    else if (strieq(cmd,"serverlist")) {
                         CHECKPARAMS(1,1);
                         serverlist(params.item(1));
                     }
-                    else if (stricmp(cmd,"clusterlist")==0) {
+                    else if (strieq(cmd,"clusterlist")) {
                         CHECKPARAMS(1,1);
                         clusterlist(params.item(1));
                     }
-                    else if (stricmp(cmd,"auditlog")==0) {
+                    else if (strieq(cmd,"auditlog")) {
                         CHECKPARAMS(2,3);
                         auditlog(params.item(1),params.item(2),(np>2)?params.item(3):NULL);
                     }
-                    else if (stricmp(cmd,"coalesce")==0) {
+                    else if (strieq(cmd,"coalesce")) {
                         CHECKPARAMS(0,0);
                         coalesce();
                     }
-                    else if (stricmp(cmd,"mpping")==0) {
+                    else if (strieq(cmd,"mpping")) {
                         CHECKPARAMS(1,1);
                         mpping(params.item(1));
                     }
-                    else if (stricmp(cmd,"daliping")==0) {
+                    else if (strieq(cmd,"daliping")) {
                         CHECKPARAMS(0,1);
                         daliping(daliserv.str(),daliconnectelapsed,(np>0)?atoi(params.item(1)):1);
                     }
-                    else if (stricmp(cmd,"getxref")==0) {
+                    else if (strieq(cmd,"getxref")) {
                         CHECKPARAMS(1,1);
                         getxref(params.item(1));
                     }
-                    else if (stricmp(cmd,"dalilocks")==0) {
+                    else if (strieq(cmd,"dalilocks")) {
                         CHECKPARAMS(0,2);
                         bool filesonly = false;
-                        if (np&&(stricmp(params.item(np),"files")==0)) {
+                        if (np&&(strieq(params.item(np),"files"))) {
                             filesonly = true;
                             np--;
                         }
                         dalilocks(np>0?params.item(1):NULL,filesonly);
                     }
-                    else if (stricmp(cmd,"unlock")==0) {
+                    else if (strieq(cmd,"unlock")) {
                         CHECKPARAMS(2,2);
                         const char *fileOrPath = params.item(2);
-                        if (0 == stricmp("file", fileOrPath))
+                        if (strieq("file", fileOrPath))
                             unlock(params.item(1), true);
-                        else if (0 == stricmp("path", fileOrPath))
+                        else if (strieq("path", fileOrPath))
                             unlock(params.item(1), false);
                         else
                             throw MakeStringException(0, "unknown type [ %s ], must be 'file' or 'path'", fileOrPath);
                     }
-                    else if (stricmp(cmd,"validateStore")==0) {
+                    else if (strieq(cmd,"validateStore")) {
                         CHECKPARAMS(0,2);
                         bool fix = props->getPropBool("fix");
                         bool verbose = props->getPropBool("verbose");
                         bool deleteFiles = props->getPropBool("deletefiles");
                         validateStore(fix, deleteFiles, verbose);
                     }
-                    else if (stricmp(cmd, "workunit") == 0) {
+                    else if (strieq(cmd, "workunit")) {
                         CHECKPARAMS(1,2);
                         bool includeProgress=false;
                         if (np>1)
                             includeProgress = strToBool(params.item(2));
                         dumpWorkunit(params.item(1), includeProgress);
                     }
-                    else if (stricmp(cmd,"wuidCompress")==0) {
+                    else if (strieq(cmd,"wuidCompress")) {
                         CHECKPARAMS(2,2);
                         wuidCompress(params.item(1), params.item(2), true);
                     }
-                    else if (stricmp(cmd,"wuidDecompress")==0) {
+                    else if (strieq(cmd,"wuidDecompress")) {
                         CHECKPARAMS(2,2);
                         wuidCompress(params.item(1), params.item(2), false);
                     }
-                    else if (stricmp(cmd,"dfsreplication")==0) {
+                    else if (strieq(cmd,"dfsreplication")) {
                         CHECKPARAMS(3,4);
                         bool dryRun = np>3 && strieq("dryrun", params.item(4));
                         dfsreplication(params.item(1), params.item(2), atoi(params.item(3)), dryRun);
                     }
-                    else if (stricmp(cmd,"holdlock")==0) {
+                    else if (strieq(cmd,"holdlock")) {
                         CHECKPARAMS(2,2);
                         holdlock(params.item(1), params.item(2), userDesc);
                     }
-                    else if (stricmp(cmd, "progress") == 0) {
+                    else if (strieq(cmd, "progress")) {
                         CHECKPARAMS(2,2);
                         dumpProgress(params.item(1), params.item(2));
                     }
-                    else if (stricmp(cmd, "stats") == 0) {
-                        CHECKPARAMS(1, 7);
-                        if ((params.ordinality() >= 3) && (strchr(params.item(2), '[')))
+                    else if (strieq(cmd, "migratefiles"))
+                    {
+                        CHECKPARAMS(2, 7);
+                        const char *srcGroup = params.item(1);
+                        const char *dstGroup = params.item(2);
+                        const char *filemask = "*";
+                        StringBuffer options;
+                        if (params.isItem(3))
                         {
-                            bool csv = params.isItem(3) && strieq(params.item(3), "csv");
-                            dumpStats(params.item(1), "-", "-", "-", "-", "-", params.item(2), csv);
+                            filemask = params.item(3);
+                            unsigned arg=4;
+                            StringArray optArray;
+                            while (arg<params.ordinality())
+                                optArray.append(params.item(arg++));
+                            optArray.getString(options, ",");
                         }
+                        migrateFiles(srcGroup, dstGroup, filemask, options);
+                    }
+                    else if (stricmp(cmd, "wuattr") == 0) {
+                        CHECKPARAMS(1, 2);
+                        if (params.ordinality() > 2)
+                            dumpWorkunitAttr(params.item(1), params.item(2));
                         else
-                        {
-                            while (params.ordinality() < 7)
-                                params.append("*");
-                            bool csv = params.isItem(7) && strieq(params.item(7), "csv");
-                            dumpStats(params.item(1), params.item(2), params.item(3), params.item(4), params.item(5), params.item(6), nullptr, csv);
-                        }
+                            dumpWorkunitAttr(params.item(1), nullptr);
                     }
                     else
                         ERRLOG("Unknown command %s",cmd);
                 }
-                catch (IException *e) {
+                catch (IException *e)
+                {
                     EXCLOG(e,"daliadmin");
                     e->Release();
+                    ret = 255;
                 }
                 closedownClientProcess();
             }

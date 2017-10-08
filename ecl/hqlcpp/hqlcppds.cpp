@@ -508,7 +508,10 @@ IReferenceSelector * HqlCppTranslator::buildNewRow(BuildCtx & ctx, IHqlExpressio
             OwnedHqlExpr serializedRecord = getSerializedForm(record, serializeForm);
 
             OwnedHqlExpr temp = createDatasetF(no_getresult, LINK(serializedRecord), LINK(seqAttr), LINK(nameAttr), NULL);
-            OwnedHqlExpr row = createRow(no_selectnth, LINK(temp), createComma(getSizetConstant(1), createAttribute(noBoundCheckAtom)));
+
+            //Do not use noBoundCheck for STORED because invalid xml may be provided that defines no rows.
+            OwnedHqlExpr option = matchesConstantValue(seqAttr->queryChild(0), ResultSequenceStored) ? nullptr : createAttribute(noBoundCheckAtom);
+            OwnedHqlExpr row = createRow(no_selectnth, LINK(temp), createComma(getSizetConstant(1), option.getClear()));
             row.setown(ensureDeserialized(row, expr->queryType(), serializeForm));
             return buildNewRow(ctx, row);
         }
@@ -1511,7 +1514,7 @@ void ChildGraphBuilder::generateGraph(BuildCtx & ctx)
     //Remove this line once all engines use the new child queries exclusively
     if (numResults == 0) numResults++;
 
-    OwnedHqlExpr resourced = translator.getResourcedChildGraph(graphctx, childQuery, numResults, no_none);
+    OwnedHqlExpr resourced = translator.getResourcedChildGraph(graphctx, childQuery, numResults, no_childquery, false);
 
     Owned<ParentExtract> extractBuilder = translator.createExtractBuilder(graphctx, PETchild, represents, resourced, true);
     if (!translator.queryOptions().serializeRowsetInExtract)
@@ -1559,7 +1562,7 @@ void ChildGraphBuilder::generatePrefetchGraph(BuildCtx & _ctx, OwnedHqlExpr * re
     BuildCtx aliasctx(ctx);
     aliasctx.addGroup();
 
-    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_none);
+    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_hqlproject, false);
 
     Owned<ParentExtract> extractBuilder = translator.createExtractBuilder(ctx, PETchild, represents, resourced, false);
     createBuilderAlias(aliasctx, extractBuilder);
@@ -1585,12 +1588,12 @@ void ChildGraphBuilder::createBuilderAlias(BuildCtx & ctx, ParentExtract * extra
     ctx.addQuoted(s);
 }
 
-unique_id_t ChildGraphBuilder::buildLoopBody(BuildCtx & ctx, bool multiInstance)
+unique_id_t ChildGraphBuilder::buildLoopBody(BuildCtx & ctx, bool multiInstance, bool unlimitedResources)
 {
     BuildCtx subctx(ctx);
     subctx.addGroup();
 
-    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_loop);
+    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_loop, unlimitedResources);
     //Add a flag to indicate multi instance
     if (multiInstance)
         resourced.setown(appendOwnedOperand(resourced, createAttribute(multiInstanceAtom)));
@@ -1686,14 +1689,14 @@ protected:
 
 
 
-unique_id_t ChildGraphBuilder::buildGraphLoopBody(BuildCtx & ctx, bool isParallel)
+unique_id_t ChildGraphBuilder::buildGraphLoopBody(BuildCtx & ctx, bool isParallel, bool unlimitedResources)
 {
     BuildCtx subctx(ctx);
     subctx.addGroup();
 
     IHqlExpression * query = childQuery->queryChild(2);
     translator.traceExpression("Before Loop resource", query);
-    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_loop);
+    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_loop, unlimitedResources);
     translator.traceExpression("After Loop resource", resourced);
 
     //Add a flag to indicate multi instance
@@ -1724,7 +1727,7 @@ unique_id_t ChildGraphBuilder::buildRemoteGraph(BuildCtx & ctx)
     BuildCtx subctx(ctx);
     subctx.addGroup();
 
-    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_allnodes);
+    OwnedHqlExpr resourced = translator.getResourcedChildGraph(ctx, childQuery, numResults, no_allnodes, false);
 
     Owned<ParentExtract> extractBuilder = translator.createExtractBuilder(ctx, PETremote, represents, GraphRemote, false);
 
@@ -1785,7 +1788,7 @@ void HqlCppTranslator::buildAssignChildDataset(BuildCtx & ctx, const CHqlBoundTa
 }
 
 
-IHqlExpression * HqlCppTranslator::getResourcedChildGraph(BuildCtx & ctx, IHqlExpression * childQuery, unsigned numResults, node_operator graphKind)
+IHqlExpression * HqlCppTranslator::getResourcedChildGraph(BuildCtx & ctx, IHqlExpression * childQuery, unsigned numResults, node_operator graphKind, bool unlimitedResources)
 {
     if (options.paranoidCheckNormalized || options.paranoidCheckDependencies)
         DBGLOG("Before resourcing a child graph");
@@ -1810,44 +1813,38 @@ IHqlExpression * HqlCppTranslator::getResourcedChildGraph(BuildCtx & ctx, IHqlEx
     }
 
     {
-        cycle_t startCycles = get_cycles_now();
         CompoundSourceTransformer transformer(*this, CSFpreload|csfFlags);
         resourced.setown(transformer.process(resourced));
         checkNormalized(ctx, resourced);
-        noteFinishedTiming("workunit;tree transform: optimize disk read", startCycles);
     }
 
+    bool isInsideChildQuery = (graphKind == no_childquery) || insideChildQuery(ctx);
     if (options.optimizeGraph)
     {
-        cycle_t startCycles = get_cycles_now();
         traceExpression("BeforeOptimizeSub", resourced);
-        resourced.setown(optimizeHqlExpression(queryErrorProcessor(), resourced, getOptimizeFlags()|HOOcompoundproject));
+        resourced.setown(optimizeHqlExpression(queryErrorProcessor(), resourced, getOptimizeFlags(isInsideChildQuery)|HOOcompoundproject));
         traceExpression("AfterOptimizeSub", resourced);
-        noteFinishedTiming("workunit;optimize graph", startCycles);
     }
 
     traceExpression("BeforeResourcing Child", resourced);
-
-    cycle_t startCycles = get_cycles_now();
     HqlExprCopyArray activeRows;
     gatherActiveCursors(ctx, activeRows);
     if (graphKind == no_loop)
     {
         bool insideChild = insideChildQuery(ctx);
-        resourced.setown(resourceLoopGraph(*this, activeRows, resourced, targetClusterType, graphIdExpr, numResults, insideChild));
+        resourced.setown(resourceLoopGraph(*this, activeRows, resourced, targetClusterType, graphIdExpr, numResults, isInsideChildQuery, unlimitedResources));
     }
     else
         resourced.setown(resourceNewChildGraph(*this, activeRows, resourced, targetClusterType, graphIdExpr, numResults));
 
-    noteFinishedTiming("workunit;resource graph", startCycles);
     checkNormalized(ctx, resourced);
     traceExpression("AfterResourcing Child", resourced);
     
-    resourced.setown(optimizeGraphPostResource(resourced, csfFlags, false));
+    resourced.setown(optimizeGraphPostResource(resourced, csfFlags, false, isInsideChildQuery));
     if (options.optimizeSpillProject)
     {
         resourced.setown(convertSpillsToActivities(resourced, true));
-        resourced.setown(optimizeGraphPostResource(resourced, csfFlags, false));
+        resourced.setown(optimizeGraphPostResource(resourced, csfFlags, false, isInsideChildQuery));
     }
 
     if (options.paranoidCheckNormalized || options.paranoidCheckDependencies)
@@ -1878,7 +1875,7 @@ void HqlCppTranslator::buildChildDataset(BuildCtx & ctx, IHqlExpression * expr, 
 }
 
 
-unique_id_t HqlCppTranslator::buildGraphLoopSubgraph(BuildCtx & ctx, IHqlExpression * dataset, IHqlExpression * selSeq, IHqlExpression * rowsid, IHqlExpression * body, IHqlExpression * counter, bool multiInstance)
+unique_id_t HqlCppTranslator::buildGraphLoopSubgraph(BuildCtx & ctx, IHqlExpression * dataset, IHqlExpression * selSeq, IHqlExpression * rowsid, IHqlExpression * body, IHqlExpression * counter, bool multiInstance, bool unlimitedResources)
 {
     ChildGraphExprBuilder graphBuilder(0);
 
@@ -1900,7 +1897,7 @@ unique_id_t HqlCppTranslator::buildGraphLoopSubgraph(BuildCtx & ctx, IHqlExpress
     OwnedHqlExpr subquery = graphBuilder.getGraph();
 
     ChildGraphBuilder builder(*this, subquery);
-    return builder.buildGraphLoopBody(ctx, multiInstance);
+    return builder.buildGraphLoopBody(ctx, multiInstance, unlimitedResources);
 }
 
 unique_id_t HqlCppTranslator::buildRemoteSubgraph(BuildCtx & ctx, IHqlExpression * dataset)
@@ -3002,37 +2999,37 @@ bool HqlCppTranslator::doBuildConstantDatasetInlineTable(IHqlExpression * expr, 
 class EclccEngineRowAllocator : public CInterfaceOf<IEngineRowAllocator>
 {
 public:
-    virtual byte * * createRowset(unsigned _numItems) { return (byte * *)malloc(_numItems * sizeof(byte *)); }
-    virtual byte * * linkRowset(byte * * rowset) { throwUnexpected(); }
-    virtual void releaseRowset(unsigned count, byte * * rowset) { free(rowset); }
-    virtual byte * * appendRowOwn(byte * * rowset, unsigned newRowCount, void * row)
+    virtual const byte * * createRowset(unsigned _numItems) override { return (const byte * *)malloc(_numItems * sizeof(byte *)); }
+    virtual const byte * * linkRowset(const byte * * rowset) override { throwUnexpected(); }
+    virtual void releaseRowset(unsigned count, const byte * * rowset) override { free(rowset); }
+    virtual const byte * * appendRowOwn(const byte * * rowset, unsigned newRowCount, void * row) override
     {
-        byte * * expanded = reallocRows(rowset, newRowCount-1, newRowCount);
-        expanded[newRowCount-1] = (byte *)row;
+        const byte * * expanded = reallocRows(rowset, newRowCount-1, newRowCount);
+        expanded[newRowCount-1] = (const byte *)row;
         return expanded;
     }
-    virtual byte * * reallocRows(byte * * rowset, unsigned oldRowCount, unsigned newRowCount)
+    virtual const byte * * reallocRows(const byte * * rowset, unsigned oldRowCount, unsigned newRowCount) override
     {
-        return (byte * *)realloc(rowset, newRowCount * sizeof(byte *));
+        return (const byte * *)realloc(rowset, newRowCount * sizeof(byte *));
     }
 
-    virtual void * createRow() { throwUnexpected(); }
-    virtual void releaseRow(const void * row) {  } // can occur if a row is removed from a dictionary.
-    virtual void * linkRow(const void * row) { return const_cast<void *>(row); }  // can occur if a dictionary is resized.
+    virtual void * createRow() override { throwUnexpected(); }
+    virtual void releaseRow(const void * row) override {  } // can occur if a row is removed from a dictionary.
+    virtual void * linkRow(const void * row) override { return const_cast<void *>(row); }  // can occur if a dictionary is resized.
 
 //Used for dynamically sizing rows.
-    virtual void * createRow(size32_t & allocatedSize) { throwUnexpected(); }
-    virtual void * resizeRow(size32_t newSize, void * row, size32_t & size) { throwUnexpected(); }
-    virtual void * finalizeRow(size32_t newSize, void * row, size32_t oldSize) { throwUnexpected(); }
+    virtual void * createRow(size32_t & allocatedSize) override { throwUnexpected(); }
+    virtual void * resizeRow(size32_t newSize, void * row, size32_t & size) override { throwUnexpected(); }
+    virtual void * finalizeRow(size32_t newSize, void * row, size32_t oldSize) override { throwUnexpected(); }
 
-    virtual IOutputMetaData * queryOutputMeta() { return NULL; }
-    virtual unsigned queryActivityId() const { return 0; }
-    virtual StringBuffer &getId(StringBuffer & out) { return out; }
-    virtual IOutputRowSerializer *createDiskSerializer(ICodeContext *ctx = NULL) { throwUnexpected(); }
-    virtual IOutputRowDeserializer *createDiskDeserializer(ICodeContext *ctx) { throwUnexpected(); }
-    virtual IOutputRowSerializer *createInternalSerializer(ICodeContext *ctx = NULL) { throwUnexpected(); }
-    virtual IOutputRowDeserializer *createInternalDeserializer(ICodeContext *ctx) { throwUnexpected(); }
-    virtual IEngineRowAllocator *createChildRowAllocator(const RtlTypeInfo *type) { throwUnexpected(); }
+    virtual IOutputMetaData * queryOutputMeta() override { return NULL; }
+    virtual unsigned queryActivityId() const override { return 0; }
+    virtual StringBuffer &getId(StringBuffer & out) override { return out; }
+    virtual IOutputRowSerializer *createDiskSerializer(ICodeContext *ctx = NULL) override { throwUnexpected(); }
+    virtual IOutputRowDeserializer *createDiskDeserializer(ICodeContext *ctx) override { throwUnexpected(); }
+    virtual IOutputRowSerializer *createInternalSerializer(ICodeContext *ctx = NULL) override { throwUnexpected(); }
+    virtual IOutputRowDeserializer *createInternalDeserializer(ICodeContext *ctx) override { throwUnexpected(); }
+    virtual IEngineRowAllocator *createChildRowAllocator(const RtlTypeInfo *type) override { throwUnexpected(); }
     virtual void gatherStats(CRuntimeStatisticCollection & stats) override {}
 };
 
@@ -3122,7 +3119,7 @@ void HqlCppTranslator::createInlineDictionaryRows(HqlExprArray & args, ConstantR
         builder.appendOwn(&boundRows.item(i));
 
     unsigned size = builder.getcount();
-    ConstantRow * * rows = reinterpret_cast<ConstantRow * *>(builder.queryrows());
+    const ConstantRow * * rows = reinterpret_cast<const ConstantRow * *>(builder.queryrows());
     for (unsigned i=0; i < size; i++)
     {
         if (rows[i])
@@ -4468,7 +4465,8 @@ void HqlCppTranslator::doBuildRowAssignProject(BuildCtx & ctx, IReferenceSelecto
     OwnedHqlExpr activeDataset = ensureActiveRow(dataset->queryNormalizedSelector());
 
     // queryChild(1) should be changed to queryTransformExpr()...
-    OwnedHqlExpr transform = queryNewReplaceSelector(queryNewColumnProvider(expr), leftSelect, activeDataset);
+    IHqlExpression * originalTransform = queryNewColumnProvider(expr);
+    OwnedHqlExpr transform = queryNewReplaceSelector(originalTransform, leftSelect, activeDataset);
     Owned<BoundRow> selfCursor;
     if (!transform)
     {
@@ -4476,7 +4474,7 @@ void HqlCppTranslator::doBuildRowAssignProject(BuildCtx & ctx, IReferenceSelecto
         selfCursor.set(bindSelectorAsSelf(subctx, target, expr));
         //Mapping may potentially be ambiguous, so do things correctly (see hqlsource for details)
         BoundRow * prevCursor = resolveSelectorDataset(subctx, dataset->queryNormalizedSelector());
-        transform.set(expr->queryChild(1));
+        transform.set(originalTransform);
 
         bindTableCursor(subctx, dataset, prevCursor->queryBound(), no_left, selSeq);
     }

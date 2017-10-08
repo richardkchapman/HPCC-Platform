@@ -1816,7 +1816,7 @@ public:
         unsigned clientFlowPort = topology->getPropInt("@clientFlowPort", CCD_CLIENT_FLOW_PORT);
         unsigned snifferPort = topology->getPropInt("@snifferPort", CCD_SNIFFER_PORT);
         receiveManager.setown(createReceiveManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpQueueSize, udpMaxSlotsPerClient, myNodeIndex));
-        sendManager.setown(createSendManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpSendQueueSize, fastLaneQueue ? 3 : 2, udpResendEnabled ? udpMaxSlotsPerClient : 0, bucket, myNodeIndex));
+        sendManager.setown(createSendManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpSendQueueSize, fastLaneQueue ? 3 : 2, bucket, myNodeIndex));
         running = false;
     }
 
@@ -2846,7 +2846,7 @@ public:
                 if (!pingsReceived && roxieMulticastEnabled)
                     DBGLOG("PING: NO replies received! Please check multicast settings, and that your network supports multicast.");
                 else if (traceLevel)
-                    DBGLOG("PING: %d replies received, average delay %d", pingsReceived, pingsReceived ? pingsElapsed / pingsReceived : 0);
+                    DBGLOG("PING: %d replies received, average delay %uus", pingsReceived, pingsReceived ? pingsElapsed / pingsReceived : 0);
                 pingsReceived = 0;
                 pingsElapsed = 0;
                 sendPing(ROXIE_HIGH_PRIORITY);  // MORE - we could think about alternating the priority or sending pings on high and low at the same time...

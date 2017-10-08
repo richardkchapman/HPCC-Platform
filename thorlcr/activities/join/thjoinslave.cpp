@@ -65,8 +65,6 @@ class JoinSlaveActivity : public CSlaveActivity, implements ILookAheadStopNotify
     Owned<IJoinHelper> joinhelper;
     rowcount_t lhsProgressCount = 0, rhsProgressCount = 0;
     CriticalSection joinHelperCrit;
-    bool leftInputStopped = true;
-    bool rightInputStopped = true;
     CRuntimeStatisticCollection spillStats;
     IHThorJoinBaseArg *helper;
     IHThorJoinArg *helperjn;
@@ -96,8 +94,7 @@ class JoinSlaveActivity : public CSlaveActivity, implements ILookAheadStopNotify
     bool isUnstable()
     {
         // actually don't think currently supported by join but maybe will be sometime
-        IHThorAlgorithm * algo = helper?(static_cast<IHThorAlgorithm *>(helper->selectInterface(TAIalgorithm_1))):NULL;
-        return (algo&&algo->getAlgorithmFlags()&TAFunstable);
+        return false;
     }
 
     class cRowStreamPlus1Adaptor: implements IRowStream, public CSimpleInterface
@@ -206,11 +203,14 @@ public:
         if ((rightpartition && (0 == index)) || (!rightpartition && (1 == index)))
         {
             secondaryInputIndex = index;
-            IEngineRowStream *secondaryStream = queryInputStream(secondaryInputIndex);
-            IStartableEngineRowStream *lookAhead = createRowStreamLookAhead(this, secondaryStream, queryRowInterfaces(_input.itdl), JOIN_SMART_BUFFER_SIZE, isSmartBufferSpillNeeded(_input.itdl->queryFromActivity()),
-                                                        false, RCUNBOUND, this, &container.queryJob().queryIDiskUsage());
-            setLookAhead(secondaryInputIndex, lookAhead),
-            secondaryInputStream = lookAhead;
+            secondaryInputStream = queryInputStream(secondaryInputIndex);
+            if (!isFastThrough(_input.itdl))
+            {
+                IStartableEngineRowStream *lookAhead = createRowStreamLookAhead(this, secondaryInputStream, queryRowInterfaces(_input.itdl), JOIN_SMART_BUFFER_SIZE, isSmartBufferSpillNeeded(_input.itdl->queryFromActivity()),
+                                                            false, RCUNBOUND, this, &container.queryJob().queryIDiskUsage());
+                setLookAhead(secondaryInputIndex, lookAhead),
+                secondaryInputStream = lookAhead;
+            }
         }
         else
         {
@@ -263,13 +263,10 @@ public:
         Linked<IThorRowInterfaces> primaryRowIf, secondaryRowIf;
 
         StringAttr primaryInputStr, secondaryInputStr;
-        bool *secondaryInputStopped, *primaryInputStopped;
         if (rightpartition)
         {
             primaryInput.set(queryInput(1));
             secondaryInput.set(queryInput(0));
-            secondaryInputStopped = &leftInputStopped;
-            primaryInputStopped = &rightInputStopped;
             primaryInputStr.set("R");
             secondaryInputStr.set("L");
         }
@@ -277,20 +274,16 @@ public:
         {
             primaryInput.set(queryInput(0));
             secondaryInput.set(queryInput(1));
-            secondaryInputStopped = &rightInputStopped;
-            primaryInputStopped = &leftInputStopped;
             primaryInputStr.set("L");
             secondaryInputStr.set("R");
         }
         ActPrintLog("JOIN partition: %s", primaryInputStr.get());
         ActPrintLog("JOIN: Starting %s then %s", secondaryInputStr.get(), primaryInputStr.get());
 
-        *secondaryInputStopped = false;
         CAsyncCallStart asyncSecondaryStart(std::bind(&JoinSlaveActivity::startSecondaryInput, this));
         try
         {
             startInput(primaryInputIndex);
-            *primaryInputStopped = false;
         }
         catch (IException *e)
         {
@@ -337,19 +330,11 @@ public:
     }
     void stopLeftInput()
     {
-        if (!leftInputStopped)
-        {
-            stopInput(0, "(L)");
-            leftInputStopped = true;
-        }
+        stopInput(0, "(L)");
     }
     void stopRightInput()
     {
-        if (!rightInputStopped)
-        {
-            stopInput(1, "(R)");
-            rightInputStopped = true;
-        }
+        stopInput(1, "(R)");
     }
     void stopPartitionInput()
     {
@@ -568,7 +553,7 @@ public:
             ActPrintLog("JOIN barrier.1 raised");
 
             // primaryWriter will keep as much in memory as possible.
-            Owned<IRowWriterMultiReader> primaryWriter = createOverflowableBuffer(*this, primaryRowIf, false);
+            Owned<IRowWriterMultiReader> primaryWriter = createOverflowableBuffer(*this, primaryRowIf, ers_forbidden);
             primaryStream.setown(sorter->startMerge(totalrows));
             copyRowStream(primaryStream, primaryWriter);
             primaryStream.setown(primaryWriter->getReader()); // NB: rhsWriter no longer needed after this point

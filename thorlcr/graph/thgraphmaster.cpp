@@ -1091,7 +1091,7 @@ public:
             throw MakeStringException(TE_FailedToRetrieveWorkunitValue, "Failed to retrieve external data hash %s from workunit %s", stepname, wuid);
         }
     }
-    virtual void getResultRowset(size32_t & tcount, byte * * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) override
+    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) override
     {
         tgt = NULL;
         PROTECTED_GETRESULT(stepname, sequence, "Rowset", "rowset",
@@ -1104,7 +1104,7 @@ public:
             rtlDataset2RowsetX(tcount, tgt, _rowAllocator, deserializer, datasetBuffer.length(), datasetBuffer.toByteArray(), isGrouped);
         );
     }
-    virtual void getResultDictionary(size32_t & tcount, byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) override
+    virtual void getResultDictionary(size32_t & tcount, const byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) override
     {
         tcount = 0;
         tgt = NULL;
@@ -1232,6 +1232,8 @@ public:
     {
         Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
         Owned<IConstWorkUnit> externalWU = factory->openWorkUnit(wuid);
+        if (!externalWU)
+            throw MakeStringException(TE_FailedToRetrieveWorkunitValue, "workunit %s not found, retrieving value %s", wuid, name);
         externalWU->remoteCheckAccess(userDesc, false);
         return getWorkUnitResult(externalWU, name, sequence);
     }
@@ -1666,8 +1668,6 @@ bool CJobMaster::go()
                     Owned <IException> e = MakeThorException(TE_WorkUnitAborting, "User signalled abort");
                     job.fireException(e);
                 }
-                else
-                    PROGLOG("CWorkunitPauseHandler [SubscribeOptionAbort] notifier called, workunit was not aborting");
             }
             if (flags & SubscribeOptionAction)
             {
@@ -2012,7 +2012,7 @@ class CCollatedResult : implements IThorResult, public CSimpleInterface
                 }
             }
         }
-        Owned<IThorResult> _result = ::createResult(activity, rowIf, false, spillPriority);
+        Owned<IThorResult> _result = ::createResult(activity, rowIf, thorgraphresult_nul, spillPriority);
         Owned<IRowWriter> resultWriter = _result->getWriter();
         for (unsigned s=0; s<numSlaves; s++)
         {
@@ -2074,7 +2074,7 @@ public:
         ensure();
         result->serialize(mb);
     }
-    virtual void getLinkedResult(unsigned & count, byte * * & ret)
+    virtual void getLinkedResult(unsigned & count, const byte * * & ret) override
     {
         ensure();
         result->getLinkedResult(count, ret);
@@ -2144,12 +2144,6 @@ bool CMasterGraph::fireException(IException *e)
             if (mappedSeverity != SeverityIgnore)
                 reportExceptionToWorkunit(job.queryWorkUnit(), e);
             break;
-        }
-        case tea_abort:
-        {
-            EXCLOG(e, NULL);
-            abort(e);
-            // fall through
         }
         default:
         {
@@ -2293,10 +2287,10 @@ void CMasterGraph::sendActivityInitData()
     unsigned pos = msg.length();
     unsigned w=0;
     unsigned sentTo = 0;
+    Owned<IThorActivityIterator> iter = getConnectedIterator();
     for (; w<queryJob().querySlaves(); w++)
     {
         unsigned needActInit = 0;
-        Owned<IThorActivityIterator> iter = getConnectedIterator();
         ForEach(*iter)
         {
             CGraphElementBase &element = iter->query();
@@ -2311,7 +2305,6 @@ void CMasterGraph::sendActivityInitData()
             try
             {
                 msg.rewrite(pos);
-                Owned<IThorActivityIterator> iter = getConnectedIterator();
                 serializeActivityInitData(w, msg, *iter);
             }
             catch (IException *e)
@@ -2616,8 +2609,6 @@ void CMasterGraph::getFinalProgress()
                 minNode = n;
             }
             totalDiskUsage += nodeDiskUsage;
-            Owned<ITimeReporter> slaveReport = createStdTimeReporter(msg);
-            queryJobChannel().queryTimeReporter().merge(*slaveReport);
         }
     }
     if (totalDiskUsage)
@@ -2640,40 +2631,6 @@ void CMasterGraph::done()
     {
         if (globals->getPropBool("@watchdogProgressEnabled"))
             queryJobManager().queryDeMonServer()->endGraph(this, true);
-    }
-    if (!queryOwner())
-    {
-        if (queryJobChannel().queryTimeReporter().numSections())
-        {
-            if (globals->getPropBool("@reportTimingsToWorkunit", true))
-            {
-                struct CReport : implements ITimeReportInfo
-                {
-                    Owned<IWorkUnit> wu;
-                    CGraphBase &graph;
-                    CReport(CGraphBase &_graph) : graph(_graph)
-                    {
-                        wu.setown(&graph.queryJob().queryWorkUnit().lock());
-                    }
-                    virtual void report(const char * timerScope, const char *description, const __int64 totaltime, const __int64 maxtime, const unsigned count)
-                    {
-                        StringBuffer timerStr(graph.queryJob().queryGraphName());
-                        timerStr.append("(").append(graph.queryGraphId()).append("): ");
-                        timerStr.append(description);
-
-                        StringBuffer scope;
-                        //GH-.JCS is this correct queryGraphId() is a subgraph?
-                        formatGraphTimerScope(scope, graph.queryJob().queryGraphName(), graph.queryGraphId(), 0);
-                        scope.append(":").append(timerScope);
-                        wu->setStatistic(queryStatisticsComponentType(), queryStatisticsComponentName(), SSTsection, scope, StTimeElapsed, timerStr.str(), totaltime, count, maxtime, StatsMergeReplace);
-
-                    }
-                } wureport(*this);
-                queryJobChannel().queryTimeReporter().report(wureport);
-            }
-            else
-                queryJobChannel().queryTimeReporter().printTimings();
-        }
     }
 }
 
@@ -2753,21 +2710,21 @@ bool CMasterGraph::deserializeStats(unsigned node, MemoryBuffer &mb)
     return true;
 }
 
-IThorResult *CMasterGraph::createResult(CActivityBase &activity, unsigned id, IThorGraphResults *results, IThorRowInterfaces *rowIf, bool distributed, unsigned spillPriority)
+IThorResult *CMasterGraph::createResult(CActivityBase &activity, unsigned id, IThorGraphResults *results, IThorRowInterfaces *rowIf, ThorGraphResultType resultType, unsigned spillPriority)
 {
     Owned<CCollatedResult> result = new CCollatedResult(*this, activity, rowIf, id, results->queryOwnerId(), spillPriority);
     results->setResult(id, result);
     return result;
 }
 
-IThorResult *CMasterGraph::createResult(CActivityBase &activity, unsigned id, IThorRowInterfaces *rowIf, bool distributed, unsigned spillPriority)
+IThorResult *CMasterGraph::createResult(CActivityBase &activity, unsigned id, IThorRowInterfaces *rowIf, ThorGraphResultType resultType, unsigned spillPriority)
 {
     Owned<CCollatedResult> result = new CCollatedResult(*this, activity, rowIf, id, localResults->queryOwnerId(), spillPriority);
     localResults->setResult(id, result);
     return result;
 }
 
-IThorResult *CMasterGraph::createGraphLoopResult(CActivityBase &activity, IThorRowInterfaces *rowIf, bool distributed, unsigned spillPriority)
+IThorResult *CMasterGraph::createGraphLoopResult(CActivityBase &activity, IThorRowInterfaces *rowIf, ThorGraphResultType resultType, unsigned spillPriority)
 {
     Owned<CCollatedResult> result = new CCollatedResult(*this, activity, rowIf, 0, localResults->queryOwnerId(), spillPriority);
     unsigned id = graphLoopResults->addResult(result);
@@ -2917,8 +2874,8 @@ void ProgressInfo::getStats(IStatisticGatherer & stats)
     CThorStats::getStats(stats, true);
     stats.addStatistic(kind, tot);
     stats.addStatistic(StNumSlaves, counts.ordinality());
-    stats.addStatistic(StNumStarted, startcount);
-    stats.addStatistic(StNumStopped, stopcount);
+    stats.addStatistic(StNumStarts, startcount);
+    stats.addStatistic(StNumStops, stopcount);
 }
 
 

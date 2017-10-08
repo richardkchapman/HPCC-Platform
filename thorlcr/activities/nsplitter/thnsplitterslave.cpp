@@ -86,13 +86,15 @@ class NSplitterSlaveActivity : public CSlaveActivity, implements ISharedSmartBuf
     PointerArrayOf<Semaphore> stalledWriters;
     UnsignedArray stalledWriterIdxs;
     unsigned stoppedOutputs = 0;
-    unsigned activeOutputs = 0;
+    Owned<IBitSet> connectedOutputSet;
+    unsigned activeOutputCount = 0;
+    unsigned connectedOutputCount = (unsigned)-1; // uninitialized
     rowcount_t recsReady = 0;
     Owned<IException> writeAheadException;
     Owned<ISharedSmartBuffer> smartBuf;
     bool inputPrepared = false;
     bool inputConnected = false;
-    unsigned remainingOutputs = 0;
+    unsigned numOutputs = 0;
 
     // NB: CWriter only used by 'balanced' splitter, which blocks write when too far ahead
     class CWriter : public CSimpleInterface, IThreaded
@@ -111,6 +113,7 @@ class NSplitterSlaveActivity : public CSlaveActivity, implements ISharedSmartBuf
         ~CWriter() { stop(); }
         virtual void main()
         {
+            // NB: This thread will not get started if there was a failure during prepareInput()
             Semaphore writeBlockSem;
             while (!stopped && !parent.eofHit)
                 current = parent.writeahead(current, stopped, writeBlockSem, UINT_MAX);
@@ -142,8 +145,8 @@ class NSplitterSlaveActivity : public CSlaveActivity, implements ISharedSmartBuf
 public:
     NSplitterSlaveActivity(CGraphElementBase *_container) : CSlaveActivity(_container), writer(*this)
     {
-        activeOutputs = container.getOutputs();
-        ActPrintLog("Number of connected outputs: %u", activeOutputs);
+        numOutputs = container.getOutputs();
+        connectedOutputSet.setown(createBitSet());
         setRequireInitData(false);
         IHThorSplitArg *helper = (IHThorSplitArg *)queryHelper();
         int dV = getOptInt(THOROPT_SPLITTER_SPILL, -1);
@@ -154,12 +157,28 @@ public:
         ForEachItemIn(o, container.outputs)
             appendOutput(new CSplitterOutput(*this, o));
     }
+    virtual void init(MemoryBuffer &data, MemoryBuffer &slaveData) override
+    {
+        // NB: init() is called post connect, some inputs may not have connected streams, e.g. if UPDATE has suppressed them.
+        connectedOutputCount = 0;
+        unsigned cur = 0;
+        while (true)
+        {
+             unsigned next = connectedOutputSet->scan(cur, false); // find next inactive
+             connectedOutputCount += next-cur;
+             if (next==container.getOutputs()) // can't exceed
+                 break;
+             cur = next+1;
+        }
+        ActPrintLog("Number of connected outputs: %u", connectedOutputCount);
+    }
     virtual void reset() override
     {
         PARENT::reset();
         stoppedOutputs = 0;
         eofHit = false;
         inputPrepared = false;
+        writeAheadException.clear();
         recsReady = 0;
         writeBlocked = false;
         stalledWriters.kill();
@@ -167,8 +186,7 @@ public:
         ForEachItemIn(o, outputs)
         {
             CSplitterOutput *output = (CSplitterOutput *)outputs.item(o);
-            if (output)
-                output->reset();
+            output->reset();
         }
     }
     bool prepareInput()
@@ -178,54 +196,63 @@ public:
         if (!inputPrepared)
         {
             inputPrepared = true;
-            PARENT::start();
-            remainingOutputs = activeOutputs;
-            ForEachItemIn(o, outputs)
+            try
             {
-                CSplitterOutput *output = (CSplitterOutput *)outputs.item(o);
-                if (output && output->isStopped())
-                    --remainingOutputs;
-            }
-            assertex(remainingOutputs); // must be >=1, as this output (outIdx) has invoked prepareInput
-            if (1 == remainingOutputs)
-                return false;
-            if (smartBuf)
-                smartBuf->reset();
-            else
-            {
-                if (spill)
-                {
-                    StringBuffer tempname;
-                    GetTempName(tempname, "nsplit", true); // use alt temp dir
-                    smartBuf.setown(createSharedSmartDiskBuffer(this, tempname.str(), activeOutputs, queryRowInterfaces(input), &container.queryJob().queryIDiskUsage()));
-                    ActPrintLog("Using temp spill file: %s", tempname.str());
-                }
-                else
-                {
-                    ActPrintLog("Spill is 'balanced'");
-                    smartBuf.setown(createSharedSmartMemBuffer(this, activeOutputs, queryRowInterfaces(input), NSPLITTER_SPILL_BUFFER_SIZE));
-                }
-                // mark any outputs already stopped
+                assertex(((unsigned)-1) != connectedOutputCount);
+                activeOutputCount = connectedOutputCount;
+                PARENT::start();
                 ForEachItemIn(o, outputs)
                 {
                     CSplitterOutput *output = (CSplitterOutput *)outputs.item(o);
-                    if (output && output->isStopped())
-                        smartBuf->queryOutput(o)->stop();
+                    if (output->isStopped())
+                        --activeOutputCount;
                 }
+                assertex(activeOutputCount); // must be >=1, as this output (outIdx) has invoked prepareInput
+                if (1 == activeOutputCount)
+                    return false;
+                if (smartBuf)
+                    smartBuf->reset();
+                else
+                {
+                    if (spill)
+                    {
+                        StringBuffer tempname;
+                        GetTempName(tempname, "nsplit", true); // use alt temp dir
+                        smartBuf.setown(createSharedSmartDiskBuffer(this, tempname.str(), numOutputs, queryRowInterfaces(input), &container.queryJob().queryIDiskUsage()));
+                        ActPrintLog("Using temp spill file: %s", tempname.str());
+                    }
+                    else
+                    {
+                        ActPrintLog("Spill is 'balanced'");
+                        smartBuf.setown(createSharedSmartMemBuffer(this, numOutputs, queryRowInterfaces(input), NSPLITTER_SPILL_BUFFER_SIZE));
+                    }
+                    // mark any outputs already stopped
+                    ForEachItemIn(o, outputs)
+                    {
+                        CSplitterOutput *output = (CSplitterOutput *)outputs.item(o);
+                        if (output->isStopped() || !connectedOutputSet->test(o))
+                            smartBuf->queryOutput(o)->stop();
+                    }
+                }
+                if (!spill)
+                    writer.start(); // writer keeps writing ahead as much as possible, the readahead impl. will block when has too much
             }
-            if (!spill)
-                writer.start(); // writer keeps writing ahead as much as possible, the readahead impl. will block when has too much
+            catch (IException *e)
+            {
+                eofHit = true;
+                writeAheadException.setown(e);
+                return false;
+            }
         }
         return true;
     }
-    inline const void *nextRow(unsigned outIdx)
+    inline const void *nextRow(unsigned outIdx, rowcount_t current)
     {
-        if (1 == remainingOutputs) // will be true, if only 1 input connect, or only 1 input was active (others stopped) when it started reading
+        if (1 == activeOutputCount) // will be true, if only 1 input connected, or only 1 input was active (others stopped) when it started reading
             return inputStream->nextRow();
-        OwnedConstThorRow row = smartBuf->queryOutput(outIdx)->nextRow(); // will block until available
-        if (writeAheadException)
+        if (recsReady == current && writeAheadException.get())
             throw LINK(writeAheadException);
-        return row.getClear();
+        return smartBuf->queryOutput(outIdx)->nextRow(); // will block until available
     }
     rowcount_t writeahead(rowcount_t current, const bool &stopped, Semaphore &writeBlockSem, unsigned outIdx)
     {
@@ -300,19 +327,27 @@ public:
     void inputStopped(unsigned outIdx)
     {
         CriticalBlock block(prepareInputLock);
-        if (smartBuf)
+        if ((unsigned)-1 == connectedOutputCount) // implies conditional(s) downstream meant this activity was never used, but still need to chain stop()
         {
-            /* If no output has started reading (nextRow()), then it will not have been prepared
-             * If only 1 output is left, it will bypass the smart buffer when it starts.
-             */
-            smartBuf->queryOutput(outIdx)->stop();
+            if (0 == stoppedOutputs++)
+                PARENT::stop();
         }
-        ++stoppedOutputs;
-        if (stoppedOutputs == activeOutputs)
+        else
         {
-            writer.stop();
-            PARENT::stop();
-            inputPrepared = false;
+            if (smartBuf)
+            {
+                /* If no output has started reading (nextRow()), then it will not have been prepared
+                 * If only 1 output is left, it will bypass the smart buffer when it starts.
+                 */
+                smartBuf->queryOutput(outIdx)->stop();
+            }
+            ++stoppedOutputs;
+            if (stoppedOutputs == connectedOutputCount)
+            {
+                writer.stop();
+                PARENT::stop();
+                inputPrepared = false;
+            }
         }
     }
     void abort()
@@ -347,13 +382,13 @@ public:
     virtual IStrandJunction *getOutputStreams(CActivityBase &ctx, unsigned idx, PointerArrayOf<IEngineRowStream> &streams, const CThorStrandOptions * consumerOptions, bool consumerOrdered, IOrderedCallbackCollection * orderedCallbacks) override
     {
         connectInput(consumerOrdered);
+        connectedOutputSet->set(idx);
         streams.append(this);
         return nullptr;
     }
     virtual void getMetaInfo(ThorDataLinkMetaInfo &info) override
     {
         initMetaInfo(info);
-        info.fastThrough = true;
         info.unknownRowsOutput = true;  // remove once calcMetaInfoSize() is called
 
         //GH->JCS I think the following line is correct and may remove some downstream spilling streams
@@ -407,6 +442,7 @@ void CSplitterOutput::setOutputStream(unsigned index, IEngineRowStream *stream)
 IStrandJunction *CSplitterOutput::getOutputStreams(CActivityBase &ctx, unsigned idx, PointerArrayOf<IEngineRowStream> &streams, const CThorStrandOptions * consumerOptions, bool consumerOrdered, IOrderedCallbackCollection * orderedCallbacks)
 {
     activity.connectInput(consumerOrdered);
+    activity.connectedOutputSet->set(idx);
     streams.append(this);
     return nullptr;
 }
@@ -446,7 +482,7 @@ const void *CSplitterOutput::nextRow()
         max = activity.writeahead(max, activity.queryAbortSoon(), writeBlockSem, outIdx);
         // NB: if this is sole input that actually started, writeahead will have returned RCMAX and calls to activity.nextRow will go directly to splitter input
     }
-    const void *row = activity.nextRow(outIdx); // pass ptr to max if need more
+    const void *row = activity.nextRow(outIdx, rec); // pass ptr to max if need more
     ++rec;
     if (row)
         dataLinkIncrement();

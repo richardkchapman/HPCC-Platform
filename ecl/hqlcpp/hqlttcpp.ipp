@@ -363,7 +363,7 @@ private:
 class OptimizeActivityTransformer : public NewHqlTransformer
 {
 public:
-    OptimizeActivityTransformer(bool _optimizeCountCompare, bool _optimizeNonEmpty);
+    OptimizeActivityTransformer(unsigned _wfid, bool _optimizeCountCompare, bool _optimizeNonEmpty);
 
     virtual void analyseExpr(IHqlExpression * expr);
     virtual IHqlExpression * createTransformed(IHqlExpression * expr);
@@ -379,6 +379,7 @@ protected:
     inline bool isShared(IHqlExpression * expr)                 { return queryBodyExtra(expr)->isShared(); }
 
 protected:
+    unsigned wfid;
     bool optimizeCountCompare;
     bool optimizeNonEmpty;
 };
@@ -505,7 +506,8 @@ protected:
     unsigned                  ensureWorkflowAction(IHqlExpression * expr);
     void                      ensureWorkflowAction(UnsignedArray & dependencies, IHqlExpression * expr);
     WorkflowItem *            createWorkflowItem(IHqlExpression * expr, unsigned wfid, node_operator workflowOp);
-    void percolateScheduledIds(WorkflowArray & workflow);
+    void percolateScheduledIds();
+    void percolateScheduledIds(UnsignedArray & visited, const UnsignedArray & dependencies, unsigned rootWfid);
 
     void                      cacheWorkflowDependencies(unsigned wfid, UnsignedArray & extra);
 
@@ -532,11 +534,13 @@ protected:
     void                      transformSequential(HqlExprArray & transformed);
 
     void analyseExpr(IHqlExpression * expr);
+    void addWorkflowItem(WorkflowItem & item);
 
 protected:
     IWorkUnit *               wu;
     HqlCppTranslator &        translator;
-    WorkflowArray *           workflowOut;
+    WorkflowArray             workflow;
+    WorkflowArray             functions;
     unsigned                  wfidCount;
     HqlExprArray              alreadyProcessed;
     HqlExprArray              alreadyProcessedExpr;
@@ -1299,8 +1303,7 @@ void mergeThorGraphs(WorkflowItem & curWorkflow, bool resourceConditionalActions
 void migrateExprToNaturalLevel(WorkflowItem & curWorkflow, IWorkUnit * wu, HqlCppTranslator & translator);
 void removeTrivialGraphs(WorkflowItem & curWorkflow);
 void extractWorkflow(HqlCppTranslator & translator, HqlExprArray & exprs, WorkflowArray & out);
-void optimizeActivities(HqlExprArray & exprs, bool optimizeCountCompare, bool optimizeNonEmpty);
-IHqlExpression * optimizeActivities(IHqlExpression * expr, bool optimizeCountCompare, bool optimizeNonEmpty);
+void optimizeActivities(unsigned wfid, HqlExprArray & exprs, bool optimizeCountCompare, bool optimizeNonEmpty);
 IHqlExpression * insertImplicitProjects(HqlCppTranslator & translator, IHqlExpression * expr, bool optimizeSpills);
 void insertImplicitProjects(HqlCppTranslator & translator, HqlExprArray & exprs);
 

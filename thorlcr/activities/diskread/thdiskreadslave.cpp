@@ -26,6 +26,7 @@
 
 #include "dafdesc.hpp"
 #include "rtlkey.hpp"
+#include "rtlrecord.hpp"
 #include "eclhelper.hpp" // tmp for IHThor..Arg interfaces.
 
 #include "thormisc.hpp"
@@ -51,13 +52,22 @@ protected:
     bool grouped;
     bool isFixedDiskWidth;
     size32_t diskRowMinSz;
+    const RtlRecord *recInfo = nullptr;
+    unsigned numOffsets = 0;
+    unsigned numSegFieldsUsed = 0;
 
     inline bool segMonitorsMatch(const void *buffer)
     {
-        ForEachItemIn(idx, segMonitors)
+        if (segMonitors.length())
         {
-            if (!segMonitors.item(idx).matches(buffer))
-                return false;
+            size_t * variableOffsets = (size_t *)alloca(numOffsets * sizeof(size_t));
+            RtlRow rowinfo(*recInfo, nullptr, numOffsets, variableOffsets);
+            rowinfo.setRow(buffer, numSegFieldsUsed);
+            ForEachItemIn(idx, segMonitors)
+            {
+                if (!segMonitors.item(idx).matches(&rowinfo))
+                    return false;
+            }
         }
         return true;
     }
@@ -73,6 +83,8 @@ public:
         isFixedDiskWidth = diskRowMeta->isFixedSize();
         diskRowMinSz = diskRowMeta->getMinRecordSize();
         helper->createSegmentMonitors(this);
+        recInfo = &diskRowMeta->queryRecordAccessor(true);
+        numOffsets = recInfo->getNumVarFields() + 1;  // MORE - note max field used in segmonitors
         grouped = false;
     }
 
@@ -82,7 +94,11 @@ public:
         if (segment->isWild())
             segment->Release();
         else
+        {
             segMonitors.append(*segment);
+            if (segment->numFieldsRequired() > numSegFieldsUsed)
+                numSegFieldsUsed = segment->numFieldsRequired();
+        }
     }
 
     unsigned ordinality() const
@@ -466,6 +482,7 @@ public:
             initMetaInfo(cachedMetaInfo);
             cachedMetaInfo.isSource = true;
             getPartsMetaInfo(cachedMetaInfo, partDescs.ordinality(), partDescs.getArray(), partHandler);
+            cachedMetaInfo.fastThrough = true;
         }
         info = cachedMetaInfo;
         if (info.totalRowsMin==info.totalRowsMax)
@@ -877,6 +894,8 @@ public:
     {
         initMetaInfo(info);
         info.isSource = true;
+        if (totalCountKnown)
+            info.fastThrough = true;
         // MORE TBD
     }
     virtual bool isGrouped() const override { return false; }
@@ -963,7 +982,8 @@ class CDiskGroupAggregateSlave
 
     IHThorDiskGroupAggregateArg *helper;
     bool gathered, eoi;
-    Owned<RowAggregator> localAggTable;
+    Owned<IAggregateTable> localAggTable;
+    Owned<IRowStream> aggregateStream;
     Owned<IEngineRowAllocator> allocator;
     bool merging;
     Owned<IHashDistributor> distributor;
@@ -1004,8 +1024,8 @@ public:
         ActivityTimer s(totalCycles, timeActivities);
         CDiskReadSlaveActivityRecord::start();
         gathered = eoi = false;
-        localAggTable.setown(new RowAggregator(*helper, *helper));
-        localAggTable->start(queryRowAllocator());
+        localAggTable.setown(createRowAggregator(*this, *helper, *helper));
+        localAggTable->init(queryRowAllocator());
     }
     virtual void getMetaInfo(ThorDataLinkMetaInfo &info)
     {
@@ -1048,10 +1068,12 @@ public:
 
                 if (!container.queryLocalOrGrouped() && container.queryJob().querySlaves()>1)
                 {
+                    Owned<IRowStream> localAggStream = localAggTable->getRowStream(true);
                     BooleanOnOff onOff(merging);
-                    bool ordered = 0 != (TDRorderedmerge & helper->getFlags());
-                    localAggTable.setown(mergeLocalAggs(distributor, *this, *helper, *helper, localAggTable, mpTag, ordered));
+                    aggregateStream.setown(mergeLocalAggs(distributor, *this, *helper, *helper, localAggStream, mpTag));
                 }
+                else
+                    aggregateStream.setown(localAggTable->getRowStream(false));
             }
             catch (IException *e)
             {
@@ -1060,11 +1082,11 @@ public:
                 throw checkAndCreateOOMContextException(this, e, "aggregating using hash table", localAggTable->elementCount(), queryDiskRowInterfaces()->queryRowMetaData(), NULL);
             }
         }
-        Owned<AggregateRowBuilder> next = localAggTable->nextResult();
+        const void *next = aggregateStream->nextRow();
         if (next)
         {
             dataLinkIncrement();
-            return next->finalizeRowClear();
+            return next;
         }
         eoi = true;
         return NULL;

@@ -46,11 +46,10 @@
 #include "eclrtl_imp.hpp"
 #include "rtlread_imp.hpp"
 #include "rtlfield.hpp"
+#include "rtlrecord.hpp"
 #include "rtlds_imp.hpp"
+#include "rmtfile.hpp"
 
-namespace thormisc {  // Make sure we can't clash with generated versions or version check mechanism fails.
- #include "eclhelper_base.hpp" 
-}
 
 #define SDS_LOCK_TIMEOUT 30000
 
@@ -980,7 +979,15 @@ bool getBestFilePart(CActivityBase *activity, IPartDescriptor &partDesc, OwnedIF
         {
             rfn.getPath(locationName.clear());
             assertex(locationName.length());
-            Owned<IFile> file = createIFile(locationName.str());
+
+            Owned<IFile> file;
+            if (activity->getOptBool("forceDafilesrv"))
+            {
+                PROGLOG("Using dafilesrv for: %s", locationName.str());
+                file.setown(createDaliServixFile(rfn));
+            }
+            else
+                file.setown(createIFile(locationName.str()));
             try
             {
                 if (file->exists())
@@ -1124,7 +1131,7 @@ bool CFifoFileCache::isAvailable(const char *filename)
 IOutputMetaData *createFixedSizeMetaData(size32_t sz)
 {
     // sure if this allowed or is cheating!
-    return new thormisc::CFixedOutputMetaData(sz);
+    return new CFixedOutputMetaData(sz);
 }
 
 
@@ -1376,7 +1383,7 @@ IPerfMonHook *createThorMemStatsPerfMonHook(CJobBase &job, int maxLevel, IPerfMo
     return new CPerfMonHook(job, maxLevel, chain);
 }
 
-const StatisticsMapping spillStatistics(StTimeSpillElapsed, StTimeSortElapsed, StNumSpills, StSizeSpillFile, StKindNone);
+const StatisticsMapping spillStatistics({StTimeSpillElapsed, StTimeSortElapsed, StNumSpills, StSizeSpillFile});
 
 bool isOOMException(IException *_e)
 {

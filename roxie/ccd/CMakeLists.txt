@@ -72,6 +72,7 @@ include_directories (
          ${HPCC_SOURCE_DIR}/common/environment
          ${HPCC_SOURCE_DIR}/ecl/hthor
          ${HPCC_SOURCE_DIR}/ecl/schedulectrl
+         ${HPCC_SOURCE_DIR}/ecl/hql
          ${HPCC_SOURCE_DIR}/rtl/nbcd
          ${HPCC_SOURCE_DIR}/common/deftype
          ${HPCC_SOURCE_DIR}/system/include
@@ -88,6 +89,7 @@ include_directories (
          ${CMAKE_BINARY_DIR}/oss
          ${HPCC_SOURCE_DIR}/dali/ft
          ${HPCC_SOURCE_DIR}/system/security/shared
+         ${HPCC_SOURCE_DIR}/system/security/securesocket
     )
 
 ADD_DEFINITIONS( -D_USRDLL -DCCD_EXPORTS -DSTARTQUERY_EXPORTS )
@@ -106,6 +108,7 @@ target_link_libraries ( ccd
          udplib 
          remote 
          eclrtl 
+         hql
          dalibase 
          deftype 
          thorhelper 
@@ -122,8 +125,9 @@ IF (USE_OPENSSL)
     )
 ENDIF()
 
-IF (USE_TBBMALLOC)
-   target_link_libraries ( ccd ${TBBMALLOC_LIBRARIES})
+IF (USE_TBBMALLOC AND USE_TBBMALLOC_ROXIE)
+   add_dependencies ( ccd tbb )
+   target_link_libraries ( ccd libtbbmalloc_proxy libtbbmalloc)
 ENDIF()
 
 

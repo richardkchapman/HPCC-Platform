@@ -169,7 +169,10 @@ class ECLFile:
             root = tree.getroot()
             for child in root:
                 key = '-X'+child.tag
-                val = child.text
+                if child.text != None:
+                    val = child.text
+                else:
+                    val =''
                 retHash[key] = val
             pass
         logging.debug("%3d. checkQueryxmlFile() returns with %s stored parameter(s) ",  self.taskId,  len(retHash) )
@@ -223,7 +226,7 @@ class ECLFile:
         return path
 
     def getResults(self):
-        return os.path.join(self.dir_r, self.xml_r)
+        return os.path.join(self.dir_r, self.getJobname() + '.xml')
 
     def getArchive(self):
         logging.debug("%3d. getArchive (isVersions:'%s')", self.taskId, self.isVersions )

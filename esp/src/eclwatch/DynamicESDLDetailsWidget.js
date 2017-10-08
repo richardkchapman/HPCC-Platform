@@ -104,15 +104,27 @@ define([
             this.bindingRefresh = registry.byId(this.id + "BindingRefresh");
             this.refreshButton = registry.byId(this.id + "Refresh");
 
+            this.dialog = new Dialog({
+                title: context.i18n.PleasePickADefinition,
+                style: "width: 300px;"
+            });
             this.addBindingButton = new Button({
                 id: this.id + "AddBinding",
                 disabled: true,
                 onClick: function (val) {
+                    if (context.definitionDropDown) {
+                        context.definitionDropDown.destroyRecursive();
+                    }
+                    context.definitionDropDown = new TargetSelectWidget({});
+                    context.dialog.addChild(context.definitionDropDown);
+                    context.definitionDropDown.init({
+                        LoadDESDLDefinitions: true
+                    });
                     context.dialog.show();
                 },
                 label: context.i18n.AddBinding
             }).placeAt(this.refreshButton.domNode, "after");
-            tmpSplitter = new ToolbarSeparator().placeAt(this.addBindingButton.domNode, "before");
+            var tmpSplitter = new ToolbarSeparator().placeAt(this.addBindingButton.domNode, "before");
             this.deleteBindingButton = new Button({
                 id: this.id + "DeleteBinding",
                 disabled: true,
@@ -135,7 +147,7 @@ define([
                                     context.widget._Binding.set("disabled", true);
                                     context.params.Owner._onRefresh({});
                                     context.params.Owner.grid.deselect(context.params.__hpcc_id);
-                                    context.params.Owner.grid.select(context.params.__hpcc_id);
+                                    context.params.Owner.grid.select(context.params.__hpcc_parentName);
                                 }
                             }
                         });
@@ -143,15 +155,6 @@ define([
                 },
                 label: context.i18n.DeleteBinding
             }).placeAt(this.addBindingButton.domNode, "after");
-            this.definitionDropDown = new TargetSelectWidget({});
-            this.definitionDropDown.init({
-                LoadDESDLDefinitions: true
-            });
-            this.dialog = new Dialog({
-                title: context.i18n.PleasePickADefinition,
-                style: "width: 300px;"
-            });
-            this.dialog.addChild(this.definitionDropDown);
             this.addDefinitionButton = new Button({
                 disabled: false,
                 style: "float:right;",
@@ -174,7 +177,7 @@ define([
                                     Config: "<Methods><Method name='" + response.GetESDLDefinitionResponse.Methods.Method[0].Name + "'/></Methods>"
                                 }
                             }).then(function (publishresponse) {
-                                if (lang.exists("PublishESDLBindingResponse.status.Code", response)) {
+                                if (lang.exists("PublishESDLBindingResponse.status.Code", publishresponse)) {
                                     if (publishresponse.PublishESDLBindingResponse.status.Code === 0) {
                                         context.deleteBindingButton.set("disabled", false);
                                         context.addBindingButton.set("disabled", true);
@@ -199,7 +202,7 @@ define([
                                         }
                                         context.params.Owner._onRefresh({});
                                         context.params.Owner.grid.deselect(context.params.__hpcc_id);
-                                        context.params.Owner.grid.select(context.params.__hpcc_id);
+                                        context.params.Owner.grid.select(context.params.__hpcc_parentName);
                                     }
                                 }
                             });

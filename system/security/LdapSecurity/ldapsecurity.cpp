@@ -129,6 +129,17 @@ bool CLdapSecUser::setEmployeeID(const char * emplID)
     return true;
 }
 
+const char * CLdapSecUser::getDistinguishedName()
+{
+    return m_distinguishedName.get();
+}
+
+bool CLdapSecUser::setDistinguishedName(const char * dn)
+{
+    m_distinguishedName.set(dn);
+    return true;
+}
+
 const char * CLdapSecUser::getRealm()
 {
     return m_realm.get();
@@ -191,9 +202,24 @@ bool CLdapSecUser::setEncodedPassword(SecPasswordEncoding enc, void * pw, unsign
     return FALSE;  //not supported yet
 }
 
-bool CLdapSecUser::addToken(unsigned type, void * data, unsigned length)
+void CLdapSecUser::setSessionToken(const MemoryBuffer * const token)
 {
-    return FALSE;  //not supported yet
+    m_sessionToken.clear().append(token);
+}
+
+const MemoryBuffer & CLdapSecUser::getSessionToken()
+{
+    return m_sessionToken;
+}
+
+void CLdapSecUser::setSignature(const MemoryBuffer * const signature)
+{
+    m_signature.clear().append(*signature);
+}
+
+const MemoryBuffer & CLdapSecUser::getSignature()
+{
+    return m_signature;
 }
 
 void CLdapSecUser::copyTo(ISecUser& destination)
@@ -216,6 +242,9 @@ void CLdapSecUser::copyTo(ISecUser& destination)
     dest->setUserSid(m_usersid.length(), m_usersid.toByteArray());
     dest->setUserID(m_userid);
     dest->setPasswordExpiration(m_passwordExpiration);
+    dest->setDistinguishedName(m_distinguishedName);
+    dest->credentials().setSessionToken(&m_sessionToken);
+    dest->credentials().setSignature(&m_signature);
 }
 
 ISecUser * CLdapSecUser::clone()
@@ -633,13 +662,20 @@ bool CLdapSecManager::authenticate(ISecUser* user)
         return true;
     }
 
+    if (user->credentials().getSessionToken().length())//Already authenticated it token exists
+    {
+        user->setAuthenticateStatus(AS_AUTHENTICATED);
+        if(m_permissionsCache->isCacheEnabled() && !m_usercache_off)
+            m_permissionsCache->add(*user);
+        return true;
+    }
+
     bool ok = m_ldap_client->authenticate(*user);
     if(ok)
     {
+        user->setAuthenticateStatus(AS_AUTHENTICATED);
         if(m_permissionsCache->isCacheEnabled() && !m_usercache_off)
             m_permissionsCache->add(*user);
-
-        user->setAuthenticateStatus(AS_AUTHENTICATED);
     }
 
     return ok;
@@ -1081,6 +1117,12 @@ ISecItemIterator* CLdapSecManager::getResourcesSorted(SecResourceType rtype, con
     ResourceField* sortOrder, const unsigned pageStartFrom, const unsigned pageSize, unsigned *total, __int64 *cachehint)
 {
     return m_ldap_client->getResourcesSorted(rtype, basedn, resourceName, extraNameFilter, sortOrder, pageStartFrom, pageSize, total, cachehint);
+}
+
+ISecItemIterator* CLdapSecManager::getResourcePermissionsSorted(const char* name, enum ACCOUNT_TYPE_REQ accountType, const char* baseDN, const char* rtype, const char* prefix,
+    ResourcePermissionField* sortOrder, const unsigned pageStartFrom, const unsigned pageSize, unsigned *total, __int64 *cachehint)
+{
+    return m_ldap_client->getResourcePermissionsSorted(name, accountType, baseDN, rtype, prefix, sortOrder, pageStartFrom, pageSize, total, cachehint);
 }
 
 void CLdapSecManager::setExtraParam(const char * name, const char * value)

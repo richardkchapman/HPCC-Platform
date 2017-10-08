@@ -2485,7 +2485,7 @@ public:
 
         clear(); // NB: *should* already be cleared, when tree is removed via removeTree
     }
-    virtual bool isEquivalent(IPropertyTree *tree) { return (NULL != QUERYINTERFACE(tree, CServerRemoteTree)); }
+    virtual bool isEquivalent(IPropertyTree *tree) const override { return (NULL != QUERYINTERFACE(tree, CServerRemoteTree)); }
 
     PDState processData(CServerConnection &connection, IPropertyTree &changeTree, MemoryBuffer &newIds);
 
@@ -4003,9 +4003,9 @@ bool checkOldFormat(CServerRemoteTree *parentServerTree, IPropertyTree *tree, Me
                 ((PTree *)tree)->setValue(new CPTValue(0, NULL, false, true, false), false);
 
             Owned<IAttributeIterator> attrs = clientTree->getAttributes();
-            IPropertyTree *t = createPTree();
             if (attrs->first())
             {
+                IPropertyTree *t = createPTree();
                 do
                 {
                     t->setProp(attrs->queryName(), clientTree->queryProp(attrs->queryName()));
@@ -7042,7 +7042,7 @@ IPropertyTreeIterator *CCovenSDSManager::getElements(CRemoteConnection &connecti
     Owned<CLCReadLockBlock> lockBlock = new CLCReadLockBlock(dataRWLock, readWriteTimeout, __FILE__, __LINE__);
     CDisableFetchChangeBlock block(connection);
     Owned<CServerRemoteTree> serverConnRoot = (CServerRemoteTree *)getRegisteredTree(((CClientRemoteTree *)connection.queryRoot())->queryServerId());
-    Owned<CPTArrayIterator> elements = new CPTArrayIterator();
+    Owned<DaliPTArrayIterator> elements = new DaliPTArrayIterator();
     Owned<IPropertyTreeIterator> iter = serverConnRoot->getElements(xpath);
     ForEach (*iter)
     {

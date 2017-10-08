@@ -59,11 +59,13 @@ void usage()
            "   initialize          - Initialize new workunit repository\n"
            "\n"
            "If CASSANDRASERVER is specified, you can specify some connection options including:\n"
-           "   CASSANDRA_KEYSPACE  - default is hpcc\n"
+           "   CASSANDRA_KEYSPACE   - default is hpcc\n"
            "   CASSANDRA_USER\n"
            "   CASSANDRA_PASSWORD\n"
+           "   CASSANDRA_PARTITIONS - used if creating a new repository\n"
+           "   CASSANDRA_PREFIXSIZE - used if creating a new repository\n"
            "   TRACELEVEL\n"
-           "<workunits> can be specified on commandline, or can be specified using a filter owner=XXXX. If ommitted,\n"
+           "<workunits> can be specified on commandline, or can be specified using a filter owner=XXXX. If omitted,\n"
            "all workunits will be selected.\n"
             );
 }
@@ -162,7 +164,7 @@ int main(int argc, const char *argv[])
         if (globals->getProp("CASSANDRASERVER", cassandraServer))
         {
             // If they explicitly specify a cassandra server, use it even if the info in the environment in dali does not indicate there is a cassandra associated
-            // Conversely, if the explicitly specify "none" then don't use cassandra even if there is one specified in the dali environment...
+            // Conversely, if they explicitly specify "none" then don't use cassandra even if there is one specified in the dali environment...
             if (!strieq(cassandraServer, "none"))
             {
                 Owned<IPTree> pluginInfo = createPTreeFromXMLString(
@@ -170,6 +172,8 @@ int main(int argc, const char *argv[])
                         "<Option name='server' value='.'/>"
                         "<Option name='randomWuidSuffix' value='4'/>"
                         "<Option name='traceLevel' value='0'/>"
+                        "<Option name='partitions' value='0'/>"
+                        "<Option name='prefixSize' value='0'/>"
                         "<Option name='keyspace' value='hpcc'/>"
                         "<Option name='user' value=''/>"
                         "<Option name='password' value=''/>"
@@ -187,6 +191,16 @@ int main(int argc, const char *argv[])
                     pluginInfo->setProp("Option[@name='password']/@value", password.str());
                 else
                     pluginInfo->removeProp("Option[@name='password']");
+                int partitions = globals->getPropInt("CASSANDRA_PARTITIONS", -1);
+                if (partitions != -1)
+                    pluginInfo->setPropInt("Option[@name='partitions']/@value", partitions);
+                else
+                    pluginInfo->removeProp("Option[@name='partitions']");
+                int prefixSize = globals->getPropInt("CASSANDRA_PREFIXSIZE", -1);
+                if (prefixSize != -1)
+                    pluginInfo->setPropInt("Option[@name='prefixSize']/@value", prefixSize);
+                else
+                    pluginInfo->removeProp("Option[@name='prefixSize']");
                 setWorkUnitFactory((IWorkUnitFactory *) loadPlugin(pluginInfo));
                 serverSpecified = true;
             }
@@ -221,10 +235,13 @@ int main(int argc, const char *argv[])
 #ifdef _USE_CPPUNIT
         if (action && (stricmp(action, "-selftest")==0))
         {
+            StringBuffer testName;
+            if (!globals->getProp("test", testName))
+                testName.set("WuTool");
             testSize = globals->getPropInt("testSize", 100);
             queryStderrLogMsgHandler()->setMessageFields(MSGFIELD_time | MSGFIELD_milliTime | MSGFIELD_prefix);
             CppUnit::TextUi::TestRunner runner;
-            CppUnit::TestFactoryRegistry &registry = CppUnit::TestFactoryRegistry::getRegistry("WuTool");
+            CppUnit::TestFactoryRegistry &registry = CppUnit::TestFactoryRegistry::getRegistry(testName.str());
             runner.addTest( registry.makeTest() );
             ret = runner.run( "", false );
         }
@@ -425,8 +442,11 @@ int main(int argc, const char *argv[])
                 {
                     IConstWorkUnitInfo& wi = it->query();
                     Owned<IConstWorkUnit> w = factory->openWorkUnit(wi.queryWuid());
-                    process(*w, globals);
-                    ret = 0; // There was at least one match
+                    if (w)
+                    {
+                        process(*w, globals);
+                        ret = 0; // There was at least one match
+                    }
                 }
             }
         }
@@ -471,6 +491,7 @@ class WuTool : public CppUnit::TestFixture
     CPPUNIT_TEST_SUITE(WuTool);
         CPPUNIT_TEST(testInit);
         CPPUNIT_TEST(testCreate);
+        CPPUNIT_TEST(testGlobal);
         CPPUNIT_TEST(testValidate);
         CPPUNIT_TEST(testList);
         CPPUNIT_TEST(testList2);
@@ -487,7 +508,6 @@ class WuTool : public CppUnit::TestFixture
         CPPUNIT_TEST(testQuery);
         CPPUNIT_TEST(testGraph);
         CPPUNIT_TEST(testGraphProgress);
-        CPPUNIT_TEST(testGlobal); 
     CPPUNIT_TEST_SUITE_END();
 protected:
     static StringArray wuids;
@@ -520,7 +540,7 @@ protected:
             wu->setClusterName(clusterName);
             if (i % 3)
                 wu->setJobName(jobName);
-            wu->setStatistic(SCTsummary, "thor", SSTglobal, GLOBAL_SCOPE, StTimeElapsed, "Total thor time", ((i+2)/2) * 1000000, 1, 0, StatsMergeReplace);
+            wu->setStatistic(SCTthor, "thor", SSTgraph, "graph1", StTimeElapsed, "Total thor time", ((i+2)/2) * 1000000, 1, 0, StatsMergeReplace);
             wu->setApplicationValue("appname", "userId", userId.str(), true);
             wu->setApplicationValue("appname2", "clusterName", clusterName.str(), true);
             wuids.append(wu->queryWuid());
@@ -578,6 +598,7 @@ protected:
                 "         eclVersion='6.0.0'"
                 "         hash='2796091347'"
                 "         state='completed'"
+                "         totalThorTime=''"
                 "         xmlns:xsi='http://www.w3.org/1999/XMLSchema-instance'>"
                 " <Debug>"
                 "  <debugquery>1</debugquery>"
@@ -772,7 +793,7 @@ protected:
                 );
         StringBuffer xml1, xml2, xml3;
         exportWorkUnitToXML(embeddedWU, xml1, false, false, false);
-        queryExtendedWU(createWu)->copyWorkUnit(embeddedWU, true);
+        queryExtendedWU(createWu)->copyWorkUnit(embeddedWU, true, true);
         createWu->setState(WUStateCompleted);
         exportWorkUnitToXML(createWu, xml2, false, false, false);
         createWu->commit();
@@ -1329,16 +1350,76 @@ protected:
         WUSortField sortByOwner[] = { WUSFuser, WUSFstate, WUSFterm };
         start = msTick();
         wus.setown(factory->getWorkUnitsSorted((WUSortField) (WUSFwuid | WUSFreverse), sortByOwner, "WuTestUser00\0completed", 0, 10000, NULL, NULL));
-        numIterated = 0;
+        unsigned numCompleted = 0;
         ForEach(*wus)
         {
             IConstWorkUnitInfo &wu = wus->query();
             ASSERT(streq(wu.queryUser(), "WuTestUser00"));
             ASSERT(wu.getState()==WUStateCompleted);
-            numIterated++;
+            numCompleted++;
         }
-        DBGLOG("%d owned workunits listed the hard way in %d ms", numIterated, msTick()-start);
-        ASSERT(numIterated <= (testSize+49)/50);  // Not sure what the exact answer should be!
+        DBGLOG("%d owned,completed workunits listed the hard way in %d ms", numCompleted, msTick()-start);
+        ASSERT(numCompleted > 0);  // Not sure what the exact answer should be! Around 5/6 of 1/50th ?
+
+        start = msTick();
+        wus.setown(factory->getWorkUnitsSorted((WUSortField) (WUSFwuid | WUSFreverse), sortByOwner, "WuTestUser00\0scheduled", 0, 10000, NULL, NULL));
+        unsigned numScheduled = 0;
+        ForEach(*wus)
+        {
+            IConstWorkUnitInfo &wu = wus->query();
+            ASSERT(streq(wu.queryUser(), "WuTestUser00"));
+            ASSERT(wu.getState()==WUStateScheduled);
+            numScheduled++;
+        }
+        DBGLOG("%d owned,scheduled workunits listed the hard way in %d ms", numScheduled, msTick()-start);
+        ASSERT(numScheduled > 0);
+        ASSERT(numScheduled + numCompleted == (testSize+49)/50);
+
+        // Use multiple states
+        DBGLOG("Testing multiple states");
+        start = msTick();
+        wus.setown(factory->getWorkUnitsSorted((WUSortField) (WUSFwuid | WUSFreverse), sortByOwner, "WuTestUser00\0completed|scheduled", 0, 10000, NULL, NULL));
+        unsigned numCompleted2 = 0;
+        unsigned numScheduled2 = 0;
+        ForEach(*wus)
+        {
+            IConstWorkUnitInfo &wu = wus->query();
+            ASSERT(streq(wu.queryUser(), "WuTestUser00"));
+            ASSERT((wu.getState()==WUStateCompleted) || (wu.getState()==WUStateScheduled));
+            if ((wu.getState()==WUStateCompleted))
+                numCompleted2++;
+            else
+                numScheduled2++;
+        }
+        DBGLOG("%d owned,completed and %d owned,scheduled workunits listed via multiple in %d ms", numCompleted2, numScheduled2, msTick()-start);
+        ASSERT(numCompleted == numCompleted2);
+        ASSERT(numScheduled == numScheduled2);
+
+        // Use multiple states only
+        DBGLOG("Testing multiple states only");
+        start = msTick();
+        WUSortField filterByState[] = { WUSFstate, WUSFterm };
+        wus.setown(factory->getWorkUnitsSorted((WUSortField) (WUSFwuid | WUSFreverse), filterByState, "completed|scheduled", 0, 10000, NULL, NULL));
+        unsigned numCompleted3 = 0;
+        unsigned numScheduled3 = 0;
+        ForEach(*wus)
+        {
+            IConstWorkUnitInfo &wu = wus->query();
+            ASSERT((wu.getState()==WUStateCompleted) || (wu.getState()==WUStateScheduled));
+            if (strlen(wu.queryUser()) > 10 && memcmp(wu.queryUser(), "WuTestUser", 10)==0)  // Ignore any wu's not part of the test set
+            {
+                if ((wu.getState()==WUStateCompleted))
+                    numCompleted3++;
+                else
+                    numScheduled3++;
+            }
+        }
+        DBGLOG("%d completed and %d scheduled workunits listed via multiple in %d ms", numCompleted3, numScheduled3, msTick()-start);
+        ASSERT(numCompleted3 >= numCompleted2);
+        ASSERT(numScheduled3 >= numScheduled2);
+        ASSERT(numCompleted3 + numScheduled3 == testSize);
+
+
 
         // Get Scheduled Workunits
         start = msTick();
@@ -1398,8 +1479,7 @@ protected:
             numIterated++;
         }
         DBGLOG("%d ranged workunits listed the hard way in %d ms", numIterated, msTick()-start);
-        ASSERT(numIterated == testSize);
-
+        ASSERT_EQUAL(before-(isDali?1:0), numIterated); // Dali includes the global workunit in the count, cassandra does not. This filter will not include the global wu
 
         // Check ascending wuids
         WUSortField filterByCluster[] = { WUSFcluster, WUSFterm };
@@ -1465,7 +1545,7 @@ protected:
             numIterated++;
         }
         DBGLOG("%d workunits ascending thortime in %d ms", numIterated, msTick()-start);
-        ASSERT(numIterated == before);
+        ASSERT_EQUAL(before, numIterated);
 
         // Test use of cache/page mechanism - on something needing a postsort
         start = msTick();
@@ -1567,7 +1647,7 @@ protected:
             startRow++;
         }
         DBGLOG("%d workunits descending thortime, page by page in %d ms", numIterated, msTick()-start);
-        ASSERT(numIterated == before);
+        ASSERT_EQUAL(before, numIterated);
     }
 
     void testListByAppValue()
@@ -1688,6 +1768,7 @@ protected:
         Owned<IWUResult> result = global->updateGlobalByName("Result 1");
         result->setResultScalar(true);
         result->setResultInt(53);
+        global->commit();
         result.clear();
         global.clear();
 
@@ -1708,12 +1789,12 @@ protected:
             virtual bool getResultBool(const char * name, unsigned sequence) { throwUnexpected(); }
             virtual void getResultData(unsigned & tlen, void * & tgt, const char * name, unsigned sequence) { throwUnexpected(); }
             virtual void getResultDecimal(unsigned tlen, int precision, bool isSigned, void * tgt, const char * stepname, unsigned sequence) { throwUnexpected(); }
-            virtual void getResultDictionary(size32_t & tcount, byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) { throwUnexpected(); }
+            virtual void getResultDictionary(size32_t & tcount, const byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) override { throwUnexpected(); }
             virtual void getResultRaw(unsigned & tlen, void * & tgt, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) { throwUnexpected(); }
             virtual void getResultSet(bool & isAll, size32_t & tlen, void * & tgt, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) { throwUnexpected(); }
             virtual __int64 getResultInt(const char * name, unsigned sequence) { throwUnexpected(); }
             virtual double getResultReal(const char * name, unsigned sequence) { throwUnexpected(); }
-            virtual void getResultRowset(size32_t & tcount, byte * * & tgt, const char * name, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) { throwUnexpected(); }
+            virtual void getResultRowset(size32_t & tcount, const byte * * & tgt, const char * name, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) override { throwUnexpected(); }
             virtual void getResultString(unsigned & tlen, char * & tgt, const char * name, unsigned sequence) { throwUnexpected(); }
             virtual void getResultStringF(unsigned tlen, char * tgt, const char * name, unsigned sequence) { throwUnexpected(); }
             virtual void getResultUnicode(unsigned & tlen, UChar * & tgt, const char * name, unsigned sequence) { throwUnexpected(); }
@@ -1874,5 +1955,89 @@ StringArray WuTool::wuids;
 
 CPPUNIT_TEST_SUITE_REGISTRATION( WuTool );
 CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( WuTool, "WuTool" );
+
+class WuDetails : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE(WuDetails);
+        CPPUNIT_TEST(testWuDetails);
+    CPPUNIT_TEST_SUITE_END();
+protected:
+    class AttributeScopeVisitor : public IWuScopeVisitor
+    {
+    public:
+        virtual void noteStatistic(StatisticKind kind, unsigned __int64 value, IConstWUStatistic & cur) override
+        {
+            StringBuffer text;
+            text.append(value);
+            noteProperty(queryStatisticName(kind), text);
+        }
+        virtual void noteAttribute(WuAttr attr, const char * value)
+        {
+            noteProperty(queryWuAttributeName(attr), value);
+        }
+        virtual void noteHint(const char * kind, const char * value)
+        {
+            noteProperty(kind, value);
+        }
+        virtual void noteProperty(const char * kind, const char * value)
+        {
+            DBGLOG("  Attr %s=%s", kind, value);
+        }
+    };
+
+    void testWuDetails(IConstWorkUnit * wu)
+    {
+        const WuScopeFilter filter{};
+        Owned<IConstWUScopeIterator> iter = &wu->getScopeIterator(filter);
+        DBGLOG("%s %s", wu->queryWuid(), wu->queryClusterName());
+        AttributeScopeVisitor visitor;
+        StringBuffer prevScope;
+        ForEach(*iter)
+        {
+            const char * scope = iter->queryScope();
+            DBGLOG("Scope: %s %s", scope, queryScopeTypeName(iter->getScopeType()));
+            //Ensure the scopes are iterated in the correct order.
+            if (!prevScope.isEmpty())
+                ASSERT(compareScopeName(prevScope.str(), scope) < 0);
+            prevScope.set(scope);
+
+            iter->playProperties(PTall, visitor);
+        }
+    }
+
+    void testWuDetails()
+    {
+        /*
+         * The following are the tests that need to be done on the filters
+         * o Source
+         * o Scope type
+         * o Set of scope types (activity, edges)
+         * o Depth
+         * o Single scope
+         * o Set of scopes
+         * o Set of ids
+         * They should all be selectable via a text filter.
+         */
+#if 0
+        WUSortField filterByJob[] = { WUSFjob, WUSFterm };
+        CCycleTimer timer;
+        Owned<IConstWorkUnitIterator> wus;
+        Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
+        wus.setown(factory->getWorkUnitsSorted((WUSortField) (WUSFwuid | WUSFreverse), filterByJob, "sqfilt-multiPart(false)*\0", 0, 10000, NULL, NULL));
+        ForEach(*wus)
+        {
+            IConstWorkUnitInfo &wuinfo = wus->query();
+            Owned<IConstWorkUnit> wu = factory->openWorkUnit(wuinfo.queryWuid());
+            testWuDetails(wu);
+        }
+        wus.clear();
+
+        DBGLOG("wuDetails %u ms", timer.elapsedMs());
+#endif
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION( WuDetails );
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( WuDetails, "WuDetails" );
 
 #endif

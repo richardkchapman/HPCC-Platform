@@ -78,7 +78,8 @@ class CJobManager : public CSimpleInterface, implements IJobManager, implements 
     public:
         CThorDebugListener(CJobManager &_mgr) : threaded("CThorDebugListener", this), mgr(_mgr)
         {
-            port = globals->getPropInt("DebugPort", THOR_DEBUG_PORT);
+            unsigned defaultThorDebugPort = getFixedPort(getMasterPortBase(), TPORT_debug);
+            port = globals->getPropInt("DebugPort", defaultThorDebugPort);
             running = true;
             threaded.start();
         }
@@ -825,7 +826,7 @@ bool CJobManager::executeGraph(IConstWorkUnit &workunit, const char *graphName, 
     {
         Owned<IWorkUnit> wu = &workunit.lock();
         wu->setTracingValue("ThorBuild", BUILD_TAG);
-        addTimeStamp(wu, SSTgraph, graphName, StWhenGraphStarted);
+        addTimeStamp(wu, SSTgraph, graphName, StWhenStarted);
         updateWorkUnitLog(*wu);
     }
     Owned<IException> exception;
@@ -833,9 +834,6 @@ bool CJobManager::executeGraph(IConstWorkUnit &workunit, const char *graphName, 
     StringAttr wuid(workunit.queryWuid());
     const char *totalTimeStr = "Total thor time";
     cycle_t startCycles = get_cycles_now();
-    unsigned __int64 totalTimeNs = 0;
-    unsigned __int64 totalThisTimeNs = 0;
-    getWorkunitTotalTime(&workunit, "thor", totalTimeNs, totalThisTimeNs);
 
     Owned<IConstWUQuery> query = workunit.getQuery(); 
     SCMStringBuffer soName;
@@ -912,10 +910,8 @@ bool CJobManager::executeGraph(IConstWorkUnit &workunit, const char *graphName, 
         formatGraphTimerLabel(graphTimeStr, graphName);
 
         updateWorkunitTimeStat(wu, SSTgraph, graphName, StTimeElapsed, graphTimeStr, graphTimeNs);
-        updateWorkunitTimeStat(wu, SSTglobal, GLOBAL_SCOPE, StTimeElapsed, NULL, totalThisTimeNs+graphTimeNs);
-        wu->setStatistic(SCTsummary, "thor", SSTglobal, GLOBAL_SCOPE, StTimeElapsed, totalTimeStr, totalTimeNs+graphTimeNs, 1, 0, StatsMergeReplace);
 
-        addTimeStamp(wu, SSTgraph, graphName, StWhenGraphFinished);
+        addTimeStamp(wu, SSTgraph, graphName, StWhenFinished);
         
         removeJob(*job);
     }

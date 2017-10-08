@@ -30,6 +30,7 @@
 
 #include "jsocket.hpp"
 #include "jptree.hpp"
+#include "jsmartsock.hpp"
 
 #define SSLIB "securesocket"
 
@@ -47,8 +48,8 @@ enum SecureSocketType
 // One instance per connection
 interface ISecureSocket : implements ISocket
 {
-    virtual int secure_accept() = 0;
-    virtual int secure_connect() = 0;
+    virtual int secure_accept(int logLevel=1) = 0;
+    virtual int secure_connect(int logLevel=1) = 0;
 };
 
 // One instance per program running
@@ -88,6 +89,8 @@ SECURESOCKET_API ISecureSocketContext* createSecureSocketContextEx2(IPropertyTre
 SECURESOCKET_API ICertificate *createCertificate();
 SECURESOCKET_API int signCertificate(const char* csr, const char* ca_certificate, const char* ca_privkey, const char* ca_passphrase, int days, StringBuffer& certificate);
 };
+
+SECURESOCKET_API ISmartSocketFactory *createSecureSmartSocketFactory(const char *_socklist, bool _retry = false, unsigned _retryInterval = 60, unsigned _dnsInterval = (unsigned) -1);
 
 #endif
 

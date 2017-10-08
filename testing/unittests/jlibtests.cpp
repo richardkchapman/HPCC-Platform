@@ -21,12 +21,14 @@
  */
 
 #ifdef _USE_CPPUNIT
+#include <memory>
 #include "jsem.hpp"
 #include "jfile.hpp"
 #include "jdebug.hpp"
 #include "jset.hpp"
 #include "sockfile.hpp"
 #include "jqueue.hpp"
+#include "jregexp.hpp"
 
 #include "unittests.hpp"
 
@@ -1008,5 +1010,206 @@ protected:
 
 CPPUNIT_TEST_SUITE_REGISTRATION(JlibReaderWriterTestTiming);
 CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(JlibReaderWriterTestTiming, "JlibReaderWriterTestTiming");
+
+/* =========================================================== */
+
+class JlibWildMatchBase : public CppUnit::TestFixture
+{
+protected:
+    void testSet(unsigned length, const char * const * patterns, bool reportTiming)
+    {
+        std::unique_ptr<char[]> search(generateSearchString(length));
+        CCycleTimer timer;
+        testPatterns(search.get(), patterns);
+        if (reportTiming)
+            printf("%u: %u ms\n", length, timer.elapsedMs());
+    }
+
+    char * generateSearchString(size_t len)
+    {
+        char * target = new char[len+1];
+        fillSearchString(target, len);
+        target[len] = 0;
+        return target;
+    }
+
+    void fillSearchString(char * target, size_t len)
+    {
+        for (unsigned repeat=0; ; repeat++)
+        {
+            for (unsigned char fill = 'a'; fill <= 'z'; fill++)
+            {
+                for (unsigned i=0; i < repeat; i++)
+                {
+                    *target++ = fill;
+                    if (--len == 0)
+                        return;
+                }
+            }
+        }
+    }
+
+    void testPatterns(const char * search, const char * const * patterns)
+    {
+        for (const char * const * cur = patterns; *cur; cur++)
+        {
+            const char * pattern = *cur;
+            bool expected = true;
+            bool nocase = false;
+            if (*pattern == '!')
+            {
+                expected = false;
+                pattern++;
+            }
+            if (*pattern == '~')
+            {
+                nocase = true;
+                pattern++;
+            }
+            bool evaluated = WildMatch(search, pattern, nocase);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(pattern, expected, evaluated);
+        }
+    }
+};
+
+const char * const patterns10 [] = {
+        "!a",
+        "abcdefghij",
+        "??????????",
+        "?*c?*e*",
+        "!??*b?*h*",
+        "a*",
+        "*j",
+        "a*j",
+        "a**j",
+        "a***************j",
+        "abcde*fghij",
+        "!abcde*?*fghij",
+        "*a*j*",
+        "*a*c*e*g*j*",
+        "a?c?e?g??j",
+        "a?c?e?g?*?j",
+        "!~A",
+        "!A*",
+        "~A*",
+        "~*J",
+        "~A*J",
+        "~A**J",
+        "~A***************J",
+        "~*A*J*",
+        "~*A*C*E*G*J*",
+        "~*A*B*C*D*E*F*G*H*I*J*",
+        "~*A*?*?*?*J*",
+        "~*A*?C*?E*?*J*",
+        "~*A*C?*E?*?*J*",
+        "!~*A*.B*C*D*E*F*G*H*I*J*",
+        nullptr
+};
+
+const char * const patterns100 [] = {
+        "a*",
+        "*h",
+        "a*h",
+        "a**h",
+        "a***************h",
+        "*a*j*",
+        "*a*c*e*g*j*",
+        "!a*jj*fff",
+        "!a*jj*zzz",
+        "a*jj*fff*",
+        "*aa*jj*fff*",
+        "!a*jj*zy*",
+        nullptr
+};
+
+const char * const patternsLarge [] = {
+        "!*a*zy*",
+        "a*",
+        "a*h*",
+        "!a*jj*ab",
+        "!a*jj*zy",
+        "a*jj*fff*",
+        "!a*jj*zy*",
+/*        "!a*c*e*g*i*k*zy*", will completely destroy the performance*/
+        nullptr
+};
+
+class JlibWildMatchCore : public JlibWildMatchBase
+{
+    CPPUNIT_TEST_SUITE(JlibWildMatchCore);
+        CPPUNIT_TEST(testWildMatch);
+    CPPUNIT_TEST_SUITE_END();
+
+public:
+    void testWildMatch()
+    {
+        testSet(10, patterns10, false);
+        testSet(100, patterns100, false);
+        testSet(1000, patternsLarge, false);
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION(JlibWildMatchCore);
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(JlibWildMatchCore, "JlibWildMatchCore");
+
+
+class JlibWildMatchTiming : public JlibWildMatchBase
+{
+    CPPUNIT_TEST_SUITE(JlibWildMatchTiming);
+        CPPUNIT_TEST(testWildMatch);
+    CPPUNIT_TEST_SUITE_END();
+
+public:
+    void testWildMatch()
+    {
+        testSet(10000, patternsLarge, true);
+        testSet(100000, patternsLarge, true);
+        testSet(1000000, patternsLarge, true);
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION(JlibWildMatchTiming);
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(JlibWildMatchTiming, "JlibWildMatchTiming");
+
+
+const EnumMapping mapping[] = {
+        { 1, "one" },
+        { 3, "three" },
+        { 5, "five" },
+        {0, nullptr }
+};
+const char * strings[] = { "zero", "one", "two", "three", "four", nullptr };
+class JlibMapping : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE(JlibMapping);
+        CPPUNIT_TEST(testEnum);
+        CPPUNIT_TEST(testMatch);
+    CPPUNIT_TEST_SUITE_END();
+
+public:
+    void testEnum()
+    {
+        CPPUNIT_ASSERT(streq("one", getEnumText(1, mapping)));
+        CPPUNIT_ASSERT(streq("three", getEnumText(3, mapping)));
+        CPPUNIT_ASSERT(streq("five", getEnumText(5, mapping)));
+        CPPUNIT_ASSERT(streq("two", getEnumText(2, mapping, "two")));
+        CPPUNIT_ASSERT(!getEnumText(2, mapping, nullptr));
+        CPPUNIT_ASSERT_EQUAL(1, getEnum("one", mapping));
+        CPPUNIT_ASSERT_EQUAL(3, getEnum("three", mapping));
+        CPPUNIT_ASSERT_EQUAL(5, getEnum("five", mapping));
+        CPPUNIT_ASSERT_EQUAL(99, getEnum("seven", mapping, 99));
+    }
+    void testMatch()
+    {
+        CPPUNIT_ASSERT_EQUAL(0U, matchString("zero", strings));
+        CPPUNIT_ASSERT_EQUAL(1U, matchString("one", strings));
+        CPPUNIT_ASSERT_EQUAL(4U, matchString("four", strings));
+        CPPUNIT_ASSERT_EQUAL(UINT_MAX, matchString("ten", strings));
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION(JlibMapping);
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(JlibMapping, "JlibMapping");
+
 
 #endif // _USE_CPPUNIT

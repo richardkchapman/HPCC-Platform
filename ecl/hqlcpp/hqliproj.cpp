@@ -1404,7 +1404,7 @@ void ImplicitProjectTransformer::analyseExpr(IHqlExpression * expr)
             }
             break;
         case no_compound:
-            if (expr->isDataset())
+            if (hasActivityType(expr))
             {
                 assertex(extra->activityKind() == SimpleActivity);
                 Parent::analyseExpr(expr);
@@ -1978,10 +1978,8 @@ ProjectExprKind ImplicitProjectTransformer::getProjectExprKind(IHqlExpression * 
             return SimpleActivity;
         return NonActivity;
     case no_compound:
-        if (expr->isDataset() || expr->isDictionary())
+        if (hasActivityType(expr))
             return SimpleActivity;
-        if (expr->isDatarow())
-            return ComplexNonActivity;
         return NonActivity;
     case no_executewhen:
         if (hasActivityType(expr))
@@ -2913,7 +2911,7 @@ IHqlExpression * ImplicitProjectTransformer::createTransformed(IHqlExpression * 
                         OwnedHqlExpr newBody = replaceChild(body, 0, newBodyCode);
                         OwnedHqlExpr newFuncdef = replaceChild(funcdef, 0, newBody);
                         unwindChildren(args, expr, 0);
-                        transformed.setown(createBoundFunction(NULL, newFuncdef, args, NULL, DEFAULT_EXPAND_CALL));
+                        transformed.setown(createBoundFunction(NULL, newFuncdef, args, NULL, false));
 
                         logChange("Auto project embed", expr, complexExtra->outputFields);
                         return transformed.getClear();

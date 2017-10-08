@@ -951,6 +951,27 @@ static bool groupByWithinSortOrder(IHqlExpression * groupBy, IHqlExpression * or
     return false;
 }
 
+static bool groupingWithinSortElement(IHqlExpression * grouping, IHqlExpression * order)
+{
+    ForEachChild(i, grouping)
+    {
+        if (matchesGroupBy(grouping->queryChild(i), order))
+            return true;
+    }
+    return false;
+}
+
+static bool groupingWithinSortOrder(IHqlExpression * grouping, HqlExprArray & sortOrder, unsigned first)
+{
+    unsigned max = sortOrder.ordinality();
+    for (unsigned i = first; i < max; i++)
+    {
+        if (groupingWithinSortElement(grouping, &sortOrder.item(i)))
+            return true;
+    }
+    return false;
+}
+
 //NB: This does not handle ALL groups that is handled in createDataset()
 void CHqlMetaInfo::applyGroupBy(IHqlExpression * groupBy, bool isLocal)
 {
@@ -1563,7 +1584,14 @@ static IHqlExpression * createSubSorted(IHqlExpression * dataset, IHqlExpression
     if (!isLocal && !alwaysLocal)
         subsort.setown(convertSubSortToGroupedSort(subsort));
 
-    assertex(isAlreadySorted(subsort, order, isLocal||alwaysLocal, ignoreGrouping, false));
+    if (!isAlreadySorted(subsort, order, isLocal||alwaysLocal, ignoreGrouping, false))
+    {
+        //If the remaining sort conditions overlap with the already sorted fields then creating a sub sort will cause problems.
+        //This is potentially O(N^2) operation, so avoid checking until the (very unusual) exception is hit.
+        if (groupingWithinSortOrder(alreadySorted, components, sortedElements))
+            return nullptr;
+        throwUnexpectedX("createSubSorted created inconsistent sort order");
+    }
     return subsort.getClear();
 }
 
@@ -2035,6 +2063,7 @@ CHqlMetaProperty * querySimpleDatasetMeta(IHqlExpression * expr)
     case no_related:
     case no_executewhen:
     case no_outofline:
+    case no_inline:
     case no_fieldmap:
     case no_owned_ds:
     case no_dataset_alias:
@@ -2149,6 +2178,7 @@ void calculateDatasetMeta(CHqlMetaInfo & meta, IHqlExpression * expr)
     case no_related:
     case no_executewhen:
     case no_outofline:
+    case no_inline:
     case no_fieldmap:
     case no_owned_ds:
     case no_dataset_alias:
@@ -3345,6 +3375,7 @@ ITypeInfo * calculateDatasetType(node_operator op, const HqlExprArray & parms)
     case no_related:
     case no_executewhen:
     case no_outofline:
+    case no_inline:
     case no_fieldmap:
     case no_owned_ds:
     case no_dataset_alias:

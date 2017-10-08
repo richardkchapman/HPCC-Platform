@@ -28,6 +28,8 @@
 #include "jfile.hpp"
 #include "jprop.hpp"
 #include "jerror.hpp"
+#include "jencrypt.hpp"
+#include "jerror.hpp"
 #ifdef _WIN32
 #include <mmsystem.h> // for timeGetTime 
 #include <float.h> //for _isnan and _fpclass
@@ -474,7 +476,6 @@ HINSTANCE LoadSharedObject(const char *name, bool isGlobal, bool raiseOnError)
     }
 
 #endif
-    scope.setSoContext(h);
 
 #if defined(_WIN32)
     SetErrorMode(oldMode);
@@ -482,6 +483,7 @@ HINSTANCE LoadSharedObject(const char *name, bool isGlobal, bool raiseOnError)
     // don't think anything to do here.
 #endif
 
+    scope.processInitialization(h);
     return h;
 }
 
@@ -1490,6 +1492,18 @@ void StringArray::appendListUniq(const char *list, const char *delim)
     DelimToStringArray(list, *this, delim, true);
 }
 
+StringBuffer &StringArray::getString(StringBuffer &ret, const char *delim)
+{
+    ForEachItemIn(i, *this)
+    {
+        const char *v = item(i);
+        ret.append(v);
+        if (i+1 != ordinality())
+            ret.append(delim);
+    }
+    return ret;
+}
+
 void StringArray::sortAscii(bool nocase)
 {
     PARENT::sort(nocase ? CCmp::compareNC : CCmp::compare);
@@ -2366,7 +2380,7 @@ IPropertyTree *getHPCCEnvironment()
         {
             Owned<IFileIO> fileio = file->open(IFOread);
             if (fileio)
-                return createPTree(*fileio);
+                return createPTree(*fileio, ipt_lowmem);
         }
     }
     return NULL;
@@ -2384,14 +2398,16 @@ jlib_decl const IProperties &queryEnvironmentConf()
 }
 
 static CriticalSection securitySettingsCrit;
-static bool useSSL = false;
+static DAFSConnectCfg connectMethod = SSLNone;
 static StringAttr certificate;
 static StringAttr privateKey;
+static StringAttr passPhrase;
 static bool retrieved = false;
-jlib_decl bool querySecuritySettings(bool *          _useSSL,
+jlib_decl bool querySecuritySettings(DAFSConnectCfg *_connectMethod,
                                      unsigned short *_port,
                                      const char * *  _certificate,
-                                     const char * *  _privateKey)
+                                     const char * *  _privateKey,
+                                     const char * *  _passPhrase)
 {
     if (!retrieved)
     {
@@ -2405,11 +2421,31 @@ jlib_decl bool querySecuritySettings(bool *          _useSSL,
                 configFileSpec.set(CONFIG_DIR).append(PATHSEPSTR).append("environment.conf");
 #endif
                 Owned<IProperties> conf = createProperties(configFileSpec.str(), true);
-                useSSL = conf->getPropBool("dfsUseSSL", false);
-                if (useSSL)
+                StringAttr sslMethod;
+                sslMethod.set(conf->queryProp("dfsUseSSL"));
+                if (sslMethod)
+                {
+                    // checking for true | false for backward compatibility
+                    if ( strieq(sslMethod.str(), "SSLOnly") || strieq(sslMethod.str(), "true") )
+                        connectMethod = SSLOnly;
+                    else if ( strieq(sslMethod.str(), "SSLFirst") )
+                        connectMethod = SSLFirst;
+                    else if ( strieq(sslMethod.str(), "UnsecureFirst") )
+                        connectMethod = UnsecureFirst;
+                    else // SSLNone or false or ...
+                        connectMethod = SSLNone;
+                }
+                if (connectMethod == SSLOnly || connectMethod == SSLFirst || connectMethod == UnsecureFirst)
                 {
                     certificate.set(conf->queryProp("dfsSSLCertFile"));
                     privateKey.set(conf->queryProp("dfsSSLPrivateKeyFile"));
+                    const char *passPhrasePtr = conf->queryProp("dfsSSLPassPhrase");
+                    if (!isEmptyString(passPhrasePtr))
+                    {
+                        StringBuffer passPhraseStr;
+                        decrypt(passPhraseStr, passPhrasePtr);
+                        passPhrase.set(passPhraseStr.str());
+                    }
                 }
                 retrieved = true;
             }
@@ -2422,23 +2458,47 @@ jlib_decl bool querySecuritySettings(bool *          _useSSL,
     }
     if (retrieved)
     {
-        if (_useSSL)
-            *_useSSL = useSSL;
+        if (_connectMethod)
+            *_connectMethod = connectMethod;
         if (_port)
-            *_port = useSSL ? SECURE_DAFILESRV_PORT : DAFILESRV_PORT;
+        {
+            // port to try first (or only) ...
+            if ( (connectMethod == SSLNone) || (connectMethod == UnsecureFirst) )
+                *_port = DAFILESRV_PORT;
+            else
+                *_port = SECURE_DAFILESRV_PORT;
+        }
         if (_certificate)
             *_certificate = certificate.get();
         if (_privateKey)
             *_privateKey = privateKey.get();
+        if (_passPhrase)
+            *_passPhrase = passPhrase.get();
     }
     else
     {
-        if (_useSSL)
-            *_useSSL = false;
+        if (_connectMethod)
+            *_connectMethod = SSLNone;
         if (_port)
             *_port = DAFILESRV_PORT;
     }
     return retrieved;
+}
+
+jlib_decl bool queryDafsSecSettings(DAFSConnectCfg *_connectMethod,
+                                    unsigned short *_port,
+                                    unsigned short *_sslport,
+                                    const char * *  _certificate,
+                                    const char * *  _privateKey,
+                                    const char * *  _passPhrase)
+{
+    bool ret = querySecuritySettings(_connectMethod, nullptr, _certificate, _privateKey, _passPhrase);
+    // these should really be in env, but currently they are not ...
+    if (_port)
+        *_port = DAFILESRV_PORT;
+    if (_sslport)
+        *_sslport = SECURE_DAFILESRV_PORT;
+    return ret;
 }
 
 static IPropertyTree *getOSSdirTree()
@@ -2760,16 +2820,54 @@ jlib_decl StringBuffer &getTempFilePath(StringBuffer & target, const char * comp
     return target.set(dir);
 }
 
-jlib_decl const char *getEnumText(int value, const mapEnums *map)
+const char *getEnumText(int value, const EnumMapping *map)
 {
-    const char *defval = map->str;
     while (map->str)
     {
         if (value==map->val)
             return map->str;
         map++;
     }
-    assertex(!"Unexpected value in getEnumText");
+    throwUnexpectedX("Unexpected value in getEnumText");
+}
+
+int getEnum(const char *v, const EnumMapping *map)
+{
+    if (v && *v)
+    {
+        while (map->str)
+        {
+            if (stricmp(v, map->str)==0)
+                return map->val;
+            map++;
+        }
+        throwUnexpectedX("Unexpected value in getEnum");
+    }
+    return 0;
+}
+
+const char *getEnumText(int value, const EnumMapping *map, const char * defval)
+{
+    while (map->str)
+    {
+        if (value==map->val)
+            return map->str;
+        map++;
+    }
+    return defval;
+}
+
+int getEnum(const char *v, const EnumMapping *map, int defval)
+{
+    if (v && *v)
+    {
+        while (map->str)
+        {
+            if (stricmp(v, map->str)==0)
+                return map->val;
+            map++;
+        }
+    }
     return defval;
 }
 

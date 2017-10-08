@@ -21,6 +21,7 @@
 #include "jstream.hpp"
 #include "jexcept.hpp"
 #include "jmisc.hpp"
+#include "rtldynfield.hpp"
 #include "deftype.hpp"
 #include "defvalue.hpp"
 #include "hqlexpr.hpp"
@@ -30,11 +31,19 @@
 #define MAXARGS          32
 
 #if defined (_ARCH_X86_64_)
- #define ALIGNMENT 8
- #define REGSIZE 8
- #define MAXFPREGS 8
- #define REGPARAMS 6
- #define EVEN_STACK_ALIGNMENT
+ #if defined(_WIN32)
+  #define ALIGNMENT 8
+  #define REGSIZE 8
+  #define MAXFPREGS 0       // Not yet implemented - fix if someone complains
+  #define REGPARAMS 4
+  #define EVEN_STACK_ALIGNMENT
+#else
+  #define ALIGNMENT 8
+  #define REGSIZE 8
+  #define MAXFPREGS 8
+  #define REGPARAMS 6
+  #define EVEN_STACK_ALIGNMENT
+#endif
 #elif defined (_ARCH_X86_)
  #define ALIGNMENT 4
  #define REGSIZE 4
@@ -72,13 +81,17 @@
  #endif
 #endif
 
+#define NUMFPREGS (MAXFPREGS ? MAXFPREGS : 1)
 class FuncCallStack {
 private:
     unsigned   tos;
     unsigned   sp;
     char*      stackbuf;
-    char*      toFree[MAXARGS];
+    char*      toFree[MAXARGS] = {};
     int        numToFree;
+    bool       hasMeta;
+    Owned<IRtlFieldTypeDeserializer> deserializer;
+    IArrayOf<IOutputMetaData> metas;
 #ifdef MAXFPREGS
  #ifdef FPREG_FIXEDSIZE
     double      fpRegs[MAXFPREGS];
@@ -86,14 +99,14 @@ private:
     union {
         double d;
         float f;
-    } fpRegs[MAXFPREGS];
-    unsigned fpSizes[MAXFPREGS];
+    } fpRegs[NUMFPREGS];
+    unsigned fpSizes[NUMFPREGS];
  #endif
     unsigned    numFpRegs;
 #endif
     unsigned align(unsigned size);
 public:
-    FuncCallStack(int size = DEFAULTSTACKSIZE);
+    FuncCallStack(bool hasMeta, int size);
     virtual ~FuncCallStack();
 
     unsigned getSp();
@@ -105,7 +118,8 @@ public:
  #endif
 #endif
 
-    int push(ITypeInfo* argType, IValue* paramValue);
+    int push(ITypeInfo* argType, IHqlExpression* curParam);
+    int pushMeta(ITypeInfo *type);
     int push(char* & val);
     int pushPtr(void * val);
     int pushRef(unsigned& val);

@@ -1998,6 +1998,12 @@ ITypeInfo * makeConstantModifier(ITypeInfo * basetype)
 }
 
 /* In basetype: linked. Return: linked */
+ITypeInfo * makeNonConstantModifier(ITypeInfo * basetype)
+{
+    return makeModifier(basetype, typemod_nonconst, NULL);
+}
+
+/* In basetype: linked. Return: linked */
 ITypeInfo * makeReferenceModifier(ITypeInfo * basetype)
 {
     return makeModifier(basetype, typemod_ref, NULL);
@@ -2253,6 +2259,25 @@ bool isSingleValuedType(ITypeInfo * type)
     case type_varunicode:
     case type_utf8:
         return true;
+    }
+    return false;
+}
+
+bool isStandardSizeInt(ITypeInfo * type)
+{
+    switch (type->getTypeCode())
+    {
+    case type_int:
+    case type_swapint:
+        switch (type->getSize())
+        {
+        case 1:
+        case 2:
+        case 4:
+        case 8:
+            return true;
+        }
+        break;
     }
     return false;
 }

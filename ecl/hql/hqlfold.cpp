@@ -596,8 +596,13 @@ bool checkExternFoldable(IHqlExpression* expr, unsigned foldOptions, StringBuffe
     unsigned numParam = expr->numChildren();
     for(unsigned iparam = 0; iparam < numParam; iparam++)
     {
-        if (!expr->queryChild(iparam)->queryValue())            //NB: Already folded...
+        switch (expr->queryChild(iparam)->getOperator())
+        {
+        case no_constant: case no_null: case no_all:  // NOTE: no_all still needs work elsewhere before it will be supported fully
+            break;
+        default:
             return false;
+        }
     }
 
     IHqlExpression * formals = funcdef->queryChild(1);
@@ -711,6 +716,10 @@ void *loadExternalEntryPoint(IHqlExpression* expr, unsigned foldOptions, ITempla
     return fh;
 }
 
+#if defined(_WIN32) && defined(_ARCH_X86_64_)
+extern __int64 foldExternalCallStub(void * fh, double * doubleresult, size_t len, void * params);
+#endif
+
 IValue * doFoldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplateContext *templateContext, const char *library, const char *entrypoint, void *fh)
 {
     // NOTE - on OSX there are compiler bugs that prevent exceptions thrown from within this function from properly unwinding.
@@ -721,7 +730,7 @@ IValue * doFoldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplat
 
     // create a FuncCallStack to generate a stack used to pass parameters to 
     // the called function
-    FuncCallStack fstack;
+    FuncCallStack fstack(getBoolAttribute(body, passParameterMetaAtom, false), DEFAULTSTACKSIZE);
     
     if(body->hasAttribute(templateAtom))
         fstack.pushPtr(templateContext);
@@ -820,8 +829,7 @@ IValue * doFoldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplat
             free(tgt);
             return NULL;
         }
-        IValue * paramValue = curParam->queryValue();
-        if (fstack.push(argType, paramValue) == -1)
+        if (fstack.push(argType, curParam) == -1)
         {
             free(tgt);
             return NULL;
@@ -871,7 +879,9 @@ IValue * doFoldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplat
 #ifdef _WIN32
  // Note - we assume X86/X86_64 Procedure Call Standard
  #if defined (_ARCH_X86_64_)
-        UNIMPLEMENTED;
+
+        int64result = foldExternalCallStub(fh, &doubleresult, len, strbuf);
+        intresult = (int)int64result;
  #elif defined (_ARCH_X86_)
         _asm{
         ;save registers that will be used
@@ -1279,7 +1289,7 @@ IValue * doFoldExternalCall(IHqlExpression* expr, unsigned foldOptions, ITemplat
 #else
             tgt = (char *)intresult;
 #endif
-            tlen = retUCharStar ? rtlUnicodeStrlen((UChar *)tgt) : strlen(tgt);
+            tlen = retUCharStar ? rtlUnicodeStrlen((UChar *)tgt) : (size32_t)strlen(tgt);
         }
         
         Linked<ITypeInfo> resultType = retType;
@@ -1426,12 +1436,12 @@ class DummyContext: implements ICodeContext
     virtual bool getResultBool(const char * name, unsigned sequence) { throwUnexpected(); }
     virtual void getResultData(unsigned & tlen, void * & tgt, const char * name, unsigned sequence) { throwUnexpected(); }
     virtual void getResultDecimal(unsigned tlen, int precision, bool isSigned, void * tgt, const char * stepname, unsigned sequence) { throwUnexpected(); }
-    virtual void getResultDictionary(size32_t & tcount, byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) { throwUnexpected(); }
+    virtual void getResultDictionary(size32_t & tcount, const byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) override { throwUnexpected(); }
     virtual void getResultRaw(unsigned & tlen, void * & tgt, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) { throwUnexpected(); }
     virtual void getResultSet(bool & isAll, size32_t & tlen, void * & tgt, const char * name, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) { throwUnexpected(); }
     virtual __int64 getResultInt(const char * name, unsigned sequence) { throwUnexpected(); }
     virtual double getResultReal(const char * name, unsigned sequence) { throwUnexpected(); }
-    virtual void getResultRowset(size32_t & tcount, byte * * & tgt, const char * name, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) { throwUnexpected(); }
+    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt, const char * name, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) override { throwUnexpected(); }
     virtual void getResultString(unsigned & tlen, char * & tgt, const char * name, unsigned sequence) { throwUnexpected(); }
     virtual void getResultStringF(unsigned tlen, char * tgt, const char * name, unsigned sequence) { throwUnexpected(); }
     virtual void getResultUnicode(unsigned & tlen, UChar * & tgt, const char * name, unsigned sequence) { throwUnexpected(); }
@@ -1557,7 +1567,7 @@ IHqlExpression *deserializeConstantSet(ITypeInfo *type, bool isAll, size32_t len
             case type_varstring:
                 values.append(*createConstant(data));
                 if (size==UNKNOWN_LENGTH)
-                    size = strlen(data)+1;
+                    size = (size32_t)(strlen(data)+1);
                 break;
             case type_string:
                 if (size==UNKNOWN_LENGTH)
@@ -3233,7 +3243,7 @@ IHqlExpression * foldConstantOperator(IHqlExpression * expr, unsigned foldOption
                     //MORE: Not sure if this is a good idea because it loses commonality between attributes.
                     // (T1)((T2)(X:T3))
                     // Can remove the cast to T2 if T3->T2 doesn't lose any information, 
-                    // and if the convertion from T2->T1 produces same results as converting T3->T1
+                    // and if the conversion from T2->T1 produces same results as converting T3->T1
                     // (For the moment only assume this is true if target is numeric)
                     // could possibly remove if T3-T2 and T2->T1 lose information, but they might 
                     // lose different information
@@ -3248,9 +3258,9 @@ IHqlExpression * foldConstantOperator(IHqlExpression * expr, unsigned foldOption
                         if (isNumericType(e_type))
                             sameResults = true;
                         else if (isStringOrUnicode(e_type) && isStringOrUnicode(c_type) && isStringOrUnicode(g_type))
-                            sameResults = true;         
+                            sameResults = true;
                         
-                        // Don't allow casts involving data and non-ascii datasets because it can cause ascii convertions to get lost
+                        // Don't allow casts involving data and non-ascii datasets because it can cause ascii conversions to get lost
                         if (castHidesConversion(e_type, c_type, g_type) ||
                             castHidesConversion(c_type, e_type, g_type) ||
                             castHidesConversion(g_type, c_type, e_type))
@@ -3260,7 +3270,20 @@ IHqlExpression * foldConstantOperator(IHqlExpression * expr, unsigned foldOption
                         {
                             if (e_type == g_type)
                                 return LINK(grand);
-                            return createValue(op, LINK(e_type), LINK(grand));
+
+                            if (isUnknownSize(e_type))
+                            {
+                                //(string)(string200)string50  => (string200)string50
+                                if ((e_type->getTypeCode() == c_type->getTypeCode()) &&
+                                    (e_type->queryCharset() == c_type->queryCharset()))
+                                    return LINK(child);
+
+                                //(string)(ebcdic20)string50 => (string20)string50
+                                ITypeInfo * shrunkType = getStretchedType(c_type->getStringLen(), e_type);
+                                return createValue(op, shrunkType, LINK(grand));
+                            }
+                            else
+                                return createValue(op, LINK(e_type), LINK(grand));
                         }
                     }
                     break;
@@ -3501,6 +3524,32 @@ IHqlExpression * foldConstantOperator(IHqlExpression * expr, unsigned foldOption
                 OwnedITypeInfo type = getPromotedCompareType(leftExpr->queryType(), key->queryType());
                 IHqlExpression * newEqual = createBoolExpr(no_eq, ensureExprType(leftExpr, type), ensureExprType(key, type));
                 return createIf(newEqual, LINK(mapto->queryChild(1)), LINK(expr->queryChild(2)));
+            }
+
+            // Special case boolean cases matching constant values
+            if (leftExpr->isBoolean())
+            {
+                HqlExprArray args;
+                bool seenOpt[2] = { false, false };
+                args.append(*LINK(leftExpr));
+                for (unsigned idx = 1; idx <= numCases; idx++)
+                {
+                    IHqlExpression * child = expr->queryChild(idx);
+                    IHqlExpression * grand = child->queryChild(0);
+                    IValue * grandValue = grand->queryValue();
+                    if (grandValue)
+                    {
+                        seenOpt[grandValue->getBoolValue()] = true;
+                        //Once both true and false branches have been seen, no other options can possibly match.
+                        //Therefore add this value as the default and remove any trailing arguments
+                        if (seenOpt[false] && seenOpt[true])
+                        {
+                            args.append(*LINK(child->queryChild(1)));
+                            return expr->clone(args);
+                        }
+                    }
+                    args.append(*LINK(child));
+                }
             }
             break;
         }
@@ -3748,6 +3797,12 @@ IHqlExpression * foldConstantOperator(IHqlExpression * expr, unsigned foldOption
             OwnedHqlExpr folded = expandOutOfLineFunctionCall(expr);
             if ((folded != expr) && folded->isConstant())
                 return folded.getClear();
+            if (foldOptions & HFOforcefold)
+            {
+                OwnedHqlExpr transformed = expandDelayedFunctionCalls(nullptr, expr);
+                if (expr != transformed)
+                    return transformed.getClear();
+            }
             break;
         }
     case no_trim:
@@ -6548,12 +6603,11 @@ HqlConstantPercolator * CExprFolderTransformer::gatherConstants(IHqlExpression *
             break;
         }
 
-    //The following get the values purely from the assocated transform - if it contains constant entires
+    //The following get the values purely from the associated transform - if it contains constant entires
     case no_xmlproject:
     case no_combine:
     case no_combinegroup:
     case no_process:
-    case no_denormalize:
     case no_denormalizegroup:
     case no_fetch:
     case no_join:
@@ -6677,6 +6731,7 @@ HqlConstantPercolator * CExprFolderTransformer::gatherConstants(IHqlExpression *
     case no_executewhen:
     case no_callsideeffect:
     case no_outofline:
+    case no_inline:
     case no_owned_ds:
     case no_dataset_alias:
     case no_createdictionary:
@@ -6692,8 +6747,24 @@ HqlConstantPercolator * CExprFolderTransformer::gatherConstants(IHqlExpression *
     case no_catch:
         //all bets are off.
         break;
-
-
+    case no_denormalize:
+        {
+            HqlConstantPercolator * leftMapping = gatherConstants(expr->queryChild(0));
+            IHqlExpression * transform = queryNewColumnProvider(expr);
+            exprMapping.setown(HqlConstantPercolator::extractConstantMapping(transform));
+            if (exprMapping)
+            {
+                if (leftMapping)
+                {
+                    exprMapping->intersectMapping(leftMapping);
+                    if (exprMapping->empty())
+                        exprMapping.clear();
+                }
+                else
+                    exprMapping.clear();
+            }
+            break;
+        }
     case no_selectnth:
         {
             //Careful - this can create a null row if it is out of range.

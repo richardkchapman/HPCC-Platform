@@ -77,6 +77,38 @@
                 </xs:appinfo>
               </xs:annotation>
             </xs:attribute>
+            <xs:attribute name="protocol" type="xs:string" use="optional" default="native">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Protocol to use</tooltip>
+                  <title>Protocol</title>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="passphrase" type="xs:string" use="optional">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Pass phrase for cert</tooltip>
+                  <title>PassPhrase</title>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="certificateFileName" type="xs:string" use="optional">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Path to certificate filename</tooltip>
+                  <title>CertFile</title>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="privateKeyFileName" type="xs:string" use="optional">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Path to private key filename</tooltip>
+                  <title>CertFile</title>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
           </xs:complexType>
         </xs:element>
 
@@ -456,6 +488,27 @@
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
+    <xs:attribute name="backgroundCopyClass" type="xs:string" use="optional" default="none">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Specify an IONICE class for the background copy thread.</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="none"/>
+          <xs:enumeration value="best-effort"/>
+          <xs:enumeration value="idle"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="backgroundCopyPrio" type="xs:nonNegativeInteger" use="optional" default="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Specify an IONICE value for the background copy thread, if backgroundCopyClass set to best-effort.</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
     <xs:attribute name="callbackRetries" type="xs:nonNegativeInteger" use="optional" default="3">
       <xs:annotation>
         <xs:appinfo>
@@ -578,12 +631,19 @@
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="fieldTranslationEnabled" type="xs:boolean" use="optional" default="false">
+    <xs:attribute name="fieldTranslationEnabled" use="optional" default="false">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Enables translation (where possible) of mismatched index formats on-the-fly</tooltip>
+          <tooltip>Enables translation (where possible) of mismatched index layouts on-the-fly. Specify 'payload' to attempt to translate payload fields only</tooltip>
         </xs:appinfo>
       </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="false"/>
+          <xs:enumeration value="true"/>
+          <xs:enumeration value="payload"/>
+        </xs:restriction>
+      </xs:simpleType>
     </xs:attribute>
     <xs:attribute name="highTimeout" type="xs:nonNegativeInteger" use="optional" default="2000">
       <xs:annotation>

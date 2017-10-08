@@ -1290,6 +1290,14 @@
               </row>
 
               <row>
+                <entry></entry>
+
+                <entry>Erase file history metadata </entry>
+
+                <entry>Full</entry>
+              </row>
+
+              <row>
                 <entry>DfuExceptions</entry>
 
                 <entry>Access to DFU Exceptions</entry>
@@ -1393,6 +1401,32 @@
                 <entry>Access to write to files in Drop zone</entry>
 
                 <entry>Write</entry>
+              </row>
+
+              <row>
+                <entry>PackageMapAccess</entry>
+
+                <entry>Access to ListPackage, ListPackages, GetPackage, GetPackageMapById, ValidatePackage,
+                GetQueryFileMapping, GetPackageMapSelectOptions, GetPartFromPackageMap</entry>
+
+                <entry>Read</entry>
+              </row>
+
+              <row>
+                <entry></entry>
+
+                <entry>Access to AddPackage, CopyPackageMap, ActivatePackage,
+                DeActivatePackage, AddPartToPackageMap, RemovePartFromPackageMap</entry>
+
+                <entry>Write</entry>
+              </row>
+
+              <row>
+                <entry></entry>
+
+                <entry>DeletePackage</entry>
+
+                <entry>Full</entry>
               </row>
 
               <row>

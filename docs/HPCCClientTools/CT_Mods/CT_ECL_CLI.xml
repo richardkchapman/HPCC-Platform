@@ -78,6 +78,13 @@
               </row>
 
               <row>
+                <entry>results</entry>
+
+                <entry>returns the full results of a given WUID in XML
+                format.</entry>
+              </row>
+
+              <row>
                 <entry>activate</entry>
 
                 <entry>Activate a published query</entry>
@@ -220,6 +227,7 @@ ECL_USER_NAME
 ECL_PASSWORD
 ECL_WAIT_TIMEOUT
 ECL_RESULT_LIMIT
+ECLCC_PATH
 </programlisting>
 
           <para></para>
@@ -409,6 +417,15 @@ ecl deploy roxie - --name=FindPersonService
                   <entry>--manifest</entry>
 
                   <entry>Specify path to manifest file</entry>
+                </row>
+
+                <row>
+                  <entry>-checkDirty</entry>
+
+                  <entry>Causes eclcc to generate a warning for any attribute
+                  that has been modified (according to the output of git
+                  status). Use of this function requires that git be installed
+                  and available on the path.</entry>
                 </row>
               </tbody>
             </tgroup>
@@ -718,6 +735,15 @@ ecl publish roxie ArchiveQuery.xml --name=FindPersonService --no-activate
                   <entry>--manifest</entry>
 
                   <entry>Specify path to manifest file</entry>
+                </row>
+
+                <row>
+                  <entry>-checkDirty</entry>
+
+                  <entry>Causes eclcc to generate a warning for any attribute
+                  that has been modified (according to the output of git
+                  status). Use of this function requires that git be installed
+                  and available on the path.</entry>
                 </row>
               </tbody>
             </tgroup>
@@ -1047,6 +1073,124 @@ ecl run thor findperson.ecl -I C:\MyECL\
                   <entry>--manifest</entry>
 
                   <entry>Specify path to manifest file</entry>
+                </row>
+
+                <row>
+                  <entry>-checkDirty</entry>
+
+                  <entry>Causes eclcc to generate a warning for any attribute
+                  that has been modified (according to the output of git
+                  status). Use of this function requires that git be installed
+                  and available on the path.</entry>
+                </row>
+
+                <row>
+                  <entry>-f-xxx</entry>
+
+                  <entry>Will pass the option -xxx to eclcc</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+      </sect2>
+
+      <sect2 id="CT_CLI_SyntaxECLResult" role="brk">
+        <title>ecl results</title>
+
+        <para><emphasis role="bold">ecl results &lt;wuid&gt; [--noroot]
+        [--exception-level=<emphasis>&lt;value&gt;</emphasis>]
+        </emphasis></para>
+
+        <para><emphasis role="bold">Examples</emphasis>:</para>
+
+        <programlisting>ecl results W20170519-142920 
+ecl results W20170519-142920 --noroot --exception-level=error
+</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="1" frame="all" rowsep="1">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec />
+
+              <tbody>
+                <row>
+                  <entry>ecl results</entry>
+
+                  <entry>returns the full results of a given WUID in XML
+                  format.</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Arguments</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>wuid</entry>
+
+                  <entry>The workunit from which to return results.</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>--noroot</entry>
+
+                  <entry>Suppresses the &lt;Result&gt; root tag in the XML
+                  returned.</entry>
+                </row>
+
+                <row>
+                  <entry>--exception-level</entry>
+
+                  <entry>Sets the minimum severity for reporting exceptions.
+                  Possible severity levels are <emphasis
+                  role="bold">info</emphasis>, <emphasis
+                  role="bold">warning</emphasis>, or <emphasis
+                  role="bold">error</emphasis>. The default is info which
+                  returns all exceptions.</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+
+                <row>
+                  <entry>-s, --server</entry>
+
+                  <entry>The IP Address or hostname of ESP server running ECL
+                  Watch services</entry>
+                </row>
+
+                <row>
+                  <entry>--port</entry>
+
+                  <entry>The ECL Watch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
+                  <entry>-u, --username</entry>
+
+                  <entry>The username (if necessary)</entry>
+                </row>
+
+                <row>
+                  <entry>-pw, --password</entry>
+
+                  <entry>The password (if necessary)</entry>
                 </row>
               </tbody>
             </tgroup>
@@ -1855,7 +1999,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>add</entry>
 
-                  <entry>Adds a packagemap to the target cluster</entry>
+                  <entry>Adds a package map to the target cluster</entry>
                 </row>
 
                 <row>
@@ -1865,13 +2009,13 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>target</entry>
 
-                  <entry>The target to associate the packagemap with</entry>
+                  <entry>The target to associate the package map with</entry>
                 </row>
 
                 <row>
                   <entry>filename</entry>
 
-                  <entry>The name of the file containing packagemap
+                  <entry>The name of the file containing package map
                   information.</entry>
                 </row>
 
@@ -1896,15 +2040,15 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>-A, --activate</entry>
 
-                  <entry>Activates packagemap</entry>
+                  <entry>Activates package map</entry>
                 </row>
 
                 <row>
                   <entry>--allow-foreign</entry>
 
                   <entry>Specifies to allow the use of foreign files. If a
-                  packagemap references foreign files and this is not enabled,
-                  packagemap add will fail.</entry>
+                  package map references foreign files and this is not
+                  enabled, package map add will fail.</entry>
                 </row>
 
                 <row>
@@ -1989,7 +2133,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>delete</entry>
 
-                  <entry>Deletes a packagemap</entry>
+                  <entry>Deletes a package map</entry>
                 </row>
 
                 <row>
@@ -2061,7 +2205,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                   <entry>ecl packagemap activate</entry>
 
                   <entry>The activate command will deactivate the currently
-                  active packagemap and make the specified packagemap
+                  active package map and make the specified package map
                   active.</entry>
                 </row>
 
@@ -2072,14 +2216,14 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>target</entry>
 
-                  <entry>The target containing the packagemap to
+                  <entry>The target containing the package map to
                   activate</entry>
                 </row>
 
                 <row>
                   <entry>packagemap</entry>
 
-                  <entry>name of packagemap to update</entry>
+                  <entry>name of package map to update</entry>
                 </row>
 
                 <row>
@@ -2151,7 +2295,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                   <entry>ecl packagemap deactivate</entry>
 
                   <entry>The deactivate command will deactivate the currently
-                  active packagemap.</entry>
+                  active package map.</entry>
                 </row>
 
                 <row>
@@ -2161,14 +2305,14 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>target</entry>
 
-                  <entry>The target containing the packagemap to
+                  <entry>The target containing the package map to
                   deactivate</entry>
                 </row>
 
                 <row>
                   <entry>packagemap</entry>
 
-                  <entry>Name of packagemap to deactivate</entry>
+                  <entry>Name of package map to deactivate</entry>
                 </row>
 
                 <row>
@@ -2250,7 +2394,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>list</entry>
 
-                  <entry>Lists loaded packagemap names</entry>
+                  <entry>Lists loaded package map names</entry>
                 </row>
 
                 <row>
@@ -2260,7 +2404,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>target</entry>
 
-                  <entry>The target containing the packagemap to list</entry>
+                  <entry>The target containing the package map to list</entry>
                 </row>
 
                 <row>
@@ -2342,7 +2486,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>info</entry>
 
-                  <entry>returns packagemap info</entry>
+                  <entry>returns package map info</entry>
                 </row>
 
                 <row>
@@ -2352,7 +2496,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>target</entry>
 
-                  <entry>The target containing the packagemap to
+                  <entry>The target containing the package map to
                   retrieve</entry>
                 </row>
 
@@ -2413,8 +2557,8 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
         <programlisting>ecl packagemap add-part roxie multipart.pkg addresses.pkg 
 </programlisting>
 
-        <para>The packagemap add-part command adds additional packagemap
-        content to an existing packagemap</para>
+        <para>The packagemap add-part command adds additional package map
+        content to an existing package map</para>
 
         <para><informaltable colsep="1" frame="all" rowsep="1">
             <tgroup cols="2">
@@ -2436,8 +2580,8 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>add-part</entry>
 
-                  <entry><para>Adds additional packagemap content to an
-                  existing packagemap</para></entry>
+                  <entry><para>Adds additional package map content to an
+                  existing package map</para></entry>
                 </row>
 
                 <row>
@@ -2447,14 +2591,14 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>target</entry>
 
-                  <entry>Name of target to use when adding packagemap
+                  <entry>Name of target to use when adding package map
                   part</entry>
                 </row>
 
                 <row>
                   <entry>pmid</entry>
 
-                  <entry>Identifier of packagemap to add the part to</entry>
+                  <entry>Identifier of package map to add the part to</entry>
                 </row>
 
                 <row>
@@ -2490,7 +2634,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>--global-scope</entry>
 
-                  <entry>The specified packagemap is shared across multiple
+                  <entry>The specified package map is shared across multiple
                   targets</entry>
                 </row>
 
@@ -2503,8 +2647,8 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>--allow-foreign</entry>
 
-                  <entry>Do not fail if foreign files are used in
-                  packagemap</entry>
+                  <entry>Do not fail if foreign files are used in package
+                  map</entry>
                 </row>
 
                 <row>
@@ -2588,7 +2732,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
 </programlisting>
 
         <para>The get-part command fetches the given part from the given
-        packagemap <informaltable colsep="1" frame="all" rowsep="1">
+        package map <informaltable colsep="1" frame="all" rowsep="1">
             <tgroup cols="2">
               <colspec align="left" colwidth="175.55pt" />
 
@@ -2608,8 +2752,8 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>get-part</entry>
 
-                  <entry><para>Fetches the given part from the given
-                  packagemap </para></entry>
+                  <entry><para>Fetches the given part from the given package
+                  map </para></entry>
                 </row>
 
                 <row>
@@ -2619,14 +2763,14 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>target</entry>
 
-                  <entry>Name of target to use when adding packagemap
+                  <entry>Name of target to use when adding package map
                   part</entry>
                 </row>
 
                 <row>
                   <entry>packagemap</entry>
 
-                  <entry>Name of the packagemap containing the part</entry>
+                  <entry>Name of the package map containing the part</entry>
                 </row>
 
                 <row>
@@ -2642,7 +2786,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 <row>
                   <entry>--global-scope</entry>
 
-                  <entry>The specified packagemap is sharable across multiple
+                  <entry>The specified package map is sharable across multiple
                   targets</entry>
                 </row>
 
@@ -2700,7 +2844,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
 </programlisting>
 
         <para>The remove-part command will remove the given part from the
-        given packagemap</para>
+        given package map</para>
 
         <para></para>
 
@@ -2724,8 +2868,8 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
               <row>
                 <entry>remove-part</entry>
 
-                <entry><para>Removes the given part from the given
-                packagemap</para></entry>
+                <entry><para>Removes the given part from the given package
+                map</para></entry>
               </row>
 
               <row>
@@ -2741,7 +2885,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
               <row>
                 <entry>packagemap</entry>
 
-                <entry>Name of the packagemap containing the part</entry>
+                <entry>Name of the package map containing the part</entry>
               </row>
 
               <row>
@@ -2757,7 +2901,7 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
               <row>
                 <entry>--global-scope</entry>
 
-                <entry>The specified packagemap is sharable across multiple
+                <entry>The specified package map is sharable across multiple
                 targets</entry>
               </row>
 
@@ -2832,11 +2976,11 @@ ecl packagemap validate roxie --active</programlisting>
         </itemizedlist>
 
         <para>The result will also list any files that are used by queries but
-        not mapped in the packagemap.</para>
+        not mapped in the package map.</para>
 
         <para>Filename, --active, and --pmid are mutually exclusive. The
-        --active or --pmid options validate a packagemap that has already been
-        added instead of a local file.</para>
+        --active or --pmid options validate a package map that has already
+        been added instead of a local file.</para>
 
         <para>The --queryid option checks the files in a query instead of all
         the queries in the target queryset. This is quicker when you only need
@@ -2861,7 +3005,7 @@ ecl packagemap validate roxie --active</programlisting>
                 <row>
                   <entry>validate</entry>
 
-                  <entry>Validates packagemap info</entry>
+                  <entry>Validates package map info</entry>
                 </row>
 
                 <row>
@@ -2871,14 +3015,14 @@ ecl packagemap validate roxie --active</programlisting>
                 <row>
                   <entry>filename</entry>
 
-                  <entry>The filename containing the packagemap info to
+                  <entry>The filename containing the package map info to
                   validate</entry>
                 </row>
 
                 <row>
                   <entry>target</entry>
 
-                  <entry>The target containing the packagemap to
+                  <entry>The target containing the package map to
                   validate</entry>
                 </row>
 
@@ -2902,21 +3046,21 @@ ecl packagemap validate roxie --active</programlisting>
                 <row>
                   <entry>--active</entry>
 
-                  <entry>Validates the packagemap that is active for the given
-                  target</entry>
+                  <entry>Validates the package map that is active for the
+                  given target</entry>
                 </row>
 
                 <row>
                   <entry>--pmid=&lt;packagemapid&gt;</entry>
 
-                  <entry>Validates the given packagemap</entry>
+                  <entry>Validates the given package map</entry>
                 </row>
 
                 <row>
                   <entry>--queryid</entry>
 
                   <entry>Validate the files for the given queryid if they are
-                  mapped in the packagemap</entry>
+                  mapped in the package map</entry>
                 </row>
 
                 <row>
@@ -2946,6 +3090,177 @@ ecl packagemap validate roxie --active</programlisting>
               </tbody>
             </tgroup>
           </informaltable></para>
+      </sect2>
+
+      <sect2 id="eclpackagemapcopy" role="brk">
+        <title>ecl packagemap copy</title>
+
+        <para><emphasis role="bold">ecl packagemap copy &lt;path&gt;
+        &lt;target&gt; </emphasis></para>
+
+        <para>Copies a package map from one target to another.</para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl packagemap copy roxie/MyPkg roxie2
+ecl packagemap copy //192.168.0.100:8010/roxie/MyPkg roxie2
+</programlisting>
+
+        <para><informaltable colsep="1" frame="all" rowsep="1">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl packagemap copy</entry>
+
+                  <entry>Calls the packagemap copy command</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Actions</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>copy</entry>
+
+                  <entry>Copies a package map from one target to
+                  another</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Arguments</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>path</entry>
+
+                  <entry>Path to the source package map to copy.</entry>
+                </row>
+
+                <row>
+                  <entry>target</entry>
+
+                  <entry>The target to copy the package map to</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>-A, --activate</entry>
+
+                  <entry>Activates package map</entry>
+                </row>
+
+                <row>
+                  <entry>--daliip=</entry>
+
+                  <entry>IP address or hostname of the remote Dali to use for
+                  logical file lookups</entry>
+                </row>
+
+                <row>
+                  <entry>--pmid=&lt;packagemapid&gt;</entry>
+
+                  <entry>id of package map - defaults to filename if not
+                  specified</entry>
+                </row>
+
+                <row>
+                  <entry>--source-process</entry>
+
+                  <entry>Process cluster to copy files from</entry>
+                </row>
+
+                <row>
+                  <entry>--preload-all</entry>
+
+                  <entry>Set preload files option for all packages</entry>
+                </row>
+
+                <row>
+                  <entry>--replace</entry>
+
+                  <entry>Replace existing packagmap</entry>
+                </row>
+
+                <row>
+                  <entry>--update-super-files</entry>
+
+                  <entry>Update local DFS superfiles if remote Dali has
+                  changed</entry>
+                </row>
+
+                <row>
+                  <entry>--update-clone-from</entry>
+
+                  <entry>Update local clone from location if remote Dali has
+                  changed</entry>
+                </row>
+
+                <row>
+                  <entry>--dont-append-cluster</entry>
+
+                  <entry>Only use to avoid locking issues due to adding
+                  cluster to file</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+
+                <row>
+                  <entry>-s, --server</entry>
+
+                  <entry>The IP Address or hostname of ESP server running ECL
+                  Watch services</entry>
+                </row>
+
+                <row>
+                  <entry>--port</entry>
+
+                  <entry>The ECL Watch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
+                  <entry>-u, --username</entry>
+
+                  <entry>The username (if necessary)</entry>
+                </row>
+
+                <row>
+                  <entry>-pw, --password</entry>
+
+                  <entry>The password (if necessary)</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+
+        <para>For the path, the following formats are supported:</para>
+
+        <itemizedlist>
+          <listitem>
+            <para>remote packagemap: //IP:PORT/Target/PackageMapId</para>
+          </listitem>
+
+          <listitem>
+            <para>local packagemap: target/PackageMapId</para>
+          </listitem>
+        </itemizedlist>
       </sect2>
 
       <sect2 id="CT_CLI_SyntaxECLRoxieAttach" role="brk">
@@ -3439,6 +3754,10 @@ ecl bundle install mybundle --keepprior</programlisting>
         file that can be retrieved. In either case, it is fetched to a
         temporary local location, processed as a local file/directory and then
         removed.</para>
+
+        <para>To use the "ecl bundle install &lt;git url&gt;" command, you
+        must have git installed and configured on your system. Git must be
+        accessible to the user (in the path).</para>
       </sect2>
 
       <sect2 id="CT_CLI_SyntaxECLBundleUninstall" role="brk">
@@ -3651,8 +3970,8 @@ ecl bundle list myb*
                 <row>
                   <entry>--check-packagemaps</entry>
 
-                  <entry>Exclude files referenced in active
-                  packagemaps</entry>
+                  <entry>Exclude files referenced in active package
+                  maps</entry>
                 </row>
 
                 <row>

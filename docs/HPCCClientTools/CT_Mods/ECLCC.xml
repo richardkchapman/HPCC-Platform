@@ -121,7 +121,7 @@
       </emphasis></title>
 
       <para>The ECL Compiler is normally used through the ECL IDE or Eclipse
-      using the ECL plug-in for Eclipse, however, you can use the ECL Compiler
+      using the ECL plugin for Eclipse, however, you can use the ECL Compiler
       in a stand alone manner, to create stand alone programs, or workunits.
       The ECL Compiler can read ECL code from standard input, or can read it
       from a specified input file. It compiles the code into an executable
@@ -175,6 +175,15 @@
 
                 <entry>Specify path to manifest file listing resources to
                 add</entry>
+              </row>
+
+              <row>
+                <entry>-checkDirty</entry>
+
+                <entry>Causes eclcc to generate a warning for any attribute
+                that has been modified (according to the output of git
+                status). Use of this function requires that git be installed
+                and available on the path.</entry>
               </row>
 
               <row>

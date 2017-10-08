@@ -47,6 +47,7 @@ private:
     StringAttr   m_lastname;
     StringAttr   m_pw;
     StringAttr   m_employeeID;
+    StringAttr   m_distinguishedName;
     StringAttr   m_Fqdn;
     StringAttr   m_Peer;
     authStatus   m_authenticateStatus;
@@ -66,6 +67,8 @@ private:
     StringAttr   m_sudoHost;
     StringAttr   m_sudoCommand;
     StringAttr   m_sudoOption;
+    MemoryBuffer m_sessionToken;//User's ESP session token
+    MemoryBuffer m_signature;//User's digital signature
 
 public:
     IMPLEMENT_IINTERFACE
@@ -88,6 +91,8 @@ public:
     virtual bool setLastName(const char * lname);
     virtual const char * getEmployeeID();
     virtual bool setEmployeeID(const char * emplID);
+    virtual const char * getDistinguishedName();
+    virtual bool setDistinguishedName(const char * dn);
     const char * getRealm();
     bool setRealm(const char * name);
     ISecCredentials & credentials();
@@ -150,7 +155,10 @@ public:
     bool setPassword(const char * pw);
     const char* getPassword();
     bool setEncodedPassword(SecPasswordEncoding enc, void * pw, unsigned length, void * salt, unsigned saltlen);
-    bool addToken(unsigned type, void * data, unsigned length);
+    void setSessionToken(const MemoryBuffer * const token);
+    const MemoryBuffer & getSessionToken();
+    void setSignature(const MemoryBuffer * const signature);
+    const MemoryBuffer & getSignature();
 
 // Posix specific fields
     virtual void setGidnumber(const char* gidnumber)
@@ -393,6 +401,8 @@ public:
     virtual bool getResourcesEx(SecResourceType rtype, const char * basedn, const char * searchstr, IArrayOf<ISecResource>& resources);
     virtual ISecItemIterator* getResourcesSorted(SecResourceType rtype, const char* basedn, const char* resourceName, unsigned extraNameFilter,
         ResourceField* sortOrder, const unsigned pageStartFrom, const unsigned pageSize, unsigned* total, __int64* cacheHint);
+    virtual ISecItemIterator* getResourcePermissionsSorted(const char* name, enum ACCOUNT_TYPE_REQ accountType, const char* baseDN, const char* rtype, const char* prefix,
+        ResourcePermissionField* sortOrder, const unsigned pageStartFrom, const unsigned pageSize, unsigned* total, __int64* cacheHint);
     virtual void cacheSwitch(SecResourceType rtype, bool on);
 
     virtual bool getPermissionsArray(const char* basedn, SecResourceType rtype, const char* name, IArrayOf<CPermission>& permissions);

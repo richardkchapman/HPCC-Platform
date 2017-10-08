@@ -145,7 +145,7 @@ void MatchReference::compileMatched(RegexIdAllocator & idAllocator, UnsignedArra
 
 //---------------------------------------------------------------------------
 
-NlpParseContext::NlpParseContext(IHqlExpression * _expr, IWorkUnit * _wu, const HqlCppOptions & options, ITimeReporter * _timeReporter) : timeReporter(_timeReporter)
+NlpParseContext::NlpParseContext(IHqlExpression * _expr, IWorkUnit * _wu, const HqlCppOptions & options)
 {
     workunit = _wu;
     expr.set(_expr);
@@ -221,7 +221,7 @@ void NlpParseContext::buildValidators(HqlCppTranslator & translator, BuildCtx & 
         IHqlStmt * helperClassStmt = translator.beginNestedClass(helperctx, "helper", "INlpHelper");
 
         BuildCtx funcctx(helperctx);
-        funcctx.addQuotedFunction("virtual IValidator * queryValidator(unsigned i)");
+        funcctx.addQuotedFunction("virtual IValidator * queryValidator(unsigned i) override");
         BuildCtx casectx(funcctx);
         casectx.addQuotedCompoundLiteral("switch (i)");
 
@@ -242,14 +242,14 @@ void NlpParseContext::buildValidators(HqlCppTranslator & translator, BuildCtx & 
                 CHqlBoundExpr boundMatched;
                 if (kind != ValidateIsUnicode)
                 {
-                    func.start("virtual bool isValid(unsigned len, const char * data)");
+                    func.start("virtual bool isValid(unsigned len, const char * data) override");
                     boundMatched.length.setown(createVariable("len", LINK(sizetType)));
                     boundMatched.expr.setown(createVariable("data", makeReferenceModifier(LINK(unknownStringType))));
                     func.ctx.associateExpr(activeMatchTextExpr, boundMatched);
                 }
                 else
                 {
-                    func.start("virtual bool isValid(unsigned len, const UChar * data)");
+                    func.start("virtual bool isValid(unsigned len, const UChar * data) override");
                     boundMatched.length.setown(createVariable("len", LINK(sizetType)));
                     boundMatched.expr.setown(createVariable("data", makeReferenceModifier(LINK(unknownUnicodeType))));
                     func.ctx.associateExpr(activeMatchUnicodeExpr, boundMatched);
@@ -271,7 +271,7 @@ void NlpParseContext::buildValidators(HqlCppTranslator & translator, BuildCtx & 
         funcctx.addReturn(queryQuotedNullExpr());
 
         translator.endNestedClass(helperClassStmt);
-        classctx.addQuotedLiteral("virtual INlpHelper * queryHelper() { return &helper; }");
+        classctx.addQuotedLiteral("virtual INlpHelper * queryHelper() override { return &helper; }");
     }
 }
 
@@ -283,7 +283,7 @@ void NlpParseContext::buildProductions(HqlCppTranslator & translator, BuildCtx &
 
     {
         BuildCtx metactx(classctx);
-        metactx.addQuotedFunction("virtual IOutputMetaData * queryProductionMeta(unsigned id)");
+        metactx.addQuotedFunction("virtual IOutputMetaData * queryProductionMeta(unsigned id) override");
 
         BuildCtx metacasectx(metactx);
         metacasectx.addQuotedCompoundLiteral("switch (id)");
@@ -305,7 +305,7 @@ void NlpParseContext::buildProductions(HqlCppTranslator & translator, BuildCtx &
     {
         OwnedHqlExpr callback = createVariable("input", makeBoolType());
 
-        MemberFunction func(translator, startctx, "virtual size32_t executeProduction(ARowBuilder & crSelf, unsigned id, IProductionCallback * input)");
+        MemberFunction func(translator, startctx, "virtual size32_t executeProduction(ARowBuilder & crSelf, unsigned id, IProductionCallback * input) override");
         func.ctx.associateExpr(activeProductionMarkerExpr, callback);
 
         BuildCtx prodcasectx(func.ctx);
@@ -509,7 +509,7 @@ void NlpParseContext::setParserOptions(INlpParseAlgorithm & parser)
 
 void HqlCppTranslator::doBuildParseTransform(BuildCtx & classctx, IHqlExpression * expr)
 {
-    MemberFunction func(*this, classctx, "virtual size32_t transform(ARowBuilder & crSelf, const void * _left, IMatchedResults * matched, IMatchWalker * walker)");
+    MemberFunction func(*this, classctx, "virtual size32_t transform(ARowBuilder & crSelf, const void * _left, IMatchedResults * matched, IMatchWalker * walker) override");
     ensureRowAllocated(func.ctx, "crSelf");
     func.ctx.addQuotedLiteral("const unsigned char * left = (const unsigned char *) _left;");
     func.ctx.associateExpr(activeNlpMarkerExpr, activeNlpMarkerExpr);
@@ -540,11 +540,11 @@ void HqlCppTranslator::doBuildParseSearchText(BuildCtx & classctx, IHqlExpressio
 
         if (searchTypeCode == type_unicode)
         {
-            func.start("virtual void getSearchText(size32_t & retLen, char * & _retText, const void * _self)");
+            func.start("virtual void getSearchText(size32_t & retLen, char * & _retText, const void * _self) override");
             func.ctx.addQuotedLiteral("UChar * & retText = *(UChar * *)&_retText;");        // don't ask.
         }
         else
-            func.start("virtual void getSearchText(size32_t & retLen, char * & retText, const void * _self)");
+            func.start("virtual void getSearchText(size32_t & retLen, char * & retText, const void * _self) override");
         func.ctx.addQuotedLiteral("const unsigned char * self = (const unsigned char *) _self;");
         bindTableCursor(func.ctx, dataset, "self");
 
@@ -594,7 +594,8 @@ void HqlCppTranslator::doBuildParseSearchText(BuildCtx & classctx, IHqlExpressio
             buildExpr(func.ctx, castSearch, bound);
             OwnedHqlExpr len = getBoundLength(bound);
             func.ctx.addAssign(target.length, len);
-            func.ctx.addAssign(target.expr, bound.expr);
+            OwnedHqlExpr transferred = createValue(no_cast, LINK(retType), LINK(bound.expr));
+            func.ctx.addAssign(target.expr, transferred);
         }
         if (tempLen)
         {
@@ -647,7 +648,7 @@ void HqlCppTranslator::doBuildParseCompiled(BuildCtx & classctx, MemoryBuffer & 
     OwnedHqlExpr srcData = addDataLiteral((const char *)compressed.toByteArray(), buffLen);
     OwnedHqlExpr retData = createVariable("retData", makePointerType(makeVoidType()));
 
-    funcctx.addQuotedFunction("virtual void queryCompiled(IResourceContext *ctx, size32_t & retLen, const void * & retData)");
+    funcctx.addQuotedFunction("virtual void queryCompiled(IResourceContext *ctx, size32_t & retLen, const void * & retData) override");
     funcctx.addQuotedF("//uncompressed size = %d", buffer.length());
     buildExpr(funcctx, srcData, bound);
 
@@ -687,9 +688,8 @@ ABoundActivity * HqlCppTranslator::doBuildActivityParse(BuildCtx & ctx, IHqlExpr
 
     //This will become conditional on the flags....
     cycle_t startPrepareCycles = get_cycles_now();
-    ITimeReporter * reporter = timeReporter;
     if (expr->hasAttribute(tomitaAtom))
-        nlpParse = createTomitaContext(expr, code->workunit, options, reporter);
+        nlpParse = createTomitaContext(expr, code->workunit, options);
     else
     {
         //In 64bit the engines have enough stack space to use the stack-based regex implementation
@@ -709,7 +709,7 @@ ABoundActivity * HqlCppTranslator::doBuildActivityParse(BuildCtx & ctx, IHqlExpr
         else if (matchesConstantString(algorithmHint, "heap", true))
             algorithm = NLPAregexHeap;
 
-        nlpParse = createRegexContext(expr, code->workunit, options, reporter, algorithm);
+        nlpParse = createRegexContext(expr, code->workunit, options, algorithm);
     }
 
     gatherExplicitMatched(expr);
@@ -717,7 +717,8 @@ ABoundActivity * HqlCppTranslator::doBuildActivityParse(BuildCtx & ctx, IHqlExpr
     doBuildParseSearchText(instance->startctx, expr);
     doBuildParseValidators(instance->nestedctx, expr);
     doBuildParseExtra(instance->startctx, expr);
-    noteFinishedTiming("compile:generate PARSE:prepare", startPrepareCycles);
+    if (options.timeTransforms)
+        noteFinishedTiming("compile:PARSE:prepare", startPrepareCycles);
     
     MemoryBuffer buffer;
     cycle_t startCompileCycles = get_cycles_now();
@@ -727,7 +728,8 @@ ABoundActivity * HqlCppTranslator::doBuildActivityParse(BuildCtx & ctx, IHqlExpr
         WARNING1(CategoryEfficiency, HQLWRN_GrammarIsAmbiguous, instance->activityId);
 
     doBuildParseCompiled(instance->classctx, buffer);
-    noteFinishedTiming("compile:generate PARSE:compile", startCompileCycles);
+    if (options.timeTransforms)
+        noteFinishedTiming("compile:PARSE:compile", startCompileCycles);
 
     nlpParse->buildProductions(*this, instance->classctx, instance->startctx);
 
@@ -760,7 +762,8 @@ ABoundActivity * HqlCppTranslator::doBuildActivityParse(BuildCtx & ctx, IHqlExpr
     nlpParse = NULL;
     buildInstanceSuffix(instance);
     buildConnectInputOutput(ctx, instance, boundDataset, 0, 0);
-    noteFinishedTiming("compile:generate PARSE", startCycles);
+    if (options.timeTransforms)
+        noteFinishedTiming("compile:PARSE", startCycles);
 
     return instance->getBoundActivity();
 }

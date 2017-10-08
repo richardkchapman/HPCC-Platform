@@ -48,6 +48,9 @@
   <Component name="esp" processName='EspProcess' schema='esp.xsd'>
     <File name="esp.xsl" method="xslt" destName="esp.xml"/>
   </Component>
+  <Component name="backupnode" processName="BackupNode" schema="backupnode.xsd">
+    <File name="backupnode_vars.xsl" method="xslt" destName="backupnode.conf"/>
+  </Component>
   <Component name="ldapServer" processName="LDAPServerProcess">
     <File name="ldapserver.xsl" method="xslt" destName=".ldaprc"/>
   </Component>
@@ -68,11 +71,8 @@
     <File name="thor.xsl" method="xslt" destName="thor.xml"/>
     <File name="setvars_linux.xsl" method="xslt" destName="setvars"/>
   </Component>
-  <Component name="ecldirect" processName='EspService' schema='esp_service_ecldirect.xsd' deployable='no'>
-    <File name="@temp/esp_service_ecldirect.xsl" method="esp_service_module"/>
-  </Component>
-  <Component name="esp_wubilling" processName='EspService' schema='esp_service_wubilling.xsd' deployable='no'>
-    <File name="@temp/esp_service_wubilling.xsl" method="esp_service_module"/>
+  <Component name="esp_wubilling" processName='EspService' schema='wswubilling.xsd' deployable='no'>
+    <File name="@temp/esp_service_wswubilling.xsl" method="esp_service_module"/>
   </Component>
   <Component name="espadl" processName='EspService' schema='esp_service_wsadl.xsd' deployable='no'>
     <File name="@temp/esp_service_wsadl.xsl" method="esp_service_module"/>

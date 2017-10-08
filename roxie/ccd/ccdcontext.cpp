@@ -37,6 +37,7 @@
 #include "ccdstate.hpp"
 #include "roxiehelper.hpp"
 #include "enginecontext.hpp"
+#include "eclhelper_dyn.hpp"
 
 using roxiemem::IRowManager;
 
@@ -754,12 +755,12 @@ CRoxieWorkflowMachine *createRoxieWorkflowMachine(IPropertyTree *_workflowInfo, 
 
 //=======================================================================================================================
 
-typedef byte *row_t;
-typedef row_t * rowset_t;
+typedef const byte *row_t;
+typedef const byte ** rowset_t;
 
 class DeserializedDataReader : implements IWorkUnitRowReader, public CInterface
 {
-    const rowset_t data;
+    rowset_t data;
     size32_t count;
     unsigned idx;
 public:
@@ -769,7 +770,7 @@ public:
     {
         idx = 0;
     }
-    virtual const void * nextRow()
+    virtual const void * nextRow() override
     {
         if (idx < count)
         {
@@ -781,7 +782,7 @@ public:
         }
         return NULL;
     }
-    virtual void getResultRowset(size32_t & tcount, byte * * & tgt)
+    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt) override
     {
         tcount = count;
         if (data)
@@ -805,11 +806,11 @@ public:
             rowset_t rows = stored.item(idx);
             if (rows)
             {
-                rtlReleaseRowset(counts.item(idx), (byte**) rows);
+                rtlReleaseRowset(counts.item(idx), rows);
             }
         }
     }
-    virtual int addResult(size32_t count, rowset_t data, IOutputMetaData *meta)
+    virtual int addResult(size32_t count, rowset_t data, IOutputMetaData *meta) override
     {
         SpinBlock b(lock);
         stored.append(data);
@@ -817,16 +818,16 @@ public:
         metas.append(meta);
         return stored.ordinality()-1;
     }
-    virtual void queryResult(int id, size32_t &count, rowset_t &data) const
+    virtual void queryResult(int id, size32_t &count, rowset_t &data) const override
     {
         count = counts.item(id);
         data = stored.item(id);
     }
-    virtual IWorkUnitRowReader *createDeserializedReader(int id) const
+    virtual IWorkUnitRowReader *createDeserializedReader(int id) const override
     {
         return new DeserializedDataReader(counts.item(id), stored.item(id));
     }
-    virtual void serialize(unsigned & tlen, void * & tgt, int id, ICodeContext *codectx) const
+    virtual void serialize(unsigned & tlen, void * & tgt, int id, ICodeContext *codectx) const override
     {
         IOutputMetaData *meta = metas.item(id);
         rowset_t data = stored.item(id);
@@ -870,7 +871,7 @@ public:
 
     }
 
-    virtual void getResultRowset(size32_t & tcount, byte * * & tgt)
+    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt) override
     {
         bool atEOG = true;
         RtlLinkedDatasetBuilder builder(rowAllocator);
@@ -934,7 +935,7 @@ public:
         if (bufferBase)
             free(bufferBase);
     }
-    virtual const void *nextRow()
+    virtual const void *nextRow() override
     {
         if (eof)
             return NULL;
@@ -972,7 +973,7 @@ public:
     {
     }
 
-    virtual bool nextBlock(unsigned & tlen, void * & tgt, void * & base)
+    virtual bool nextBlock(unsigned & tlen, void * & tgt, void * & base) override
     {
         base = tgt = NULL;
         if (xml)
@@ -1004,7 +1005,7 @@ public:
         offset = 0;
     }
 
-    virtual bool nextBlock(unsigned & tlen, void * & tgt, void * & base)
+    virtual bool nextBlock(unsigned & tlen, void * & tgt, void * & base) override
     {
         try
         {
@@ -1073,7 +1074,7 @@ public:
     {
     }
 
-    virtual bool nextBlock(unsigned & tlen, void * & tgt, void * & base)
+    virtual bool nextBlock(unsigned & tlen, void * & tgt, void * & base) override
     {
         tgt = NULL;
         base = NULL;
@@ -1109,7 +1110,7 @@ public:
         rows->first();
     }
 
-    virtual const void *nextRow()
+    virtual const void *nextRow() override
     {
         if (rows->isValid())
         {
@@ -1126,7 +1127,7 @@ public:
 
 //---------------------------------------------------------------------------------------
 
-static const StatisticsMapping graphStatistics(StKindNone);
+static const StatisticsMapping graphStatistics({});
 class CRoxieContextBase : implements IRoxieSlaveContext, implements ICodeContext, implements roxiemem::ITimeLimiter, implements IRowAllocatorMetaActIdCacheCallback, public CInterface
 {
 protected:
@@ -1143,6 +1144,7 @@ protected:
     unsigned lastWuAbortCheck;
     unsigned startTime;
     unsigned totSlavesReplyLen;
+    CCycleTimer elapsedTimer;
 
     QueryOptions options;
     Owned<IConstWorkUnit> workUnit;
@@ -1437,7 +1439,7 @@ public:
             graphStats.setown(workUnit->updateStats(graph->queryName(), SCTroxie, queryStatisticsComponentName(), 0));
     }
 
-    virtual void endGraph(cycle_t startCycles, bool aborting)
+    virtual void endGraph(unsigned __int64 startTimeStamp, cycle_t startCycles, bool aborting)
     {
         if (graph)
         {
@@ -1451,18 +1453,13 @@ public:
                     graph->abort();
                 if (workUnit)
                 {
-                    unsigned __int64 totalTimeNs = 0;
-                    unsigned __int64 totalThisTimeNs = 0;
-                    const char *totalTimeStr = "Total cluster time";
-                    getWorkunitTotalTime(workUnit, "roxie", totalTimeNs, totalThisTimeNs);
-
                     const char * graphName = graph->queryName();
                     StringBuffer graphDesc;
                     formatGraphTimerLabel(graphDesc, graphName);
                     WorkunitUpdate progressWorkUnit(&workUnit->lock());
+                    progressWorkUnit->setStatistic(queryStatisticsComponentType(), queryStatisticsComponentName(), SSTgraph, graphName, StWhenStarted, NULL, startTimeStamp, 1, 0, StatsMergeAppend);
                     updateWorkunitTimeStat(progressWorkUnit, SSTgraph, graphName, StTimeElapsed, graphDesc, elapsedTime);
-                    updateWorkunitTimeStat(progressWorkUnit, SSTglobal, GLOBAL_SCOPE, StTimeElapsed, NULL, totalThisTimeNs+elapsedTime);
-                    progressWorkUnit->setStatistic(SCTsummary, "roxie", SSTglobal, GLOBAL_SCOPE, StTimeElapsed, totalTimeStr, totalTimeNs+elapsedTime, 1, 0, StatsMergeReplace);
+                    addTimeStamp(progressWorkUnit, SSTgraph, graphName, StWhenFinished);
                 }
                 graph->reset();
             }
@@ -1479,6 +1476,16 @@ public:
 
     void cleanupGraphs()
     {
+        if (graph)
+            graph->updateFactoryStatistics();
+
+        SuperHashIteratorOf<decltype(childGraphs)::ELEMENT> iter(childGraphs);
+        ForEach(iter)
+        {
+            IActivityGraph * curChildGraph = static_cast<IActivityGraph *>(iter.query().getValue());
+            curChildGraph->updateFactoryStatistics();
+        }
+
         graph.clear();
         childGraphs.kill();
     }
@@ -1515,6 +1522,7 @@ public:
         {
             bool created = false;
             cycle_t startCycles = get_cycles_now();
+            unsigned __int64 startTimeStamp = getTimeStampNowValue();
             try
             {
                 beginGraph(name);
@@ -1531,7 +1539,7 @@ public:
                     CTXLOG("Exception thrown in query - cleaning up: %d: %s", e->errorCode(), e->errorMessage(s).str());
                 }
                 if (created)  // Partially-created graphs are liable to crash if you call abort() on them...
-                    endGraph(startCycles, true);
+                    endGraph(startTimeStamp, startCycles, true);
                 else
                 {
                     // Bit of a hack... needed to avoid pure virtual calls if these are left to the CRoxieContextBase destructor
@@ -1544,7 +1552,7 @@ public:
             {
                 CTXLOG("Exception thrown in query - cleaning up");
                 if (created)
-                    endGraph(startCycles, true);
+                    endGraph(startTimeStamp, startCycles, true);
                 else
                 {
                     // Bit of a hack... needed to avoid pure virtual calls if these are left to the CRoxieContextBase destructor
@@ -1553,7 +1561,7 @@ public:
                 CTXLOG("Done cleaning up");
                 throw;
             }
-            endGraph(startCycles, false);
+            endGraph(startTimeStamp, startCycles, false);
         }
     }
 
@@ -1731,7 +1739,7 @@ public:
             return createRoxieRowAllocator(cache, *rowManager, meta, activityId, id, flags);
     }
 
-    virtual void getResultRowset(size32_t & tcount, byte * * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer)
+    virtual void getResultRowset(size32_t & tcount, const byte * * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) override
     {
         try
         {
@@ -1751,7 +1759,7 @@ public:
         }
     }
 
-    virtual void getResultDictionary(size32_t & tcount, byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher)
+    virtual void getResultDictionary(size32_t & tcount, const byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher) override
     {
         try
         {
@@ -2021,7 +2029,7 @@ protected:
             {
                 CriticalBlock b(contextCrit);
                 if (!persists)
-                    persists = createPTree();
+                    persists = createPTree(ipt_fast);
                 return *persists;
             }
         case ResultSequenceOnce:
@@ -2034,14 +2042,14 @@ protected:
             {
                 CriticalBlock b(contextCrit);
                 if (!temporaries)
-                    temporaries = createPTree();
+                    temporaries = createPTree(ipt_fast);
                 return *temporaries;
             }
         default:
             {
                 CriticalBlock b(contextCrit);
                 if (!rereadResults)
-                    rereadResults = createPTree();
+                    rereadResults = createPTree(ipt_fast);
                 return *rereadResults;
             }
         }
@@ -2321,6 +2329,7 @@ protected:
                 thorMaster.getUrlStr(s);
                 s.append("; (").append(e->errorCode()).append(", ");
                 e->errorMessage(s).append(")");
+                e->Release();
                 throw MakeStringExceptionDirect(-1, s.str());
             }
             ThorReplyCodes replyCode;
@@ -2681,7 +2690,7 @@ protected:
     {
         WorkunitUpdate wu(&workUnit->lock());
         wu->subscribe(SubscribeOptionAbort);
-        addTimeStamp(wu, SSTglobal, NULL, StWhenQueryStarted);
+        addTimeStamp(wu, SSTglobal, NULL, StWhenStarted);
         if (!context->getPropBool("@outputToSocket", false))
             protocol = NULL;
         updateSuppliedXmlParams(wu);
@@ -2689,8 +2698,8 @@ protected:
         if (workUnit->getXmlParams(wuParams, false).length())
         {
             // Merge in params from WU. Ones on command line take precedence though...
-            Owned<IPropertyTree> wuParamTree = createPTreeFromXMLString(wuParams.str(), ipt_caseInsensitive);
-            Owned<IPropertyTreeIterator> params = wuParamTree ->getElements("*");
+            Owned<IPropertyTree> wuParamTree = createPTreeFromXMLString(wuParams.str(), ipt_caseInsensitive|ipt_fast);
+            Owned<IPropertyTreeIterator> params = wuParamTree->getElements("*");
             ForEach(*params)
             {
                 IPropertyTree &param = params->query();
@@ -2737,7 +2746,7 @@ public:
         init();
         rowManager->setMemoryLimit(options.memoryLimit);
         workflow.setown(_factory->createWorkflowMachine(workUnit, true, logctx));
-        context.setown(createPTree(ipt_caseInsensitive));
+        context.setown(createPTree(ipt_caseInsensitive|ipt_fast));
     }
 
     CRoxieServerContext(IConstWorkUnit *_workUnit, const IQueryFactory *_factory, const ContextLogger &_logctx)
@@ -2747,7 +2756,7 @@ public:
         workUnit.set(_workUnit);
         rowManager->setMemoryLimit(options.memoryLimit);
         workflow.setown(_factory->createWorkflowMachine(workUnit, false, logctx));
-        context.setown(createPTree(ipt_caseInsensitive));
+        context.setown(createPTree(ipt_caseInsensitive|ipt_fast));
 
         //MORE: Use various debug settings to override settings:
         rowManager->setActivityTracking(workUnit->getDebugValueBool("traceRoxiePeakMemory", false));
@@ -2814,8 +2823,8 @@ public:
                 if (_strands)
                     builder.addStatistic(StNumStrands, _strands);
                 builder.addStatistic(StNumRowsProcessed, _processed);
-                builder.addStatistic(StNumStarted, 1);
-                builder.addStatistic(StNumStopped, 1);
+                builder.addStatistic(StNumStarts, 1);
+                builder.addStatistic(StNumStops, 1);
                 builder.addStatistic(StNumSlaves, 1);  // Arguable
             }
             logctx.noteStatistic(StNumRowsProcessed, _processed);
@@ -2919,16 +2928,22 @@ public:
     {
         MTIME_SECTION(myTimer, "Process");
         QueryTerminationCleanup threadCleanup;
-        EclProcessFactory pf = (EclProcessFactory) factory->queryDll()->getEntry("createProcess");
-        Owned<IEclProcess> p = pf();
+        Owned<IEclProcess> p;
         try
         {
             if (debugContext)
                 debugContext->checkBreakpoint(DebugStateReady, NULL, NULL);
             if (workflow)
+            {
+                EclProcessFactory pf = (EclProcessFactory) factory->queryDll()->getEntry("createProcess");
+                p.setown(pf());
                 workflow->perform(this, p);
+            }
             else
-                p->perform(this, 0);
+            {
+                p.setown(createDynamicEclProcess());
+                p->perform(this, 1);
+            }
         }
         catch(WorkflowException *E)
         {
@@ -3010,12 +3025,15 @@ public:
             }
             while (clusterNames.ordinality())
                 restoreCluster();
-            addTimeStamp(w, SSTglobal, NULL, StWhenQueryFinished);
+            addTimeStamp(w, SSTglobal, NULL, StWhenFinished);
             updateWorkunitTimings(w, myTimer);
             Owned<IStatisticGatherer> gatherer = createGlobalStatisticGatherer(w);
             CRuntimeStatisticCollection merged(allStatistics);
             logctx.gatherStats(merged);
             merged.recordStatistics(*gatherer);
+
+            //MORE: If executed more than once (e.g., scheduled), then TimeElapsed isn't particularly correct.
+            gatherer->updateStatistic(StTimeElapsed, elapsedTimer.elapsedNs(), StatsMergeReplace);
 
             WuStatisticTarget statsTarget(w, "roxie");
             rowManager->reportPeakStatistics(statsTarget, 0);
@@ -3181,7 +3199,7 @@ public:
             }
         }
     }
-    virtual void appendResultDeserialized(const char *name, unsigned sequence, size32_t count, rowset_t data, bool extend, IOutputMetaData *meta)
+    virtual void appendResultDeserialized(const char *name, unsigned sequence, size32_t count, rowset_t data, bool extend, IOutputMetaData *meta) override
     {
         CriticalBlock b(contextCrit);
         IPropertyTree &ctx = useContext(sequence);
@@ -3206,7 +3224,7 @@ public:
         else
         {
             if (!val)
-                val = ctx.addPropTree(name, createPTree());
+                val = ctx.addPropTree(name, createPTree(ipt_fast));
             val->setProp("@format", "deserialized");
             val->setPropInt("@id", resultStore.addResult(count, data, meta));
         }
@@ -3317,7 +3335,7 @@ public:
     virtual void setResultXml(const char *name, unsigned sequence, const char *xml)
     {
         CriticalBlock b(contextCrit);
-        useContext(sequence).setPropTree(name, createPTreeFromXMLString(xml, ipt_caseInsensitive));
+        useContext(sequence).setPropTree(name, createPTreeFromXMLString(xml, ipt_caseInsensitive|ipt_fast));
     }
 
     virtual void setResultDecimal(const char *name, unsigned sequence, int len, int precision, bool isSigned, const void *val)
@@ -3582,10 +3600,10 @@ public:
         return factory->queryPackage().createFileName(filename, overwrite, extend, clusters, workUnit);
     }
 
-    virtual void endGraph(cycle_t startCycles, bool aborting)
+    virtual void endGraph(unsigned __int64 startTimeStamp, cycle_t startCycles, bool aborting) override
     {
         fileCache.kill();
-        CRoxieContextBase::endGraph(startCycles, aborting);
+        CRoxieContextBase::endGraph(startTimeStamp, startCycles, aborting);
     }
 
     virtual void onFileCallback(const RoxiePacketHeader &header, const char *lfn, bool isOpt, bool isLocal)

@@ -758,13 +758,13 @@ public:
     {
         return helper->match(lhs, rhsrow);
     }
-    inline const size32_t joinTransform(ARowBuilder &rowBuilder, const void *left, const void *right, unsigned numRows, const void **rows)
+    inline const size32_t joinTransform(ARowBuilder &rowBuilder, const void *left, const void *right, unsigned numRows, const void **rows, unsigned flags)
     {
-        return helper->transform(rowBuilder, left, right, numRows, rows);
+        return helper->transform(rowBuilder, left, right, numRows, rows, flags);
     }
-    inline const size32_t joinTransform(ARowBuilder &rowBuilder, const void *left, const void *right, unsigned count)
+    inline const size32_t joinTransform(ARowBuilder &rowBuilder, const void *left, const void *right, unsigned count, unsigned flags)
     {
-        return helper->transform(rowBuilder, left, right, count);
+        return helper->transform(rowBuilder, left, right, count, flags);
     }
 };
 
@@ -774,14 +774,12 @@ class CThorRowArrayWithFlushMarker : public CThorSpillableRowArray
 public:
     CThorRowArrayWithFlushMarker(CActivityBase &activity) : CThorSpillableRowArray(activity)
     {
-        flushMarker = 0;
     }
-    CThorRowArrayWithFlushMarker(CActivityBase &activity, IThorRowInterfaces *rowIf, bool allowNulls=false, StableSortFlag stableSort=stableSort_none, rowidx_t initialSize=InitialSortElements, size32_t commitDelta=CommitStep)
-        : CThorSpillableRowArray(activity, rowIf, allowNulls, stableSort, initialSize, commitDelta)
+    CThorRowArrayWithFlushMarker(CActivityBase &activity, IThorRowInterfaces *rowIf, EmptyRowSemantics emptyRowSemantics=ers_forbidden, StableSortFlag stableSort=stableSort_none, rowidx_t initialSize=InitialSortElements, size32_t commitDelta=CommitStep)
+        : CThorSpillableRowArray(activity, rowIf, emptyRowSemantics, stableSort, initialSize, commitDelta)
     {
-        flushMarker = 0;
     }
-    rowidx_t flushMarker;
+    rowidx_t flushMarker = 0;
 };
 
 
@@ -945,7 +943,6 @@ protected:
     IArrayOf<IRowStream> gatheredRHSNodeStreams;
     bool rhsConstant = false;
 
-    rowidx_t nextRhsRow;
     unsigned keepLimit;
     unsigned joined;
     unsigned joinCounter;
@@ -1152,7 +1149,6 @@ protected:
     }
     inline void resetRhsNext()
     {
-        nextRhsRow = 0;
         joined = 0;
         leftMatch = false;
     }
@@ -1190,7 +1186,7 @@ protected:
             const void *rightRow = numRows ? filteredRhs.item(0) : defaultRight.get();
             if (isGroupOp())
             {
-                size32_t sz = HELPERBASE::joinTransform(rowBuilder, leftRow, rightRow, numRows, filteredRhs.getArray());
+                size32_t sz = HELPERBASE::joinTransform(rowBuilder, leftRow, rightRow, numRows, filteredRhs.getArray(), JTFmatchedleft|(numRows ? JTFmatchedright : 0));
                 if (sz)
                     ret.setown(rowBuilder.finalizeRowClear(sz));
             }
@@ -1203,7 +1199,7 @@ protected:
                     for (;;)
                     {
                         const void *rightRow = filteredRhs.item(rcCount);
-                        size32_t sz = HELPERBASE::joinTransform(rowBuilder, ret, rightRow, ++rcCount);
+                        size32_t sz = HELPERBASE::joinTransform(rowBuilder, ret, rightRow, ++rcCount, JTFmatchedleft|JTFmatchedright);
                         if (sz)
                         {
                             rowSize = sz;
@@ -1239,7 +1235,7 @@ protected:
                         {
                             resetRhsNext();
                             const void *failRow = NULL;
-                            // NB: currentHashEntry only used for Lookup,Many case
+                            // NB: currentHashEntry used for Lookup,Many or All cases
                             rhsNext = tableProxy->getFirstRHSMatch(leftRow, failRow, currentHashEntry); // also checks abortLimit/atMost
                             if (failRow)
                                 return failRow;
@@ -1272,7 +1268,7 @@ protected:
                             leftMatch = true;
                             if (!exclude)
                             {
-                                size32_t sz = HELPERBASE::joinTransform(rowBuilder, leftRow, rhsNext, ++joinCounter);
+                                size32_t sz = HELPERBASE::joinTransform(rowBuilder, leftRow, rhsNext, ++joinCounter, JTFmatchedleft|JTFmatchedright);
                                 if (sz)
                                 {
                                     OwnedConstThorRow row = rowBuilder.finalizeRowClear(sz);
@@ -1287,11 +1283,11 @@ protected:
                                 }
                             }
                         }
-                        rhsNext = tableProxy->getNextRHS(currentHashEntry); // NB: currentHashEntry only used for Lookup,Many case
+                        rhsNext = tableProxy->getNextRHS(currentHashEntry); // NB: currentHashEntry used for Lookup,Many or All cases
                     }
                     if (!leftMatch && NULL == rhsNext && 0!=(flags & JFleftouter))
                     {
-                        size32_t sz = HELPERBASE::joinTransform(rowBuilder, leftRow, defaultRight, 0);
+                        size32_t sz = HELPERBASE::joinTransform(rowBuilder, leftRow, defaultRight, 0, JTFmatchedleft);
                         if (sz)
                             ret.setown(rowBuilder.finalizeRowClear(sz));
                     }
@@ -1311,7 +1307,6 @@ public:
     CInMemJoinBase(CGraphElementBase *_container) : CSlaveActivity(_container), HELPERBASE((HELPER *)queryHelper()), rhs(*this)
     {
         gotRHS = false;
-        nextRhsRow = 0;
         rhsNext = NULL;
         myNodeNum = queryJob().queryMyNodeRank()-1; // 0 based
         mySlaveNum = queryJobChannel().queryMyRank()-1; // 0 based
@@ -1403,7 +1398,7 @@ public:
         leftITDL = queryInput(0);
         rightITDL = queryInput(1);
         rightOutputMeta = rightITDL->queryFromActivity()->queryContainer().queryHelper()->queryOutputMeta();
-        rightAllocator.setown(rightThorAllocator->getRowAllocator(rightOutputMeta, container.queryId(), (roxiemem::RoxieHeapFlags)(roxiemem::RHFpacked|roxiemem::RHFunique)));
+        rightAllocator.setown(rightThorAllocator->getRowAllocator(rightOutputMeta, container.queryId(), (roxiemem::RHFpacked|roxiemem::RHFunique)));
 
         allocator.set(queryRowAllocator());
         leftAllocator.set(::queryRowAllocator(leftITDL));
@@ -1439,14 +1434,17 @@ public:
             rhs.setup(sharedRightRowInterfaces);
             // NB: use sharedRightRowInterfaces, so that expanding ptr array is using shared allocator
             for (unsigned s=0; s<container.queryJob().querySlaves(); s++)
-                rhsSlaveRows.item(s)->setup(sharedRightRowInterfaces, false, stableSort_none, true);
+                rhsSlaveRows.item(s)->setup(sharedRightRowInterfaces, ers_forbidden, stableSort_none, true);
         }
     }
     virtual void setInputStream(unsigned index, CThorInput &_input, bool consumerOrdered) override
     {
         PARENT::setInputStream(index, _input, consumerOrdered);
         if (0 == index)
-            setLookAhead(0, createRowStreamLookAhead(this, inputStream, queryRowInterfaces(input), LOOKUPJOINL_SMART_BUFFER_SIZE, isSmartBufferSpillNeeded(input->queryFromActivity()), grouped, RCUNBOUND, this, &container.queryJob().queryIDiskUsage()));
+        {
+            if (!isFastThrough(input))
+                setLookAhead(0, createRowStreamLookAhead(this, inputStream, queryRowInterfaces(input), LOOKUPJOINL_SMART_BUFFER_SIZE, isSmartBufferSpillNeeded(input->queryFromActivity()), grouped, RCUNBOUND, this, &container.queryJob().queryIDiskUsage()));
+        }
         else
         {
             dbgassertex(1 == index);
@@ -1464,7 +1462,6 @@ public:
     }
     virtual void start() override
     {
-        nextRhsRow = 0;
         joined = 0;
         joinCounter = 0;
         leftMatch = false;
@@ -1524,7 +1521,8 @@ public:
         {
             cancelReceiveMsg(queryJob().queryNodeComm(), RANK_ALL, mpTag);
             interChannelBarrierSem.interrupt(NULL);
-            broadcaster->cancel();
+            if (broadcaster)
+                broadcaster->cancel();
             if (rowProcessor)
                 rowProcessor->abort();
         }
@@ -2028,7 +2026,7 @@ protected:
             if (!hasFailedOverToLocal())
             {
                 if (stable && !globallySorted)
-                    rhs.setup(sharedRightRowInterfaces, false, stableSort_earlyAlloc);
+                    rhs.setup(sharedRightRowInterfaces, ers_forbidden, stableSort_earlyAlloc);
                 bool success=false;
                 try
                 {
@@ -2082,7 +2080,7 @@ protected:
                     if (stable && !globallySorted)
                     {
                         ActPrintLog("Clearing rhs stable ptr table");
-                        rhs.setup(sharedRightRowInterfaces, false, stableSort_none); // don't need stable ptr table anymore
+                        rhs.setup(sharedRightRowInterfaces, ers_forbidden, stableSort_none); // don't need stable ptr table anymore
                     }
                 }
             }
@@ -2521,6 +2519,7 @@ protected:
             if (rightStream)
             {
                 ActPrintLog("Performing STANDARD JOIN");
+                setFailoverToStandard(true);
                 setupStandardJoin(rightStream); // NB: rightStream is sorted
             }
             else
@@ -2648,7 +2647,7 @@ public:
                         e.setown(_e);
                     }
                     RtlDynamicRowBuilder ret(allocator);
-                    size32_t transformedSize = helper->onFailTransform(ret, leftRow, defaultRight, e.get());
+                    size32_t transformedSize = helper->onFailTransform(ret, leftRow, defaultRight, e.get(), JTFmatchedleft);
                     if (transformedSize)
                         failRow = ret.finalizeRowClear(transformedSize);
                 }
@@ -2684,7 +2683,7 @@ public:
             if (isGlobal())
             {
                 for (unsigned s=0; s<container.queryJob().querySlaves(); s++)
-                    rhsSlaveRows.item(s)->setup(sharedRightRowInterfaces, false, stableSort_none, false);
+                    rhsSlaveRows.item(s)->setup(sharedRightRowInterfaces, ers_forbidden, stableSort_none, false);
             }
         }
     }
@@ -3169,8 +3168,6 @@ public:
 class CAllTable : public CTableCommon
 {
     const void **rows;
-    rowidx_t nextRhsRow;
-
 public:
     CAllTable()
     {
@@ -3180,17 +3177,16 @@ public:
     {
         CTableCommon::reset();
         rows = NULL;
-        nextRhsRow = 0;
     }
-    inline const void *getNextRHS(HtEntry &currentHashEntry __attribute__((unused)))
+    inline const void *getNextRHS(HtEntry &currentEntry)
     {
-        if (++nextRhsRow<tableSize)
-            return rows[nextRhsRow];
+        if (++currentEntry.index<tableSize)
+            return rows[currentEntry.index];
         return NULL;
     }
-    inline const void *getFirstRHSMatch(const void *leftRow, const void *&failRow, HtEntry &currentHashEntry __attribute__((unused)))
+    inline const void *getFirstRHSMatch(const void *leftRow, const void *&failRow, HtEntry &currentEntry)
     {
-        nextRhsRow = 0;
+        currentEntry.index = 0;
         failRow = NULL;
         return rows[0]; // guaranteed to be at least one row
     }
@@ -3198,7 +3194,6 @@ public:
     {
         tableSize = _rows.ordinality();
         rows = _rows.getRowArray();
-        nextRhsRow = 0;
     }
 };
 

@@ -82,6 +82,11 @@ static const char * EclDefinition =
 "  boolean UnicodeLocaleEditDistanceWithinRadius(const unicode left, const unicode right, unsigned4 radius,  const varstring localename) : c,time,pure,entrypoint='ulUnicodeLocaleEditDistanceWithinRadius', hole; \n"
 "  unsigned4 UnicodeLocaleWordCount(const unicode text, const varstring localename) : c, pure,entrypoint='ulUnicodeLocaleWordCount', hole; \n"
 "  unicode UnicodeLocaleGetNthWord(const unicode text, unsigned4 n, const varstring localename) : c,pure,entrypoint='ulUnicodeLocaleGetNthWord';\n"
+"  unicode UnicodeLocaleExcludeNthWord(const unicode text, unsigned4 n, const varstring localename) :c,pure,entrypoint='ulUnicodeLocaleExcludeNthWord';\n"
+"  unicode UnicodeLocaleExcludeLastWord(const unicode text, const varstring localename) : c,pure,entrypoint='ulUnicodeLocaleExcludeLastWord';\n"
+"  unicode UnicodeLocaleTranslate(const unicode text, unicode sear, unicode repl) :c,pure,entrypoint='ulUnicodeLocaleTranslate';\n"
+"  boolean UnicodeLocaleStartsWith(const unicode src, unicode pref, string form) :c,pure,entrypoint='ulUnicodeLocaleStartsWith';\n"
+"  boolean UnicodeLocaleEndsWith(const unicode src, const unicode suff, const string form) :c,pure,entrypoint='ulUnicodeLocaleEndsWith';\n"
 "END;\n";
 
 static const char * compatibleVersions[] = {
@@ -716,6 +721,196 @@ unsigned unicodeEditDistanceV4(UnicodeString & left, UnicodeString & right, unsi
     }
 
     return da[mask(leftLen-1)][rightLen-1];
+}
+
+void normalizationFormCheck(UnicodeString & source, const char * form)
+{
+#if U_ICU_VERSION_MAJOR_NUM >= 44
+    UErrorCode errorCode = U_ZERO_ERROR;
+    if (form[2] == 'C')
+    {
+        const Normalizer2 * no = Normalizer2::getInstance(NULL, "nfc", UNormalization2Mode::UNORM2_COMPOSE, errorCode);
+        source = no->normalize(source, errorCode);
+    }
+    else if (form[2] == 'D')
+    {
+        const Normalizer2 * no = Normalizer2::getInstance(NULL, "nfc", UNormalization2Mode::UNORM2_DECOMPOSE, errorCode);
+        source = no->normalize(source, errorCode);
+    }
+    else if (form[3] == 'C')
+    {
+        const Normalizer2 * no = Normalizer2::getInstance(NULL, "nfkc", UNormalization2Mode::UNORM2_COMPOSE, errorCode);
+        source = no->normalize(source, errorCode);
+    }
+    else if (form[3] == 'D')
+    {
+        const Normalizer2 * no = Normalizer2::getInstance(NULL, "nfkc", UNormalization2Mode::UNORM2_DECOMPOSE, errorCode);
+        source = no->normalize(source, errorCode);
+    }
+#else
+    UErrorCode errorCode = U_ZERO_ERROR;
+    UnicodeString result;
+    if (form[2] == 'C')
+    {
+        Normalizer::normalize(source, UNORM_NFC, 0, result, errorCode);
+    }
+    else if (form[2] == 'D')
+    {
+        Normalizer::normalize(source, UNORM_NFD, 0, result, errorCode);
+    }
+    else if (form[3] == 'C')
+    {
+        Normalizer::normalize(source, UNORM_NFKC, 0, result, errorCode);
+    }
+    else if (form[3] == 'D')
+    {
+        Normalizer::normalize(source, UNORM_NFKD, 0, result, errorCode);
+    }
+    else
+        return;
+
+    source = result;
+#endif
+}
+
+static bool endsWith(UnicodeString const & processed, UnicodeString const & suffix)
+{
+    if (processed.isEmpty() || suffix.isEmpty())
+    {
+        return false;
+    }
+    if (!processed.endsWith(suffix))
+    {
+        return false;
+    }
+    return true;
+}
+
+static bool startsWith(UnicodeString & processed, UnicodeString & prefix)
+{
+    if (processed.isEmpty() || prefix.isEmpty())
+    {
+        return false;
+    }
+    prefix.trim();
+    if (processed.compareCodePointOrder(0, prefix.length(), prefix) != 0)
+    {
+        return false;
+    }
+    return true;
+}
+
+void translate(UnicodeString & toProcess, UChar const * sear, unsigned searLen, UChar const * repl, unsigned replLen)
+{
+    UnicodeString search(false, sear, searLen);
+    UnicodeString replace(repl, replLen);
+    if (search.countChar32() != replace.countChar32() || toProcess.isEmpty() || search.isEmpty() || replace.isEmpty())
+    {
+        return;
+    }
+    StringCharacterIterator it(toProcess);
+    toProcess.remove();
+    int32_t idx = it.setToStart();
+    while (idx != it.endIndex())
+    {
+        int32_t x = search.lastIndexOf(it.current32());
+        if (x == -1)
+        {
+            toProcess.append(it.current32());
+        }
+        else
+        {
+            x = replace.moveIndex32(0, x);
+            toProcess.append(replace.char32At(x));
+        }
+        idx = it.move32(1, CharacterIterator::kCurrent);
+    }
+}
+
+void excludeLastWord(RuleBasedBreakIterator& bi, UnicodeString & toProcess)
+{
+    bi.setText(toProcess);
+    int32_t idx = bi.last();
+    int32_t wordidx = 0;
+    int32_t wordBeginning = 0;
+    int32_t wordEnd = idx;
+    while (idx != 0)
+    {
+        //Backwards iterator operates until the iterator reaches 0 from bi.last()
+        int breakType = bi.getRuleStatus();
+        if (breakType != UBRK_WORD_NONE)
+        {
+            // Exclude spaces, punctuation, and the like.
+            //   A status value UBRK_WORD_NONE indicates that the boundary does
+            //   not start a word or number.
+            ++wordidx;
+            wordBeginning = bi.previous();
+            //Increments the wordidx count and then moves iterator backwards past the one word that was recorded.
+            //Iterator located just before the start of the last word.
+            if (bi.getRuleStatus() != UBRK_WORD_NONE)
+            {
+                //Check for languages that do not use space characters to separate words.
+                //If a word lies before the current location of the iterator,
+                //incremement the wordidx to prevent removal of this extra word.
+                ++wordidx;
+            }
+            if (bi.previous() == 0 && wordidx == 1)
+            {
+                //Check for single word string. In place to remove leading whitespaces if so.
+                //Moves iterator backwards to the next boundary: either the beginning or end of a word.
+                //If at the beginning of a word, wordidx should be 2,
+                //and the condition should fail regardless of the iterator being the first position.
+                //If at the end of a word, wordidx should be 1,
+                //and the condition should fail because the iterator is not the first position.
+                wordBeginning = 0;
+            }
+            toProcess.removeBetween(wordBeginning, wordEnd);
+            return;
+        }
+        //Should only be called once before reaching a word or the beginning of the string.
+        idx = bi.previous();
+    }
+    //Called if the string has no words.
+    toProcess.removeBetween(0, bi.last());
+}
+
+void excludeNthWord(RuleBasedBreakIterator& bi, UnicodeString & source, unsigned n)
+{
+    bi.setText(source);
+    int32_t idx = bi.first();
+    int32_t wordidx = 0;
+    unsigned wordBeginning = 0;
+    while (idx != BreakIterator::DONE)
+    {
+        int breakType = bi.getRuleStatus();
+        if (breakType != UBRK_WORD_NONE)
+        {
+            // Exclude spaces, punctuation, and the like.
+            //   A status value UBRK_WORD_NONE indicates that the boundary does
+            //   not start a word or number.
+            if (++wordidx == n)
+            {
+                if (n == 1)
+                {
+                    wordBeginning = 0;
+                }
+                unsigned wordEnd;
+                do
+                {
+                    wordEnd = idx;
+                    idx = bi.next();
+                } while (bi.getRuleStatus() == UBRK_WORD_NONE && idx != BreakIterator::DONE);
+                source.removeBetween(wordBeginning, wordEnd);
+                return;
+            }
+        }
+        wordBeginning = idx;
+        idx = bi.next();
+    }
+    if (!wordidx)
+    {
+        source.removeBetween(bi.first(), bi.last());
+    }
 }
 
 UnicodeString getNthWord(RuleBasedBreakIterator& bi, UnicodeString const & source, unsigned n)
@@ -1416,3 +1611,87 @@ UNICODELIB_API void UNICODELIB_CALL ulUnicodeLocaleGetNthWord(unsigned & tgtLen,
     }
 }
 
+UNICODELIB_API void UNICODELIB_CALL ulUnicodeLocaleExcludeNthWord(unsigned & tgtLen, UChar * & tgt, unsigned textLen, UChar const * text, unsigned n, char const * localename)
+{
+    UErrorCode status = U_ZERO_ERROR;
+    Locale locale(localename);
+    RuleBasedBreakIterator* bi = (RuleBasedBreakIterator*)RuleBasedBreakIterator::createWordInstance(locale, status);
+    UnicodeString processed(text, textLen);
+    excludeNthWord(*bi, processed, n);
+    delete bi;
+    if (processed.length()>0)
+    {
+        tgtLen = processed.length();
+        tgt = (UChar *)CTXMALLOC(parentCtx, tgtLen*2);
+        processed.extract(0, tgtLen, tgt);
+    }
+    else
+    {
+        tgtLen = 0;
+        tgt = 0;
+    }
+}
+
+UNICODELIB_API void UNICODELIB_CALL ulUnicodeLocaleExcludeLastWord(unsigned & tgtLen, UChar * & tgt, unsigned textLen, UChar const * text, char const * localename)
+{
+    UErrorCode status = U_ZERO_ERROR;
+    Locale locale(localename);
+    RuleBasedBreakIterator* bi = (RuleBasedBreakIterator*)RuleBasedBreakIterator::createWordInstance(locale, status);
+    UnicodeString processed(text, textLen);
+    excludeLastWord(*bi, processed);
+    delete bi;
+    if (processed.length()>0)
+    {
+        tgtLen = processed.length();
+        tgt = (UChar *)CTXMALLOC(parentCtx, tgtLen * 2);
+        processed.extract(0, tgtLen, tgt);
+    }
+    else
+    {
+        tgtLen = 0;
+        tgt = 0;
+    }
+}
+
+UNICODELIB_API void UNICODELIB_CALL ulUnicodeLocaleTranslate(unsigned & tgtLen, UChar * & tgt, unsigned textLen, UChar const * text, unsigned searLen, UChar const * sear, unsigned replLen, UChar * repl)
+{
+    UnicodeString processed(text, textLen);
+    translate(processed, sear, searLen, repl, replLen);
+    if (processed.length() > 0)
+    {
+        tgtLen = processed.length();
+        tgt = (UChar *)CTXMALLOC(parentCtx, tgtLen * 2);
+        processed.extract(0, tgtLen, tgt);
+    }
+    else
+    {
+        tgtLen = 0;
+        tgt = 0;
+    }
+}
+
+UNICODELIB_API bool UNICODELIB_CALL ulUnicodeLocaleStartsWith(unsigned srcLen, UChar const * src, unsigned prefLen, UChar const * pref, unsigned formLen, char const * form)
+{
+    UErrorCode errorCode = U_ZERO_ERROR;
+    UnicodeString pro(src, srcLen);
+    UnicodeString pre(pref, prefLen);
+    if (formLen == 3 || formLen == 4)
+    {
+        normalizationFormCheck(pro, form);
+        normalizationFormCheck(pre, form);
+    }
+    return startsWith(pro, pre);
+}
+
+UNICODELIB_API bool UNICODELIB_CALL ulUnicodeLocaleEndsWith(unsigned srcLen, UChar const * src, unsigned suffLen, UChar const * suff, unsigned formLen, char const * form)
+{
+    UnicodeString pro(src, srcLen);
+    UnicodeString suf(suff, suffLen);
+    suf.trim();
+    if (formLen == 3 || formLen == 4)
+    {
+        normalizationFormCheck(pro, form);
+        normalizationFormCheck(suf, form);
+    }
+    return endsWith(pro, suf);
+}

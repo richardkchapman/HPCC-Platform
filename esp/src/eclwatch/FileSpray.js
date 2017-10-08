@@ -81,21 +81,20 @@ define([
                     return retVal;
                 },
                 getLogicalFile: function () {
-                    //var filePath = this.DropZone.Path + "/" + 
-                    return "~file::" + this.DropZone.NetAddress + this.lfEncode(this.fullPath);
+                    return "~file::" + this.NetAddress + this.lfEncode(this.fullPath);
                 }
             };
             retVal[this.idProperty] = id;
             return retVal;
         },
         preProcessRow: function (row) {
-            var partialPath = this.parent.partialPath + row.name + (row.isDir ? "/" : "");
             var fullPath = this.parent.fullPath + row.name + (row.isDir ? "/" : "");
             var fullFolderPathParts = fullPath.split("/");
             fullFolderPathParts.pop();
             lang.mixin(row, {
-                calculatedID: this.parent.DropZone.NetAddress + fullPath,
-                partialPath: partialPath,
+                calculatedID: this.parent.NetAddress + fullPath,
+                NetAddress: this.parent.NetAddress,
+                OS: this.parent.OS,
                 fullPath: fullPath,
                 fullFolderPath: fullFolderPathParts.join("/"),
                 DropZone: this.parent.DropZone,
@@ -136,7 +135,6 @@ define([
                     NetAddress: this.dropZone.machine.Netaddress
                 },
                 calculatedID: this.dropZone.machine.Netaddress + fullPath,
-                partialPath: fullPath,
                 fullPath: fullPath,
                 fullFolderPath: row.Path,
                 displayName: row.name,
@@ -146,9 +144,9 @@ define([
     });
 
     var LandingZonesStore = declare([ESPRequest.Store], {
-        service: "FileSpray",
-        action: "DropZoneFiles",
-        responseQualifier: "DropZoneFilesResponse.DropZones.DropZone",
+        service: "WsTopology",
+        action: "TpDropZoneQuery",
+        responseQualifier: "TpDropZoneQueryResponse.TpDropZones.TpDropZone",
         idProperty: "calculatedID",
         constructor: function (options) {
             if (options) {
@@ -182,10 +180,9 @@ define([
                 OS: row.Linux === "true" ? 2 : 0
             });
             lang.mixin(row, {
-                calculatedID: row.NetAddress+row.Name,
+                calculatedID: row.Path + "_" + row.Name,
                 displayName: row.Name,
                 type: "dropzone",
-                partialPath: "",
                 fullPath: row.Path + (row.Path && !this.endsWith(row.Path, "/") ? "/" : ""),
                 DropZone: row
             });
@@ -194,20 +191,40 @@ define([
             switch (item.type) {
                 case "dropzone":
                 case "folder":
+                case "machine":
                     return true;
             }
             return false;
         },
         getChildren: function (parent, options) {
-            var store = Observable(new FileListStore({
-                parent: parent
-            }));
-            return store.query({
-                Netaddr: parent.DropZone.NetAddress,
-                Path: parent.fullPath,
-                Mask: "",
-                OS: parent.DropZone.OS
-            });
+            var children = [];
+            if (parent.TpMachines) {
+                arrayUtil.forEach(parent.TpMachines.TpMachine, function (item, idx) {
+                    children.push({
+                         calculatedID: item.Netaddress,
+                         displayName: item.ConfigNetaddress !== item.Netaddress ? item.ConfigNetaddress + " [" + item.Netaddress + "]" : item.ConfigNetaddress,
+                         NetAddress: item.Netaddress,
+                         ConfigNetaddress: item.ConfigNetaddress,
+                         type: "machine",
+                         isMachine: true,
+                         isDir: false,
+                         OS: item.OS,
+                         fullPath: parent.fullPath,
+                         DropZone: parent.DropZone
+                     });
+                 });
+                 return QueryResults(children);
+            } else if (parent.isMachine || parent.isDir) {
+                var store = Observable(new FileListStore({
+                    parent: parent
+                }));
+                return store.query({
+                    Netaddr: parent.NetAddress,
+                    Path: parent.fullPath,
+                    Mask: "",
+                    OS: parent.OS
+                });
+            }
         }
     });
 
@@ -431,4 +448,3 @@ define([
         }
     };
 });
-

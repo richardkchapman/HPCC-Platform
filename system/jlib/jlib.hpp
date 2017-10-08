@@ -204,6 +204,8 @@ public:
     inline bool zap(TYPE * x)                   { return PointerArray::zap(x); }
 };
 
+enum DAFSConnectCfg { SSLNone = 0, SSLOnly, SSLFirst, UnsecureFirst };
+
 #include "jstring.hpp"
 #include "jarray.hpp"
 #include "jhash.hpp"
@@ -313,8 +315,9 @@ struct DynamicScopeCtx
 {
     DynamicScopeCtx();
     ~DynamicScopeCtx();
-    void setSoContext(SoContext _soCtx) { soCtx = _soCtx; }
-    SoContext soCtx;
+
+    void processInitialization(SoContext soCtx);
+
     InitTable initTable;
 };
 

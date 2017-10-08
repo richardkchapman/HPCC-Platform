@@ -22,7 +22,9 @@
 #include "jlib.hpp"
 #include "eclhelper.hpp"
 #include "eclrtl_imp.hpp"
+#include "rtlds_imp.hpp"
 #include "rtlrecord.hpp"
+#include "rtldynfield.hpp"
 
 /*
  * Potential different implementations (for all fixed size has no penalty):
@@ -82,14 +84,6 @@
  *   For nested selects the code would need to be consistent.
  */
 
-static unsigned countFields(const RtlFieldInfo * const * fields)
-{
-    unsigned cnt = 0;
-    for (;*fields;fields++)
-        cnt++;
-    return cnt;
-}
-
 static unsigned countFields(const RtlFieldInfo * const * fields, bool & containsNested)
 {
     unsigned cnt = 0;
@@ -110,7 +104,7 @@ static unsigned countFields(const RtlFieldInfo * const * fields, bool & contains
 }
 
 
-static const RtlFieldInfo * * expandNestedRows(const RtlFieldInfo * * target, const RtlFieldInfo * const * fields)
+static unsigned expandNestedRows(unsigned idx, const char *prefix, const RtlFieldInfo * const * fields, const RtlFieldInfo * * target, const char * *names)
 {
     for (;*fields;fields++)
     {
@@ -120,19 +114,58 @@ static const RtlFieldInfo * * expandNestedRows(const RtlFieldInfo * * target, co
         {
             const RtlFieldInfo * const * nested = type->queryFields();
             if (nested)
-                target = expandNestedRows(target, nested);
+            {
+                StringBuffer newPrefix(prefix);
+                newPrefix.append(cur->name).append('.');
+                idx = expandNestedRows(idx, newPrefix.str(), nested, target, names);
+            }
         }
         else
-            *target++ = cur;
+        {
+            if (prefix)
+            {
+                StringBuffer name(prefix);
+                name.append(cur->name);
+                names[idx] = name.detach();
+            }
+            else
+                names[idx] = nullptr;
+            target[idx++] = cur;
+        }
     }
-    return target;
+    return idx;
 }
 
+class FieldNameToFieldNumMap
+{
+public:
+    FieldNameToFieldNumMap(const RtlRecord &record)
+    {
+        unsigned numFields = record.getNumFields();
+        for (unsigned idx = 0; idx < numFields;idx++)
+            map.setValue(record.queryName(idx), idx);
+    }
+    unsigned lookup(const char *name) const
+    {
+        unsigned *result = map.getValue(name);
+        if (result)
+            return *result;
+        else
+            return (unsigned) -1;
+    }
+    MapConstStringTo<unsigned> map;  // Note - does not copy strings - they should all have sufficient lifetime
+};
 
-RtlRecord::RtlRecord(const RtlRecordTypeInfo & record, bool expandFields) : fields(record.fields), originalFields(record.fields)
+RtlRecord::RtlRecord(const RtlRecordTypeInfo & record, bool expandFields)
+: RtlRecord(record.fields, expandFields)  // delegated constructor
+{
+}
+
+RtlRecord::RtlRecord(const RtlFieldInfo * const *_fields, bool expandFields) : fields(_fields), originalFields(_fields), names(nullptr), nameMap(nullptr)
 {
     //MORE: Does not cope with ifblocks.
     numVarFields = 0;
+    numTables = 0;
     //Optionally expand out nested rows.
     if (expandFields)
     {
@@ -141,26 +174,41 @@ RtlRecord::RtlRecord(const RtlRecordTypeInfo & record, bool expandFields) : fiel
         if (containsNested)
         {
             const RtlFieldInfo * * allocated  = new const RtlFieldInfo * [numFields+1];
+            names = new const char *[numFields];
             fields = allocated;
-            const RtlFieldInfo * * target = expandNestedRows(allocated, originalFields);
-            assertex(target == fields+numFields);
-            *target = nullptr;
+            unsigned idx = expandNestedRows(0, nullptr, originalFields, allocated, names);
+            assertex(idx == numFields);
+            allocated[idx] = nullptr;
         }
     }
     else
+    {
         numFields = countFields(fields);
-
+    }
     for (unsigned i=0; i < numFields; i++)
     {
-        if (!queryType(i)->isFixedSize())
+        const RtlTypeInfo *curType = queryType(i);
+        if (!curType->isFixedSize())
             numVarFields++;
+        if (curType->getType()==type_table || curType->getType()==type_record)
+            numTables++;
     }
 
     fixedOffsets = new size_t[numFields + 1];
     whichVariableOffset = new unsigned[numFields + 1];
     variableFieldIds = new unsigned[numVarFields];
-
+    if (numTables)
+    {
+        nestedTables = new const RtlRecord *[numTables];
+        tableIds = new unsigned[numTables];
+    }
+    else
+    {
+        nestedTables = nullptr;
+        tableIds = nullptr;
+    }
     unsigned curVariable = 0;
+    unsigned curTable = 0;
     size_t fixedOffset = 0;
     for (unsigned i=0;; i++)
     {
@@ -181,30 +229,66 @@ RtlRecord::RtlRecord(const RtlRecordTypeInfo & record, bool expandFields) : fiel
             curVariable++;
             fixedOffset = 0;
         }
+        switch (curType->getType())
+        {
+        case type_table:
+            tableIds[curTable] = i;
+            nestedTables[curTable++] = new RtlRecord(curType->queryChildType()->queryFields(), expandFields);
+            break;
+        case type_record:
+            tableIds[curTable] = i;
+            nestedTables[curTable++] = new RtlRecord(curType->queryFields(), expandFields);
+            break;
+        }
     }
 }
 
 
 RtlRecord::~RtlRecord()
 {
+    if (names)
+    {
+        for (unsigned i = 0; i < numFields; i++)
+        {
+            free((char *) names[i]);
+        }
+        delete [] names;
+    }
     if (fields != originalFields)
+    {
         delete [] fields;
+    }
     delete [] fixedOffsets;
     delete [] whichVariableOffset;
     delete [] variableFieldIds;
+    delete [] tableIds;
+
+    if (nestedTables)
+    {
+        for (unsigned i = 0; i < numTables; i++)
+            delete nestedTables[i];
+        delete [] nestedTables;
+    }
+    delete nameMap;
 }
 
-
-void RtlRecord::calcRowOffsets(size_t * variableOffsets, const void * _row) const
+void RtlRecord::calcRowOffsets(size_t * variableOffsets, const void * _row, unsigned numFieldsUsed) const
 {
     const byte * row = static_cast<const byte *>(_row);
-    for (unsigned i = 0; i < numVarFields; i++)
+    unsigned maxVarField = (numFieldsUsed>=numFields) ? numVarFields : whichVariableOffset[numFieldsUsed];
+    for (unsigned i = 0; i < maxVarField; i++)
     {
         unsigned fieldIndex = variableFieldIds[i];
         size_t offset = getOffset(variableOffsets, fieldIndex);
         size_t fieldSize = queryType(fieldIndex)->size(row + offset, row);
         variableOffsets[i+1] = offset+fieldSize;
     }
+#ifdef _DEBUG
+    for (unsigned i = maxVarField; i < numVarFields; i++)
+    {
+        variableOffsets[i+1] = 0x7fffffff;
+    }
+#endif
 }
 
 size32_t RtlRecord::getMinRecordSize() const
@@ -217,6 +301,48 @@ size32_t RtlRecord::getMinRecordSize() const
         minSize += queryType(i)->getMinSize();
 
     return minSize;
+}
+
+static const FieldNameToFieldNumMap *setupNameMap(const RtlRecord &record, std::atomic<const FieldNameToFieldNumMap *> &aNameMap)
+{
+    const FieldNameToFieldNumMap *lnameMap = new FieldNameToFieldNumMap(record);
+    const FieldNameToFieldNumMap *expected = nullptr;
+    if (aNameMap.compare_exchange_strong(expected, lnameMap))
+        return lnameMap;
+    else
+    {
+        // Other thread already set it while we were creating
+        delete lnameMap;
+        return expected;  // has been updated to the value set by other thread
+    }
+}
+
+unsigned RtlRecord::getFieldNum(const char *fieldName) const
+{
+    // NOTE: the nameMap field cannot be declared as atomic, since the class definition is included in generated
+    // code which is not (yet) compiled using C++11. If that changes then the reinterpret_cast can be removed.
+    std::atomic<const FieldNameToFieldNumMap *> &aNameMap = reinterpret_cast<std::atomic<const FieldNameToFieldNumMap *> &>(nameMap);
+    const FieldNameToFieldNumMap *useMap = aNameMap.load(std::memory_order_relaxed);
+    if (!useMap)
+        useMap = setupNameMap(*this, aNameMap);
+    return useMap->lookup(fieldName);
+}
+
+const char *RtlRecord::queryName(unsigned field) const
+{
+    if (names && names[field])
+        return names[field];
+    return fields[field]->name;
+}
+
+const RtlRecord *RtlRecord::queryNested(unsigned fieldId) const
+{
+    // Map goes in wrong direction (for size reasons). We could replace with a hashtable or binsearch but
+    // should not be enough nested tables for it to be worth it;
+    for (unsigned i = 0; i < numTables; i++)
+        if (tableIds[i]==fieldId)
+            return nestedTables[i];
+    return nullptr;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -236,6 +362,20 @@ __int64 RtlRow::getInt(unsigned field) const
     return type->getInt(self + getOffset(field));
 }
 
+double RtlRow::getReal(unsigned field) const
+{
+    const byte * self = reinterpret_cast<const byte *>(row);
+    const RtlTypeInfo * type = info.queryType(field);
+    return type->getReal(self + getOffset(field));
+}
+
+void RtlRow::getString(size32_t & resultLen, char * & result, unsigned field) const
+{
+    const byte * self = reinterpret_cast<const byte *>(row);
+    const RtlTypeInfo * type = info.queryType(field);
+    return type->getString(resultLen, result, self + getOffset(field));
+}
+
 void RtlRow::getUtf8(size32_t & resultLen, char * & result, unsigned field) const
 {
     const byte * self = reinterpret_cast<const byte *>(row);
@@ -250,6 +390,12 @@ void RtlRow::setRow(const void * _row)
         info.calcRowOffsets(variableOffsets, _row);
 }
 
+void RtlRow::setRow(const void * _row, unsigned _numFields)
+{
+    row = _row;
+    if (_row)
+        info.calcRowOffsets(variableOffsets, _row, _numFields);
+}
 
 RtlDynRow::RtlDynRow(const RtlRecord & _info, const void * optRow) : RtlRow(_info, optRow, _info.getNumVarFields()+1, new size_t[_info.getNumVarFields()+1])
 {
@@ -260,4 +406,160 @@ RtlDynRow::~RtlDynRow()
     delete [] variableOffsets;
 }
 
-//---------------------------------------------------------------------------------------------------------------------
+//-----------------
+
+static const RtlRecord *setupRecordAccessor(const COutputMetaData &meta, bool expand, std::atomic<const RtlRecord *> &aRecordAccessor)
+{
+    const RtlRecord *lRecordAccessor = new RtlRecord(meta.queryTypeInfo()->queryFields(), expand);
+    const RtlRecord *expected = nullptr;
+    if (aRecordAccessor.compare_exchange_strong(expected, lRecordAccessor))
+        return lRecordAccessor;
+    else
+    {
+        // Other thread already set it while we were creating
+        delete lRecordAccessor;
+        return expected;  // has been updated to the value set by other thread
+    }
+}
+
+COutputMetaData::COutputMetaData()
+{
+    recordAccessor[0] = recordAccessor[1] = NULL;
+}
+
+COutputMetaData::~COutputMetaData()
+{
+    delete recordAccessor[0]; delete recordAccessor[1];
+}
+
+const RtlRecord &COutputMetaData::queryRecordAccessor(bool expand) const
+{
+    // NOTE: the recordAccessor field cannot be declared as atomic, since the class definition is included in generated
+    // code which is not (yet) compiled using C++11. If that changes then the reinterpret_cast can be removed.
+    std::atomic<const RtlRecord *> &aRecordAccessor = reinterpret_cast<std::atomic<const RtlRecord *> &>(recordAccessor[expand]);
+    const RtlRecord *useAccessor = aRecordAccessor.load(std::memory_order_relaxed);
+    if (!useAccessor)
+        useAccessor = setupRecordAccessor(*this, expand, aRecordAccessor);
+    return *useAccessor;
+}
+
+size32_t COutputMetaData::getRecordSize(const void * data)
+{
+    const RtlRecord &r = queryRecordAccessor(false);
+    unsigned numOffsets = r.getNumVarFields() + 1;
+    size_t * variableOffsets = (size_t *)alloca(numOffsets * sizeof(size_t));
+    RtlRow offsetCalculator(r, data, numOffsets, variableOffsets);
+    return offsetCalculator.getRecordSize();
+}
+
+class CVariableOutputRowSerializer : public COutputRowSerializer
+{
+public:
+    inline CVariableOutputRowSerializer(unsigned _activityId, IOutputMetaData * _meta) : COutputRowSerializer(_activityId) { meta = _meta; }
+
+    virtual void serialize(IRowSerializerTarget & out, const byte * self)
+    {
+        unsigned size = meta->getRecordSize(self);
+        out.put(size, self);
+    }
+
+protected:
+    IOutputMetaData * meta;
+};
+
+class ECLRTL_API CSimpleSourceRowPrefetcher : public ISourceRowPrefetcher, public RtlCInterface
+{
+public:
+    CSimpleSourceRowPrefetcher(IOutputMetaData & _meta, ICodeContext * _ctx, unsigned _activityId)
+    {
+        deserializer.setown(_meta.querySerializedDiskMeta()->createDiskDeserializer(_ctx, _activityId));
+        rowAllocator.setown(_ctx->getRowAllocator(&_meta, _activityId));
+    }
+
+    RTLIMPLEMENT_IINTERFACE
+
+    virtual void readAhead(IRowDeserializerSource & in)
+    {
+        RtlDynamicRowBuilder rowBuilder(rowAllocator);
+        size32_t len = deserializer->deserialize(rowBuilder, in);
+        rtlReleaseRow(rowBuilder.finalizeRowClear(len));
+    }
+
+protected:
+    Owned<IOutputRowDeserializer> deserializer;
+    Owned<IEngineRowAllocator> rowAllocator;
+};
+
+//---------------------------------------------------------------------------
+
+
+IOutputRowSerializer * COutputMetaData::createDiskSerializer(ICodeContext * ctx, unsigned activityId)
+{
+    return new CVariableOutputRowSerializer(activityId, this);
+}
+
+ISourceRowPrefetcher * COutputMetaData::createDiskPrefetcher(ICodeContext * ctx, unsigned activityId)
+{
+    ISourceRowPrefetcher * fetcher = defaultCreateDiskPrefetcher(ctx, activityId);
+    if (fetcher)
+        return fetcher;
+    //Worse case implementation using a deserialize
+    return new CSimpleSourceRowPrefetcher(*this, ctx, activityId);
+}
+
+ISourceRowPrefetcher *COutputMetaData::defaultCreateDiskPrefetcher(ICodeContext * ctx, unsigned activityId)
+{
+    if (getMetaFlags() & MDFneedserializedisk)
+        return querySerializedDiskMeta()->createDiskPrefetcher(ctx, activityId);
+    CSourceRowPrefetcher * fetcher = doCreateDiskPrefetcher(activityId);
+    if (fetcher)
+    {
+        fetcher->onCreate(ctx);
+        return fetcher;
+    }
+    return NULL;
+}
+
+IOutputRowDeserializer *CDynamicOutputMetaData::createDiskDeserializer(ICodeContext * ctx, unsigned activityId)
+{
+    if (getFixedSize())
+        return new CFixedOutputRowDeserializer(activityId, getFixedSize());
+    else
+        UNIMPLEMENTED; // TBD
+}
+
+
+IOutputRowSerializer *CFixedOutputMetaData::createDiskSerializer(ICodeContext * ctx, unsigned activityId)
+{
+    return new CFixedOutputRowSerializer(activityId, fixedSize);
+}
+
+IOutputRowDeserializer *CFixedOutputMetaData::createDiskDeserializer(ICodeContext * ctx, unsigned activityId)
+{
+    return new CFixedOutputRowDeserializer(activityId, fixedSize);
+}
+
+ISourceRowPrefetcher *CFixedOutputMetaData::createDiskPrefetcher(ICodeContext * ctx, unsigned activityId)
+{
+    ISourceRowPrefetcher * fetcher = defaultCreateDiskPrefetcher(ctx, activityId);
+    if (fetcher)
+        return fetcher;
+    return new CFixedSourceRowPrefetcher(activityId, fixedSize);
+}
+
+IOutputRowSerializer * CActionOutputMetaData::createDiskSerializer(ICodeContext * ctx, unsigned activityId)
+{
+    return new CFixedOutputRowSerializer(activityId, 0);
+}
+
+IOutputRowDeserializer * CActionOutputMetaData::createDiskDeserializer(ICodeContext * ctx, unsigned activityId)
+{
+    return new CFixedOutputRowDeserializer(activityId, 0);
+}
+
+ISourceRowPrefetcher * CActionOutputMetaData::createDiskPrefetcher(ICodeContext * ctx, unsigned activityId)
+{
+    return new CFixedSourceRowPrefetcher(activityId, 0);
+}
+
+

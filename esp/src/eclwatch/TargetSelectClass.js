@@ -32,10 +32,11 @@ define([
     "hpcc/WsWorkunits",
     "hpcc/FileSpray",
     "hpcc/ws_access",
-    "hpcc/WsESDLConfig"
+    "hpcc/WsESDLConfig",
+    "hpcc/WsPackageMaps"
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, xhr, Deferred, ItemFileReadStore, all, Memory, on,
     registry,
-    WsTopology, WsWorkunits, FileSpray, WsAccess, WsESDLConfig) {
+    WsTopology, WsWorkunits, FileSpray, WsAccess, WsESDLConfig, WsPackageMaps) {
 
     return {
         i18n: nlsHPCC,
@@ -101,6 +102,15 @@ define([
                 this.loadLogs(params);
             } else if (params.DFUSprayQueues === true) {
                 this.loadSprayQueues();
+            } else if (params.GetPackageMapTargets === true) {
+                this.loadGetPackageMapTargets();
+            } else if (params.GetPackageMapProcesses === true) {
+                this.loadGetPackageMapProcesses();
+            } else if (params.DropZoneMachines === true) {
+                this.defaultValue = "";
+                this.set("value", "");
+                this.set("placeholder", "");
+                this.loadDropZoneMachines();
             } else {
                 this.loadTargets();
             }
@@ -146,6 +156,46 @@ define([
             }
             this.set("value", this.defaultValue);
             this.loading = false;
+        },
+
+        loadGetPackageMapTargets: function () {
+            var context = this;
+            WsPackageMaps.GetPackageMapSelectOptions({
+                request: {
+                    includeTargets: true
+                }
+            }).then(function (response) {
+                if (lang.exists("GetPackageMapSelectOptionsResponse.Targets.TargetData", response)) {
+                    var targetData = response.GetPackageMapSelectOptionsResponse.Targets.TargetData;
+                    for (var i = 0; i < targetData.length; ++i) {
+                        context.options.push({
+                            label: targetData[i].Name,
+                            value: targetData[i].Name
+                        });
+                    }
+                    context._postLoad();
+                }
+            });
+        },
+
+        loadGetPackageMapProcesses: function () {
+            var context = this;
+            WsPackageMaps.GetPackageMapSelectOptions({
+                request: {
+                    IncludeProcesses: true
+                }
+            }).then(function (response) {
+                if (lang.exists("GetPackageMapSelectOptionsResponse.ProcessFilters.Item", response)) {
+                    var targetData = response.GetPackageMapSelectOptionsResponse.ProcessFilters.Item;
+                    for (var i = 0; i < targetData.length; ++i) {
+                        context.options.push({
+                            label: targetData[i],
+                            value: targetData[i]
+                        });
+                    }
+                    context._postLoad();
+                }
+            });
         },
 
         loadUserGroups: function () {
@@ -226,10 +276,10 @@ define([
 
         loadDropZones: function () {
             var context = this;
-            WsTopology.TpServiceQuery({
+            WsTopology.TpDropZoneQuery({
                 load: function (response) {
-                    if (lang.exists("TpServiceQueryResponse.ServiceList.TpDropZones.TpDropZone", response)) {
-                        var targetData = response.TpServiceQueryResponse.ServiceList.TpDropZones.TpDropZone;
+                    if (lang.exists("TpDropZoneQueryResponse.TpDropZones.TpDropZone", response)) {
+                        var targetData = response.TpDropZoneQueryResponse.TpDropZones.TpDropZone;
                         for (var i = 0; i < targetData.length; ++i) {
                             context.options.push({
                                 label: targetData[i].Name,
@@ -243,7 +293,36 @@ define([
             });
         },
 
-        _loadDropZoneFolders: function (Netaddr, Path, OS, depth) {
+        loadDropZoneMachines: function (Name) {
+            var context = this;
+            if (Name) {
+                WsTopology.TpDropZoneQuery({
+                    request: {
+                        Name: Name
+                    }
+                }).then(function (response) {
+                    if (lang.exists("TpDropZoneQueryResponse.TpDropZones.TpDropZone", response)) {
+                        context.set("options", []);
+                        context.options.push({
+                            label: "&nbsp;",
+                            value: ""
+                        });
+                        arrayUtil.forEach(response.TpDropZoneQueryResponse.TpDropZones.TpDropZone, function(item, idx) {
+                            var targetData = item.TpMachines.TpMachine;
+                            for (var i = 0; i < targetData.length; ++i) {
+                                context.options.push({
+                                    label: targetData[i].Netaddress,
+                                    value: targetData[i].Netaddress
+                                });
+                            }
+                            context._postLoad();
+                        });
+                    }
+                });
+            }
+        },
+
+        _loadDropZoneFolders: function (pathSepChar, Netaddr, Path, OS, depth) {
             depth = depth || 0;
             var retVal = [];
             retVal.push(Path);
@@ -267,7 +346,7 @@ define([
                         var files = response.FileListResponse.files.PhysicalFileStruct;
                         for (var i = 0; i < files.length; ++i) {
                             if (files[i].isDir) {
-                                requests.push(context._loadDropZoneFolders(Netaddr, Path + "/" + files[i].name, OS, ++depth));
+                                requests.push(context._loadDropZoneFolders(pathSepChar, Netaddr, Path + pathSepChar + files[i].name, OS, ++depth));
                             }
                         }
                     }
@@ -286,7 +365,7 @@ define([
             return str.indexOf(suffix, str.length - suffix.length) !== -1;
         },
 
-        loadDropZoneFolders: function () {
+        loadDropZoneFolders: function (pathSepChar) {
             var context = this;
             this.getDropZoneFolder = function () {
                 var baseFolder = this._dropZoneTarget.machine.Directory;
@@ -294,7 +373,7 @@ define([
                 return baseFolder + selectedFolder;
             }
             if (this._dropZoneTarget) {
-                this._loadDropZoneFolders(this._dropZoneTarget.machine.Netaddress, this._dropZoneTarget.machine.Directory, this._dropZoneTarget.machine.OS).then(function (results) {
+                this._loadDropZoneFolders(pathSepChar, this._dropZoneTarget.machine.Netaddress, this._dropZoneTarget.machine.Directory, this._dropZoneTarget.machine.OS).then(function (results) {
                     results.sort();
                     var store = new Memory({
                         data: arrayUtil.map(results, function (_path) {

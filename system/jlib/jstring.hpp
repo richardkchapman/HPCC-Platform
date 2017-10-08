@@ -134,6 +134,7 @@ public:
         return clear().append(value.str());
     }
     StringBuffer& operator=(StringBuffer&& value);
+    explicit operator bool() const { return (length() != 0); }
 
     StringBuffer &  appendlong(long value);
     StringBuffer &  appendulong(unsigned long value);
@@ -255,6 +256,7 @@ public:
     StringAttr(const StringAttr & src);
     StringAttr(StringAttr && src);
     StringAttr& operator = (StringAttr && from);
+    StringAttr& operator = (const StringAttr & from);
     inline ~StringAttr(void) { free(text); }
     
     inline operator const char * () const       { return text; }
@@ -275,9 +277,6 @@ public:
     
 private:
     char *       text;
-    
-private:
-    StringAttr &operator = (const StringAttr & from);
 };
 
 
@@ -300,7 +299,7 @@ public:
     virtual void set(const char *val) { attr.set(val); };
     virtual void clear() { attr.clear(); };
     virtual void setLen(const char *val, unsigned length) { attr.set(val, length); };
-    virtual unsigned length() const { return attr.length(); };
+    virtual unsigned length() const { return (unsigned)attr.length(); };
 
 private:
     StringAttr & attr;
@@ -580,6 +579,8 @@ inline bool hasPrefix(const char * text, const char * prefix, bool caseSensitive
         return strnicmp(text, prefix, strlen(prefix)) == 0;
 }
 
+// Search for a string in a null terminated array of const char * strings
+extern jlib_decl unsigned matchString(const char * search, const char * const * strings);
 
 extern jlib_decl char *j_strtok_r(char *str, const char *delim, char **saveptr);
 extern jlib_decl int j_memicmp (const void *s1, const void *s2, size32_t len); 

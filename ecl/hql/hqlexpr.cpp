@@ -910,11 +910,11 @@ void HqlParseContext::setGatherMeta(const MetaOptions & options)
 {
     metaOptions = options;
     metaState.gatherNow = !options.onlyGatherRoot;
-    metaTree.setown(createPTree("Meta"));
+    metaTree.setown(createPTree("Meta", ipt_fast));
 }
 
 
-static void setDefinitionText(IPropertyTree * target, const char * prop, IFileContents * contents)
+void HqlParseContext::setDefinitionText(IPropertyTree * target, const char * prop, IFileContents * contents)
 {
     StringBuffer sillyTempBuffer;
     getFileContentText(sillyTempBuffer, contents);  // We can't rely on IFileContents->getText() being null terminated..
@@ -922,6 +922,21 @@ static void setDefinitionText(IPropertyTree * target, const char * prop, IFileCo
 
     ISourcePath * sourcePath = contents->querySourcePath();
     target->setProp("@sourcePath", str(sourcePath));
+    if (checkDirty && contents->isDirty())
+    {
+        target->setPropBool("@dirty", true);
+    }
+
+}
+
+IPropertyTree * HqlParseContext::beginMetaSource(IFileContents * contents)
+{
+    ISourcePath * sourcePath = contents->querySourcePath();
+
+    IPropertyTree * attr = createPTree("Source", ipt_fast);
+    attr->setProp("@sourcePath", str(sourcePath));
+    metaState.nesting.append(*attr);
+    return attr;
 }
 
 void HqlParseContext::noteBeginAttribute(IHqlScope * scope, IFileContents * contents, IIdAtom * name)
@@ -942,15 +957,13 @@ void HqlParseContext::noteBeginAttribute(IHqlScope * scope, IFileContents * cont
 
     if (checkBeginMeta())
     {
-        IPropertyTree * attr = metaTree->addPropTree("Source", createPTree("Source"));
+        IPropertyTree * attr = beginMetaSource(contents);
         setFullNameProp(attr, "@name", scope->queryFullName(), str(name));
-        attr->setProp("@sourcePath", str(sourcePath));
-        metaState.nesting.append(attr);
     }
 
     if (globalDependTree)
     {
-        IPropertyTree * attr = globalDependTree->addPropTree("Attribute", createPTree("Attribute"));
+        IPropertyTree * attr = globalDependTree->addPropTree("Attribute");
         attr->setProp("@module", scope->queryFullName());
         attr->setProp("@name", str(name));
         attr->setProp("@sourcePath", str(sourcePath));
@@ -974,9 +987,9 @@ void HqlParseContext::noteBeginQuery(IHqlScope * scope, IFileContents * contents
     {
         ISourcePath * sourcePath = contents->querySourcePath();
 
-        IPropertyTree * attr = metaTree->addPropTree("Query", createPTree("Query"));
+        IPropertyTree * attr = createPTree("Query", ipt_fast);
         attr->setProp("@sourcePath", str(sourcePath));
-        metaState.nesting.append(attr);
+        metaState.nesting.append(*attr);
     }
 }
 
@@ -994,43 +1007,39 @@ void HqlParseContext::noteBeginModule(IHqlScope * scope, IFileContents * content
 
     if (checkBeginMeta())
     {
-        ISourcePath * sourcePath = contents->querySourcePath();
-
-        IPropertyTree * attr = metaTree->addPropTree("Source", createPTree("Source"));
-        attr->setProp("@sourcePath", str(sourcePath));
-        metaState.nesting.append(attr);
+        beginMetaSource(contents);
     }
 }
 
-void HqlParseContext::noteEndAttribute()
+void HqlParseContext::noteEndAttribute(bool success)
 {
     if (checkEndMeta())
-        finishMeta();
+        finishMeta(true, success);
 }
 
-void HqlParseContext::noteEndQuery()
+void HqlParseContext::noteEndQuery(bool success)
 {
     if (checkEndMeta())
-        finishMeta();
+        finishMeta(false, success);
 }
 
-void HqlParseContext::noteEndModule()
+void HqlParseContext::noteEndModule(bool success)
 {
     if (checkEndMeta())
-        finishMeta();
+        finishMeta(true, success);
 }
 
 void HqlParseContext::noteFinishedParse(IHqlScope * scope)
 {
     if (metaState.gatherNow)
-        expandScopeSymbolsMeta(metaState.nesting.tos(), scope);
+        expandScopeSymbolsMeta(&metaState.nesting.tos(), scope);
 }
 
 
 void HqlParseContext::notePrivateSymbols(IHqlScope * scope)
 {
     if (metaState.gatherNow)
-        expandScopeSymbolsMeta(metaState.nesting.tos(), scope);
+        expandScopeSymbolsMeta(&metaState.nesting.tos(), scope);
 }
 
 
@@ -1055,9 +1064,45 @@ bool HqlParseContext::checkEndMeta()
     return wasGathering;
 }
 
-void HqlParseContext::finishMeta()
+void HqlParseContext::finishMeta(bool isSeparateFile, bool success)
 {
-    metaState.nesting.pop();
+    if (metaState.nesting.empty())  // paranoid - could only happen on an internal error
+        return;
+
+    Owned<IPropertyTree> tos = &metaState.nesting.popGet();
+    if (isSeparateFile && !metaOptions.cacheLocation.isEmpty())
+    {
+        const char * originalPath = tos->queryProp("@sourcePath");
+        StringBuffer filename;
+        filename.append(metaOptions.cacheLocation);
+        addPathSepChar(filename);
+        filename.append(originalPath);
+        if (success)
+            filename.append(".eclmeta");
+        else
+            filename.append(".errmeta");
+        recursiveCreateDirectoryForFile(filename);
+
+        Owned<IFile> original = createIFile(originalPath);
+        Owned<IFile> file = createIFile(filename);
+
+        CDateTime originalTime;
+        CDateTime currentTime;
+        bool hasOriginal = original->getTime(nullptr, &originalTime, nullptr);
+        bool hasCurrent = file->getTime(nullptr, &currentTime, NULL);
+
+        //Overwrite the file if the original file is newer than the meta file
+        //This test will need to be improved later on, to reflect dependencies.
+        if (!hasOriginal || !hasCurrent || originalTime.compare(currentTime) > 0)
+        {
+            saveXML(filename, tos, 0, XML_Embed|XML_LineBreak);
+        }
+    }
+    else
+    {
+        IPropertyTree * tree = tos.getClear();
+        metaTree->addPropTree(tree->queryName(), tree);
+    }
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -1082,7 +1127,7 @@ IPropertyTree * queryEnsureArchiveModule(IPropertyTree * archive, const char * n
     IPropertyTree * module = archive->queryPropTree(xpath);
     if (!module)
     {
-        module = archive->addPropTree("Module", createPTree());
+        module = archive->addPropTree("Module");
         module->setProp("@name", name ? name : "");
         module->setProp("@key", lowerName);
         if (scope)
@@ -1119,7 +1164,7 @@ extern HQL_API IPropertyTree * createArchiveAttribute(IPropertyTree * module, co
 {
     StringBuffer lowerName;
     lowerName.append(name).toLowerCase();
-    IPropertyTree * attr = module->addPropTree("Attribute", createPTree());
+    IPropertyTree * attr = module->addPropTree("Attribute");
     attr->setProp("@name", name);
     attr->setProp("@key", lowerName);
     return attr;
@@ -1180,7 +1225,7 @@ void HqlLookupContext::noteExternalLookup(IHqlScope * parentScope, IHqlExpressio
 
                 if (!curAttrTree->queryPropTree(xpath.str()))
                 {
-                    IPropertyTree * depend = curAttrTree->addPropTree("Depend", createPTree());
+                    IPropertyTree * depend = curAttrTree->addPropTree("Depend");
                     depend->setProp("@module", moduleName);
                     depend->setProp("@name", str(expr->queryName()));
                 }
@@ -1201,7 +1246,7 @@ void HqlLookupContext::createDependencyEntry(IHqlScope * parentScope, IIdAtom * 
     IPropertyTree * attr = queryNestedDependTree()->queryPropTree(xpath.str());
     if (!attr)
     {
-        attr = queryNestedDependTree()->addPropTree("Attr", createPTree());
+        attr = queryNestedDependTree()->addPropTree("Attr");
         attr->setProp("@module", moduleName);
         attr->setProp("@name", nameText);
     }
@@ -1302,6 +1347,7 @@ const char *getOpString(node_operator op)
     case no_left: return "LEFT";
     case no_right: return "RIGHT";
     case no_outofline: return "OUTOFLINE";
+    case no_inline: return "INLINE";
     case no_dedup: return "DEDUP";
     case no_enth: return "ENTH";
     case no_sample: return "SAMPLE";
@@ -1511,6 +1557,7 @@ const char *getOpString(node_operator op)
     case no_parse: return "PARSE";
     case no_newparse: return "PARSE";
     case no_skip: return "SKIP";
+    case no_matched_injoin: return "MATCHED";
     case no_matched: return "MATCHED";
     case no_matchtext: return "MATCHTEXT";
     case no_matchlength: return "MATCHLENGTH";
@@ -1752,7 +1799,7 @@ const char *getOpString(node_operator op)
 
     case no_unused6:
     case no_unused13: case no_unused14: case no_unused15:
-    case no_unused32: case no_unused33: case no_unused34: case no_unused35: case no_unused36: case no_unused37: case no_unused38:
+    case no_unused33: case no_unused34: case no_unused35: case no_unused36: case no_unused37: case no_unused38:
     case no_unused40: case no_unused41: case no_unused42: case no_unused43: case no_unused44: case no_unused45: case no_unused46: case no_unused47: case no_unused48: case no_unused49:
     case no_unused50: case no_unused52:
     case no_unused80:
@@ -1850,6 +1897,7 @@ bool checkConstant(node_operator op)
     case no_xmlunicode:
     case no_xmlproject:
     case no_matched:
+    case no_matched_injoin:
     case no_matchtext:
     case no_matchunicode:
     case no_matchlength:
@@ -2229,6 +2277,7 @@ childDatasetType getChildDatasetType(IHqlExpression * expr)
     case no_thisnode:
     case no_sectioninput:
     case no_outofline:
+    case no_inline:
         if (expr->isDataset())
             return childdataset_dataset_noscope;
         return childdataset_none;
@@ -2566,6 +2615,7 @@ inline unsigned doGetNumChildTables(IHqlExpression * dataset)
     case no_thisnode:
     case no_sectioninput:
     case no_outofline:
+    case no_inline:
         if (dataset->isDataset())
             return 1;
         return 0;
@@ -2736,6 +2786,7 @@ bool definesColumnList(IHqlExpression * dataset)
     case no_sectioninput:
     case no_related:
     case no_outofline:
+    case no_inline:
     case no_fieldmap:
     case no_owned_ds:
         return false;
@@ -3142,7 +3193,7 @@ IHqlExpression * ensureExprType(IHqlExpression * expr, ITypeInfo * type, node_op
     {
         return ensureExprType(expr, type->queryPromotedType(), castOp);
     }
-    else if (type->getSize() == UNKNOWN_LENGTH)
+    else if (type->getStringLen() == UNKNOWN_LENGTH)
     {
         if (exprType)
         {
@@ -4222,8 +4273,13 @@ void CHqlRealExpression::updateFlagsAfterOperands()
             break;
         }
     case no_clustersize:
-        //wrong, but improves the generated code
-        infoFlags |= (HEFnoduplicate|HEFcontextDependentException);
+        //pure is added with the wfid as a parameter which guarantees that it can be commoned up.
+        if (!hasAttribute(pureAtom))
+            infoFlags |= (HEFnoduplicate);
+
+        //Wrong, but improves the generated code (preventing it being serialized).
+        //Even better would be to evaluate once, but not serialize...
+        infoFlags |= (HEFcontextDependentException);
         break;
     case no_type:
         {
@@ -4987,6 +5043,7 @@ IHqlExpression *CHqlExpressionWithType::clone(HqlExprArray &newkids)
     switch (op)
     {
     case no_outofline:
+    case no_inline:
         return createWrapper(op, newkids);
     case no_embedbody:
         {
@@ -7872,6 +7929,14 @@ CFileContents::CFileContents(IFile * _file, ISourcePath * _sourcePath, bool _isS
         file.clear();
 }
 
+timestamp_type CFileContents::getTimeStamp()
+{
+    //MORE: Could store a timestamp if the source was the legacy repository which has no corresponding file
+    if (!file)
+        return 0;
+    return ::getTimeStamp(file);
+}
+
 bool CFileContents::preloadFromFile()
 {
     const char * filename = file->queryFilename();
@@ -8031,6 +8096,8 @@ public:
     virtual size32_t length() { return len; }
     virtual bool isImplicitlySigned() { return contents->isImplicitlySigned(); }
     virtual IHqlExpression * queryGpgSignature() { return contents->queryGpgSignature(); }
+    virtual timestamp_type getTimeStamp() { return contents->getTimeStamp(); }
+    virtual bool isDirty() override { return contents->isDirty(); }
 protected:
     Linked<IFileContents> contents;
     size32_t offset;
@@ -8585,6 +8652,9 @@ IHqlExpression *CHqlRemoteScope::lookupSymbol(IIdAtom * searchName, unsigned loo
 
     //Preserve ob_sandbox etc. annotated on the original definition, but not on the parsed code.
     unsigned repositoryFlags=ret->getSymbolFlags();
+    if (ctx.checkDirty() && contents->isDirty())
+        repositoryFlags |= ob_sandbox;
+
     IHqlNamedAnnotation * symbol = queryNameAnnotation(newSymbol);
     assertex(symbol);
     symbol->setRepositoryFlags(repositoryFlags);
@@ -8592,7 +8662,7 @@ IHqlExpression *CHqlRemoteScope::lookupSymbol(IIdAtom * searchName, unsigned loo
     if (repositoryFlags&ob_sandbox)
     {
         if (ctx.errs)
-            ctx.errs->reportWarning(CategoryInformation,WRN_DEFINITION_SANDBOXED,"Definition is sandboxed",filename,0,0,0);
+            ctx.errs->reportWarning(CategoryInformation,WRN_DEFINITION_SANDBOXED,"Definition is modified",str(contents->querySourcePath()),0,0,0);
     }
 
     if (!(newSymbol->isExported() || (lookupFlags & LSFsharedOK)))
@@ -9090,7 +9160,7 @@ IHqlExpression * createDelayedReference(node_operator op, IHqlExpression * modul
     else
         ret.setown(createValue(op, attr->getType(), args));
 
-    if (attr->isScope())
+    if (attr->isScope() || attr->getOperator() == no_enum)
     {
         if (attr->getOperator() != no_funcdef)
             ret.setown(createDelayedScope(ret.getClear()));
@@ -9293,6 +9363,26 @@ no_purevirtual - a member that has no associated definition.
 
 */
 
+bool definesMacro(IHqlExpression * expr)
+{
+    IHqlScope * scope = expr->queryScope();
+    HqlExprArray syms;
+    scope->getSymbols(syms);
+    ForEachItemIn(i, syms)
+    {
+        //HACK - needs more work
+        IHqlExpression & symbol = syms.item(i);
+        if (symbol.isMacro())
+            return true;
+        if (symbol.isScope())
+        {
+            //MORE: Need to ensure that this symbol is defined, and walk the children
+        }
+
+    }
+    return false;
+}
+
 bool canBeDelayed(IHqlExpression * expr)
 {
     switch (expr->getOperator())
@@ -9304,7 +9394,19 @@ bool canBeDelayed(IHqlExpression * expr)
     case no_record:             // LEFT has problems because queryRecord() is the unbound funcdef
     case no_keyindex:           // BUILD() and other functions a reliant on this being expanded out
     case no_newkeyindex:
+    case no_forwardscope:
+    case no_type:
+    case no_inline:
         return false;
+    case no_remotescope:
+    case no_scope:
+    case no_privatescope:
+    case no_virtualscope:
+    {
+        if (definesMacro(expr))
+            return false;
+        return true;
+    }
     case no_funcdef:
         return canBeDelayed(expr->queryChild(0));
     }
@@ -10040,13 +10142,21 @@ CHqlDelayedScope::CHqlDelayedScope(HqlExprArray &_ownedOperands)
  : CHqlExpressionWithTables(no_delayedscope), type(nullptr)
 {
     setOperands(_ownedOperands); // after type is initialized
-    type = queryChild(0)->queryType();
+    IHqlExpression * arg0 = queryChild(0);
+    if (arg0->getOperator() == no_delayedselect)
+        arg0 = arg0->queryChild(2);
+    type = arg0->queryType();
 
     ITypeInfo * scopeType = type;
     if (scopeType->getTypeCode() == type_function)
         scopeType = scopeType->queryChildType();
 
     typeScope = ::queryScope(scopeType);
+    if (!typeScope)
+    {
+        typeScope = arg0->queryScope();
+        type = typeScope->queryExpression()->queryType();
+    }
     assertex(typeScope);
 
     if (!hasAttribute(_virtualSeq_Atom))
@@ -10593,6 +10703,9 @@ IHqlExpression * CHqlDelayedScopeCall::lookupSymbol(IIdAtom * searchName, unsign
     if (!match)
         return NULL;
     if (lookupFlags & LSFignoreBase)
+        return match.getClear();
+
+    if (!canBeVirtual(match) && match->isFullyBound())
         return match.getClear();
 
     return createDelayedReference(no_delayedselect, this, match, lookupFlags, ctx);
@@ -11476,8 +11589,10 @@ struct CallExpansionContext
             {
             case no_outofline:
                 return forceOutOfLineExpansion;
+            case no_inline:
+                return true;
             }
-            return true;
+            return expandNestedCalls;
         }
         return false;
     }
@@ -11530,7 +11645,7 @@ protected:
     virtual IHqlExpression * createTransformed(IHqlExpression * expr)
     {
         //MORE: This test needs to be extended?
-        if (expr->isFullyBound() && !containsCall(expr, ctx.forceOutOfLineExpansion))
+        if (expr->isFullyBound() && (!ctx.expandNestedCalls || !containsCall(expr, ctx.forceOutOfLineExpansion)))
             return LINK(expr);
 
 #ifdef TRACE_BINDING
@@ -11646,7 +11761,7 @@ protected:
         }
 
         OwnedHqlExpr transformed = QuickHqlTransformer::createTransformedBody(expr);
-        if ((op == no_call) && ctx.expandNestedCalls)
+        if (op == no_call)
         {
             if (ctx.expandFunctionCall(transformed))
                 return expandFunctionCall(ctx, transformed);
@@ -11717,6 +11832,9 @@ IHqlExpression * ParameterBindTransformer::createBoundBody(IHqlExpression *funcd
                 newFuncdef.setown(completeTransform(funcdef, args));
                 break;
             }
+        case no_inline:
+            body = body->queryChild(0);
+            //fall through
         default:
             //No arguments to the function => transforming will do nothing
             if (actuals.ordinality() == 0)
@@ -12161,6 +12279,7 @@ extern IHqlExpression * createBoundFunction(IErrorReceiver * errors, IHqlExpress
     CallExpansionContext ctx;
     ctx.errors = errors;
     ctx.functionCache = functionCache;
+    ctx.expandNestedCalls = false;
     OwnedHqlExpr call = createNormalizedCall(func, actuals);
     if (func->getOperator() != no_funcdef)
         return call.getClear();
@@ -12203,6 +12322,16 @@ void expandDelayedFunctionCalls(IErrorReceiver * errors, HqlExprArray & exprs)
     replaceArray(exprs, target);
 }
 
+IHqlExpression * expandDelayedFunctionCalls(IErrorReceiver * errors, IHqlExpression * expr)
+{
+    HqlExprArray functionCache;
+    CallExpansionContext ctx;
+    ctx.functionCache = &functionCache;
+    ctx.errors = errors;
+    CallExpandTransformer binder(ctx);
+
+    return binder.transform(expr);
+}
 
 extern IHqlExpression * createReboundFunction(IHqlExpression *func, HqlExprArray &actuals)
 {
@@ -12279,7 +12408,7 @@ IHqlExpression *createDataset(node_operator op, HqlExprArray & parms)
     return ret;
 }
 
-extern IHqlExpression *createNewDataset(IHqlExpression *name, IHqlExpression *recorddef, IHqlExpression *mode, IHqlExpression *parent, IHqlExpression *joinCondition, IHqlExpression * signature, IHqlExpression * options)
+extern IHqlExpression *createNewDataset(IHqlExpression *name, IHqlExpression *recorddef, IHqlExpression *mode, IHqlExpression *parent, IHqlExpression *joinCondition, IHqlExpression * options)
 {
     HqlExprArray args;
     args.append(*name);
@@ -12296,8 +12425,6 @@ extern IHqlExpression *createNewDataset(IHqlExpression *name, IHqlExpression *re
         options->unwindList(args, no_comma);
         options->Release();
     }
-    if (signature)
-        args.append(*signature);
     return createDataset(no_table, args);
 }
 
@@ -13816,6 +13943,24 @@ unsigned exportField(IPropertyTree *table, IHqlExpression *field, unsigned & off
             thisSize = exportRecord(f, record, flatten);
     }
     f->setPropInt("@size", thisSize);
+
+    StringBuffer userOptions;
+    ForEachChild(i, field)
+    {
+        IHqlExpression * attr = field->queryChild(i);
+        if (attr->isAttribute() && (attr->queryName() == setAtom))
+        {
+            ForEachChild(i2, attr)
+            {
+                if (userOptions.length())
+                    userOptions.append(",");
+                getExprECL(attr->queryChild(i2), userOptions);
+            }
+        }
+    }
+    if (userOptions.length())
+        f->setProp("@options", userOptions.str());
+
     return thisSize;
 }
 
@@ -13907,6 +14052,20 @@ void exportMap(IPropertyTree *dataNode, IHqlExpression *destTable, IHqlExpressio
     map->setProp("@destTable", getExportName(destTable, name).str());
     map->setProp("@sourceTable", getExportName(sourceTable, name.clear()).str());
     maps->addPropTree("MapTables", map);
+}
+
+void exportJsonType(StringBuffer &ret, IHqlExpression *table)
+{
+    Owned<IRtlFieldTypeDeserializer> deserializer(createRtlFieldTypeDeserializer());
+    const RtlTypeInfo *typeInfo = buildRtlType(*deserializer.get(), table->queryType());
+    dumpTypeInfo(ret, typeInfo);
+}
+
+void exportBinaryType(MemoryBuffer &ret, IHqlExpression *table)
+{
+    Owned<IRtlFieldTypeDeserializer> deserializer(createRtlFieldTypeDeserializer());
+    const RtlTypeInfo *typeInfo = buildRtlType(*deserializer.get(), table->queryType());
+    dumpTypeInfo(ret, typeInfo);
 }
 
 void exportData(IPropertyTree *data, IHqlExpression *table, bool flatten)

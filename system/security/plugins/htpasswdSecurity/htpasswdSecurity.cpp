@@ -122,6 +122,9 @@ protected:
 		if (0 == user.length())
 			throw MakeStringException(-1, "htpasswd User name is NULL");
 
+		if (sec_user.credentials().getSessionToken().length())//Already authenticated it token exists
+		    return true;
+
 		CriticalBlock block(crit);
 		if (!apr_initialized)
 			initAPR();

@@ -164,7 +164,7 @@ void Esdl2LocalContext::handleDataFor(IXmlWriterExt & writer)
             {
                 IMapping& et = it.query();
                 auto val = m_dataFor->mapToValue(&et)->get();
-                writer.outputUtf8(rtlUtf8Length(strlen(val),val),val, "@xsi:schemaLocation");
+                writer.outputInline(val);
             }
         }
     }
@@ -230,13 +230,22 @@ void Esdl2Base::serialize_attributes(StringBuffer &out)
     }
 }
 
-// return true if it passed version check
+// return true if it passed optional check and version check
 bool Esdl2Base::checkVersion(Esdl2TransformerContext &ctx)
 {
     if (!param_group.isEmpty())
-        if (!ctx.param_groups || !ctx.param_groups->hasProp(param_group.get()))
-            return false;
-
+    {
+        if (param_group.get()[0] == '!')
+        {
+           if (ctx.param_groups && ctx.param_groups->hasProp(param_group.get()+1))
+               return false;
+        }
+        else
+        {
+            if (!ctx.param_groups || !ctx.param_groups->hasProp(param_group.get()))
+                return false;
+        }
+    }
     return m_def->checkVersion(ctx.client_ver);
 }
 
@@ -893,12 +902,13 @@ void Esdl2Struct::buildDefaults(Esdl2Transformer *xformer, StringBuffer &path, I
 
 Esdl2Base* Esdl2Struct::queryChild(const char* name, bool nocase)
 {
-    ForEachItemIn(idx, m_children)
-    {
-        Esdl2Base *child = &m_children.item(idx);
-        if ((nocase && strieq(child->queryName(), name)) || streq(child->queryName(),name))
-            return child;
-    }
+    Esdl2Base** child = NULL;
+    if(nocase)
+        child = m_child_nocasemap.getValue(StringBuffer(name).toLowerCase().str());
+    else
+        child = m_child_map.getValue(name);
+    if(child && *child)
+        return *child;
 
     return NULL;
 }
@@ -1110,8 +1120,9 @@ void Esdl2Struct::process(Esdl2TransformerContext &ctx, const char *out_name, Es
                                 if (ctx.writer->length() > len)
                                 {
                                     ESDL_DBG("Taking out data for DataFor '%s' from out buffer", chd.queryDataFor()->queryName());
-                                    local.setDataFor(chd.queryDataFor()->queryName(), ctx.writer->str()+len);
-                                    ctx.writer->rewindTo(location);
+                                    StringBuffer databuf;
+                                    ctx.writer->cutFrom(location, databuf);
+                                    local.setDataFor(chd.queryDataFor()->queryName(), databuf.str());
                                     if (esdlListItemCount == 1)
                                     {// Not call outputEndArray()
                                         esdlListName.clear();
@@ -1175,9 +1186,9 @@ void Esdl2Struct::processElement(Esdl2TransformerContext &ctx)
         {
             StartTag child_start;
             ctx.xppp->readStartTag(child_start);
-            Esdl2Base **child = m_child_map.getValue(child_start.getLocalName());
-            if (child && *child)
-                (*child)->process(ctx, NULL);
+            Esdl2Base* child = queryChild(child_start.getLocalName());
+            if (child)
+                child->process(ctx, NULL);
             else
                 ctx.xppp->skipSubTree();
             break;
@@ -1196,8 +1207,7 @@ void Esdl2Struct::addChildren(Esdl2Transformer *xformer, IEsdlDefObjectIterator 
         {
             m_children.append(*obj);
             m_child_map.setValue(obj->queryName(), obj);
-            if (obj->queryEclName())
-                m_child_map.setValue(obj->queryEclName(), obj);
+            m_child_nocasemap.setValue(StringBuffer(obj->queryName()).toLowerCase().str(), obj);
             if (might_skip_root && !stricmp(obj->queryName(), "response"))
                 obj->setMightSkipRoot(true);
         }
@@ -1604,44 +1614,11 @@ int Esdl2Transformer::process(IEspContext &ctx, EsdlProcessMode mode, const char
     return rc;
 };
 
-static SecAccessFlags strToAccessFlag(const char* flag)
-{
-    if (!flag || !*flag)
-        return SecAccess_Full;
-    if (!stricmp(flag,"None"))
-        return SecAccess_None;
-    if (!stricmp(flag,"Access"))
-        return SecAccess_Access;
-    if (!stricmp(flag,"Read"))
-        return SecAccess_Read;
-    if (!stricmp(flag,"Write"))
-        return SecAccess_Write;
-    if (!stricmp(flag,"Full"))
-        return SecAccess_Full;
-
-    DBGLOG("Unknown access level: %s", flag);
-    return SecAccess_Full;
-}
-
 int Esdl2Transformer::process(IEspContext &ctx, EsdlProcessMode mode, const char* service, const char *method, IPropertyTree &in, IXmlWriterExt* writer, unsigned int flags, const char *ns)
 {
     IEsdlMethodInfo *mi = queryMethodInfo(service,method);
     if (!mi)
         throw MakeStringException(-1, "ESDL - method '%s::%s'not found", service, method);
-
-    // check the auth_feature
-    if (mode==EsdlRequestMode)
-    {
-        const char* auth_feature = mi->queryMetaData("auth_feature");
-        if (auth_feature && *auth_feature)
-        {
-            const char* level = strchr(auth_feature,':');
-            SecAccessFlags requiredAccess = strToAccessFlag(level?level+1:NULL);
-            SecAccessFlags grantAccess;
-            if (!ctx.authorizeFeature(auth_feature,grantAccess) || grantAccess<requiredAccess)
-                throw MakeStringException(-1, "Access Denied to %s",auth_feature);
-        }
-    }
 
     const char *root_type=NULL;
     if (mode==EsdlRequestMode)

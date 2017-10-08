@@ -24,7 +24,7 @@ Make a copy of the /opt/HPCCSystems/examples/EsdlExample folder.
 From EsdlExample copy folder:
 
 1. Generate java base classes (and dummy implementation file): 
-esdl java esdl_example.esdl EsdlExample --version=9
+esdl java esdl_example.esdl EsdlExample
 
 2. Compile java base classes and example service (must have sudo access to place the classes in the default HPCC class location):
 sudo javac -g EsdlExampleServiceBase.java -cp /opt/HPCCSystems/classes -d /opt/HPCCSystems/classes/
@@ -37,7 +37,7 @@ esdl ecl esdl_example.esdl .
 ecl publish roxie RoxieEchoPersonInfo.ecl
 
 5. Publish the esdl defined service to dynamicESDL:
- esdl publish EsdlExample esdl_example.esdl --version 9 --overwrite
+ esdl publish esdl_example.esdl EsdlExample --overwrite
 
 5. Bind both java and roxie implementations to DynamicESDL
 esdl bind-service myesp 8088 esdlexample.1 EsdlExample --config esdl_binding.xml --overwrite
@@ -52,3 +52,9 @@ soapplus -url http://.:8088/EsdlExample -i roxierequest.xml
 
 http://<DynamicEsdlIP>:8088
 
+9. To debug the java service:
+Uncomment the jvmoptions line in environment.conf:
+jvmoptions=-XX:-UsePerfData -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=2000
+And comment out the original jvmoptions line:
+#jvmoptions=-XX:-UsePerfData
+From eclipse for java, create a new debug configuration for remote java application, under connect tab, select your esdl java service project, select standard socket attach connection type, fill in the host and port. The port should match what you've specified in the jvmoptions inside environment.conf, which is 2000 in our example above. Click the Debug button and off you go.

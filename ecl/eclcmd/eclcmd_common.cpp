@@ -27,6 +27,27 @@
 
 #include "eclcmd_common.hpp"
 
+StringBuffer eclccpath;
+
+const char *queryEclccPath(bool optVerbose)
+{
+    if (!eclccpath.length())
+    {
+        const char *envpath = getenv("ECLCC_PATH");
+        if (envpath)
+            eclccpath.append(envpath);
+        else
+        {
+            splitDirTail(queryCurrentProcessPath(), eclccpath);
+            eclccpath.append("eclcc");
+        }
+        if (optVerbose)
+            printf("Using eclcc path %s\n", eclccpath.str());
+    }
+    return eclccpath.str();
+}
+
+
 int outputMultiExceptionsEx(const IMultiException &me)
 {
     if (!me.ordinality())
@@ -429,9 +450,12 @@ public:
 
     void buildCmd(StringBuffer &cmdLine)
     {
-        cmdLine.set("eclcc -E");
+        cmdLine.set(queryEclccPath(cmd.optVerbose));
+        cmdLine.append(" -E");
         if (cmd.optLegacy)
             cmdLine.append(" -legacy");
+        if (cmd.optCheckDirty)
+            cmdLine.append(" -checkDirty");
         if (cmd.optDebug)
             cmdLine.append(" -g");
         appendOptPath(cmdLine, 'I', cmd.optImpPath.str());
@@ -459,7 +483,10 @@ public:
                 IEspNamedValue &item = cmd.debugValues.item(i);
                 const char *name = item.getName();
                 const char *value = item.getValue();
-                cmdLine.append(" -f").append(name);
+                cmdLine.append(' ');
+                if (!name || name[0]!='-')
+                    cmdLine.append("-f");
+                cmdLine.append(name);
                 if (value)
                     cmdLine.append('=').append(value);
             }
@@ -492,8 +519,11 @@ public:
 
         Owned<IPipeProcess> pipe = createPipeProcess();
         bool hasInput = streq(cmd.optObj.value.str(), "stdin");
-        pipe->run(cmd.optVerbose ? "EXEC" : NULL, cmdLine.str(), NULL, hasInput, true, true);
-
+        if (!pipe->run(cmd.optVerbose ? "EXEC" : NULL, cmdLine.str(), NULL, hasInput, true, true))
+        {
+            fprintf(stderr, "Failed to run eclcc command %s\n", cmdLine.str());
+            return false;
+        }
         StringBuffer errors;
         Owned<EclCmdErrorReader> errorReader = new EclCmdErrorReader(pipe, errors);
         errorReader->start();
@@ -657,6 +687,8 @@ eclCmdOptionMatchIndicator EclCmdWithEclTarget::matchCommandLineOption(ArgvItera
         return EclCmdOptionMatch;
     if (iter.matchFlag(optLegacy, ECLOPT_LEGACY) || iter.matchFlag(optLegacy, ECLOPT_LEGACY_DASH))
         return EclCmdOptionMatch;
+    if (iter.matchFlag(optCheckDirty, ECLOPT_CHECKDIRTY))
+        return EclCmdOptionMatch;
     if (iter.matchFlag(optDebug, ECLOPT_DEBUG) || iter.matchFlag(optDebug, ECLOPT_DEBUG_DASH))
         return EclCmdOptionMatch;
     if (iter.matchOption(optResultLimit, ECLOPT_RESULT_LIMIT))
@@ -718,9 +750,9 @@ bool EclCmdWithEclTarget::finalizeOptions(IProperties *globals)
         exit(1); //not really a usage error
     }
 
-    if ((optObj.type==eclObjSource || optObj.type==eclObjArchive) && optTargetCluster.isEmpty())
+    if ((optObj.type==eclObjSource || optObj.type==eclObjArchive || optObj.type==eclObjQuery) && optTargetCluster.isEmpty())
     {
-        fprintf(stderr, "\nTarget must be specified when source is ECL Source or Archive\n");
+        fprintf(stderr, "\nTarget and source must be specified for ECL file, Query, or Archive\n");
         return false;
     }
 

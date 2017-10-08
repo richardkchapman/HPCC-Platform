@@ -621,7 +621,7 @@ Common date formats
     American    '%m/%d/%Y'  mm/dd/yyyy
     Euro        '%d/%m/%Y'  dd/mm/yyyy
     Iso format  '%Y-%m-%d'  yyyy-mm-dd
-    Iso basic   'Y%m%d'     yyyymmdd
+    Iso basic   '%Y%m%d'    yyyymmdd
                 '%d-%b-%Y'  dd-mon-yyyy    e.g., '21-Mar-1954'
  */
 
@@ -1159,9 +1159,9 @@ END;
  */
 
 EXPORT BOOLEAN IsValidTime(Time_t time) := FUNCTION
-    hourInBounds := (Hour(time) BETWEEN 0 AND 23);
-    minuteInBounds := (Minute(time) BETWEEN 0 AND 59);
-    secondInBounds := (Second(time) BETWEEN 0 AND 59);
+    hourInBounds := (Hour(time) <= 23);
+    minuteInBounds := (Minute(time) <= 59);
+    secondInBounds := (Second(time) <= 59);
 
     RETURN hourInBounds AND minuteInBounds AND secondInBounds;
 END;

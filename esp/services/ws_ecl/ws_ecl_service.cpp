@@ -1840,7 +1840,7 @@ int CWsEclBinding::submitWsEclWorkunit(IEspContext & context, WsEclWuInfo &wsinf
     Owned <IWorkUnit> workunit = factory->createWorkUnit("wsecl", context.queryUserId(), context.querySecManager(), context.queryUser());
 
     IExtendedWUInterface *ext = queryExtendedWU(workunit);
-    ext->copyWorkUnit(sourceWorkUnit, false);
+    ext->copyWorkUnit(sourceWorkUnit, false, false);
 
     workunit->clearExceptions();
     workunit->resetWorkflow();
@@ -2565,7 +2565,7 @@ int CWsEclBinding::onGet(CHttpRequest* request, CHttpResponse* response)
         me->append(*MakeStringExceptionDirect(-1, "Unknown Exception"));
     }
     
-    response->handleExceptions(getXslProcessor(), me, "WsEcl", "", StringBuffer(getCFD()).append("./smc_xslt/exceptions.xslt").str());
+    response->handleExceptions(getXslProcessor(), me, "WsEcl", "", StringBuffer(getCFD()).append("./smc_xslt/exceptions.xslt").str(), false);
     return 0;
 }
 

@@ -32,7 +32,6 @@ void AddApi();
 void AddEspMessage();
 void AddEspMethod();
 void AddEspProperty();
-
 extern int yylex(void);
 void yyerror(const char *s);
 
@@ -1537,10 +1536,28 @@ void AddEspMessage()
    }
 }
 
+void CheckEspProperty()
+{
+    if(!CurParam)
+        return;
+    StringArray ErrMsgs;
+    bool hasDup = CurParam->checkDup(ErrMsgs, CurEspMessage->getParams());
+    if(hasDup)
+    {
+        ForEachItemIn(i, ErrMsgs)
+        {
+            errnum = 11;
+            VStringBuffer ErrMsg("Warning: %s", ErrMsgs.item(i));
+            yyerror(ErrMsg.str());
+        }
+    }
+}
+
 void AddEspProperty()
 {
     if (CurParam)
     {
+        CheckEspProperty();
         if (LastParam)
             LastParam->next = CurParam;
         else
@@ -1686,7 +1703,7 @@ void yyerror(const char *s)
       yytext = (char*)strdup("EOL");
     }
     // the following error format work with Visual Studio double click.
-    printf("%s(%d) : syntax error H%d : %s near \"%s\"\n",hcp->filename, linenum, errnum, s, yytext);
+    fprintf(stderr, "%s(%d) : syntax error H%d : %s near \"%s\"\n",hcp->filename, linenum, errnum, s, yytext);
     outf("*** %s(%d) syntax error H%d : %s near \"%s\"\n",hcp->filename, linenum, errnum, s, yytext);
     errnum = 0;
 }

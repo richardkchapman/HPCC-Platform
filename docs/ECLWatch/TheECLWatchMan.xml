@@ -42,15 +42,18 @@
       <para></para>
     </legalnotice>
 
-    <xi:include href="common/Version.xml" xpointer="FooterInfo"
+    <xi:include href="common/Version.xml"
+                xpointer="xpointer(//*[@id='FooterInfo'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
-    <xi:include href="common/Version.xml" xpointer="DateVer"
+    <xi:include href="common/Version.xml"
+                xpointer="xpointer(//*[@id='DateVer'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <corpname>HPCC Systems<superscript>®</superscript></corpname>
 
-    <xi:include href="common/Version.xml" xpointer="Copyright"
+    <xi:include href="common/Version.xml"
+                xpointer="xpointer(//*[@id='Copyright'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <mediaobject role="logo">
@@ -63,20 +66,442 @@
   <chapter id="ECLWatch_Intro">
     <title>Introducing ECL Watch</title>
 
-    <sect1 id="ECLWatch_Introduction" role="nobrk">
-      <title>Introduction</title>
+    <para>ECL Watch is a service that runs on the Enterprise Services Platform
+    (ESP), a middleware component on the HPCC Platform.</para>
 
-      <para>ECL Watch is a service that runs on the Enterprise Services
-      Platform (ESP), a middleware component on the HPCC Platform.</para>
+    <para>ECL Watch provides an interface to the HPCC system and allows you to
+    view information and interrogate nodes to confirm all expected processes
+    are running. It is a plugin that is useful for Systems Administrators to
+    check processes, examine topology, and view logs. It is useful to ECL
+    Programmers to monitor the status of jobs and files, and other pertinent
+    information. This provides a simple view into the system and a means to
+    perform Workunit and data files maintenance.</para>
 
-      <para>ECL Watch provides an interface to the HPCC system and allows you
-      to view information and interrogate nodes to confirm all expected
-      processes are running. It is a plug-in that is useful for Systems
-      Administrators to check processes, examine topology, and view logs. It
-      is useful to ECL Programmers to monitor the status of jobs and files,
-      and other pertinent information. This provides a simple view into the
-      system and a means to perform Workunit and data files
-      maintenance.</para>
+    <para>The ECL Watch interface is a browser based set of pages where you
+    can access and interface with the HPCC System. To Run <emphasis
+    role="bold">ECL Watch</emphasis> using you browser, go to the node on your
+    system running <emphasis role="bold">ESP/ECL Watch</emphasis> on port
+    8010. For example, http://nnn.nnn.nnn.nnn:8010, where nnn.nnn.nnn.nnn is
+    your ESP/ECL Watch node's IP address. This will launch ECL Watch.</para>
+
+    <para>ECL Watch is organized by categories based on several system
+    functions. These functions or actions are accessible through the links
+    along the top of the main home page. However there are several ECL Watch
+    items with common functionality universally across pages of ECL
+    Watch.</para>
+
+    <sect1 id="Common_Elements">
+      <title>Common Elements</title>
+
+      <para>There are common elements that are useful anywhere within ECL
+      Watch.</para>
+
+      <sect2 id="OpenInNewPage">
+        <title>Open in New Page</title>
+
+        <para>The <emphasis role="bold">Open in New Page</emphasis> link
+        allows you to open a new window directly to the item which you are
+        viewing. <figure>
+            <title>Open in New Page</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/ECLWA500.jpg" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
+
+        <para>Opening a new page of the current view is useful in several
+        ways:</para>
+
+        <itemizedlist>
+          <listitem>
+            <para><emphasis role="bold">Open in New Page</emphasis> is a
+            shareable link. Right-click on <emphasis role="bold">Open in New
+            Page</emphasis> and select <emphasis>Copy link address</emphasis>
+            from the context menu. You can now save, share, or send that link
+            and the recipient can open a window directly to the (new)
+            page.</para>
+          </listitem>
+
+          <listitem>
+            <para>New pages maintain filter states. If you have set a filter
+            and share that link, the new page has the same filter set.</para>
+          </listitem>
+
+          <listitem>
+            <para>The new page is live. (If that page has auto-refresh
+            enabled) The recipient doesn't need to reset the page or refresh
+            to see current state.</para>
+          </listitem>
+        </itemizedlist>
+      </sect2>
+
+      <sect2 id="ListWidgets">
+        <title>List widgets</title>
+
+        <para><figure>
+            <title>List Widgets</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/ECLWA-Comm.jpg" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
+
+        <para>ECL Watch commonly displays items in the forms of a list. Lists
+        of workunits, lists of logical files, lists of Roxie queries, etc. The
+        following elements in ECL Watch work on any list widget:</para>
+
+        <para><itemizedlist>
+            <listitem>
+              <para>Download as CSV (Workunits, DFU Workunits, Logical files,
+              and Roxie queries)</para>
+            </listitem>
+
+            <listitem>
+              <para>Column check box. Select all rows by selecting the check
+              box at top (Use Shift+Click to select a range)</para>
+            </listitem>
+
+            <listitem>
+              <para>Sort by column header. Click on the column header to sort
+              that column according to that column's contents.</para>
+            </listitem>
+
+            <listitem>
+              <para>Resize Column Widths by dragging the borders.</para>
+            </listitem>
+
+            <listitem>
+              <para>Filters that allow you to set criteria for the items to
+              display in the list.</para>
+            </listitem>
+          </itemizedlist></para>
+
+        <sect3>
+          <title>List Filters</title>
+
+          <para>Filter options on a list allow you to use specified criteria
+          to set what you display in the list. Press the <emphasis
+          role="bold">Filter</emphasis> action button to display the filter
+          options. When you specify any Filter options, the Filter action
+          button changes and then displays <emphasis role="bold">Filter
+          Set</emphasis> and the filter indicator image lights up. When you
+          then copy an <emphasis role="bold">Open in New Page</emphasis> link
+          with the filter set, the filter condition persists. Filter
+          conditions limit the results displayed until you clear the
+          filter.</para>
+        </sect3>
+      </sect2>
+
+      <sect2 id="ECLWA_BannerItems">
+        <title>Banner Items</title>
+
+        <para>The banner area of ECL Watch appears at the top of all
+        pages.</para>
+
+        <sect3 id="ECLWAtchHomeButton">
+          <title>Home Button</title>
+
+          <para>The HPCC Systems home button is also the main Activity menu
+          link. More than just a decoration the home ECL Watch button actually
+          opens up the Activity page, discussed in more detail in the ensuing
+          chapter.</para>
+
+          <para>The icons to the left of the home button are links to
+          different areas of ECL Watch. Each of the link areas are discussed
+          in subsequent chapters.</para>
+        </sect3>
+
+        <sect3 id="MonitorIndicatorLight">
+          <title>Monitor indicator light</title>
+
+          <para>The Monitor indicator light is used to provide an at a glance
+          snapshot of your overall system health. If you have monitoring and
+          reporting configured (see <emphasis>HPCC Monitoring and
+          Reporting</emphasis>) then this light will display a color based on
+          the the overall (configurable) system health. The light is black if
+          there is no monitoring or reporting configured for your
+          system.</para>
+        </sect3>
+
+        <sect3 id="DownloadAsCSV">
+          <title>Download as CSV</title>
+
+          <para>With most lists in ECL Watch you have the ability to download
+          selected rows as a CSV formatted file. You can then open the CSV
+          file in any spreadsheet application which supports CSV
+          format.</para>
+        </sect3>
+      </sect2>
+
+      <sect2 id="ECLWatch_GlobalSearch">
+        <title>Global Search</title>
+
+        <para>The global search box can be found on the navigation bar at the
+        top of the ECL Watch page.<figure>
+            <title>Global Search box</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/ECLWA008.jpg" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
+
+        <para>You can search ECL Workunits, DFU Workunits, Logical Files, and
+        Queries using the global search box. The global search box also
+        supports using wildcards. To limit or filter your search results you
+        can use keywords as displayed in the empty search box.</para>
+
+        <para><variablelist>
+            <varlistentry>
+              <term>file:</term>
+
+              <listitem>
+                <para>Preface the search string with
+                <emphasis>file:</emphasis> to search Logical Files.</para>
+              </listitem>
+            </varlistentry>
+
+            <varlistentry>
+              <term>wuid:</term>
+
+              <listitem>
+                <para>Preface the search string with
+                <emphasis>wuid:</emphasis> to search only Workunit ids.</para>
+              </listitem>
+            </varlistentry>
+
+            <varlistentry>
+              <term>ecl:</term>
+
+              <listitem>
+                <para>Preface the search string with <emphasis>ecl:</emphasis>
+                to search only the ECL workunits.</para>
+              </listitem>
+            </varlistentry>
+
+            <varlistentry>
+              <term>dfu:</term>
+
+              <listitem>
+                <para>Preface the search string with <emphasis>dfu:</emphasis>
+                to search only DFU workunits.</para>
+              </listitem>
+            </varlistentry>
+
+            <varlistentry>
+              <term>query:</term>
+
+              <listitem>
+                <para>Preface the search string with
+                <emphasis>query:</emphasis> to search only published
+                queries.</para>
+              </listitem>
+            </varlistentry>
+          </variablelist>Examples of using the global search:</para>
+
+        <para>Enter <emphasis>W201510*</emphasis> into the search box, and it
+        will return all of the workunits from October 2015.</para>
+
+        <para>Enter <emphasis>file:keys</emphasis> into the search box, and it
+        will return all of the logical files that contain "keys". <figure>
+            <title>Global Search Example</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/ECLWA015.jpg" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
+
+        <!-- Enter <i>ecl:output</i> into the global search box and it will return all of the workunits that contain "output" in the ECL page of ECL Watch-->
+      </sect2>
+
+      <sect2>
+        <title>Advanced Menu</title>
+
+        <para>There is a section at the top right on the navigation bar with
+        some useful information and features. This section shows you who you
+        are logged in as (if your system has authentication enabled). The
+        Advanced menu is located on the right hand side of the navigation bar.
+        There are several items that you can access from the advanced
+        menu.</para>
+
+        <para><figure>
+            <title>Advanced menu</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/ECLWA007b.jpg" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
+
+        <para>There may be a number displayed on the menu link. A number
+        displayed next to it indicates how many errors and warnings have been
+        generated during your session. Click on the advanced menu to display a
+        list of features.</para>
+
+        <sect3 id="ECLWatch_AdvancedMenuAccess">
+          <title>Access the Advanced menu</title>
+
+          <para>You access the advanced menu items from the advanced menu link
+          at the top right corner of ECL Watch.<!--Removed some content stashed in GitStash : ECLWA-1115.xml others culled stored in git-br H8872-NewestECLfor50 **--></para>
+
+          <para>The <emphasis role="bold">Set Banner</emphasis> link allows
+          you to set a custom banner message at the top of your browser window
+          when you open ECL Watch. You can use this feature to send messages
+          to users.</para>
+
+          <para>The <emphasis role="bold">Error/Warning(s)</emphasis> link
+          displays a tab showing you Errors, Warnings, and Information
+          messages. You can filter this page by checking the boxes at the
+          bottom of the tab. A copy facility is also provided.</para>
+
+          <para>The <emphasis role="bold">Transition Guide</emphasis> link
+          opens a new browser tab to the page where you can find more
+          information about transitioning from using the previous version of
+          HPCC and ECL Watch.</para>
+
+          <para>The <emphasis role="bold">Additional Resources</emphasis> link
+          opens submenu with links to the HPCC
+          Systems<superscript>®</superscript> <emphasis
+          role="bold">Downloads</emphasis> page, where you can browse and
+          download additional HPCC resources. It also has links to <emphasis
+          role="bold">Issue Reporting</emphasis>, <emphasis
+          role="bold">Forums</emphasis>, and the HPCC <emphasis
+          role="bold">Red Book</emphasis>.</para>
+
+          <para>The <emphasis role="bold">Configuration</emphasis> link opens
+          for viewing the XML version of the configuration file in use on your
+          system.</para>
+
+          <para>The <emphasis role="bold">About</emphasis> link opens a dialog
+          to display some information about the version of the HPCC platform
+          and graph controls installed on your server.</para>
+        </sect3>
+
+        <sect3 id="ECLWatch_AdvancedMenuLoggedInAs" role="nobrk">
+          <title>Logged In As</title>
+
+          <para>The <emphasis role="bold">Logged In As:</emphasis> link at the
+          top of the ECL Watch page displays information about the current
+          user on a cluster configured for authentication. <figure>
+              <title>Logged In As</title>
+
+              <mediaobject>
+                <imageobject>
+                  <imagedata fileref="images/ECLWMyAccount.jpg" />
+                </imageobject>
+              </mediaobject>
+            </figure></para>
+
+          <para><orderedlist>
+              <listitem>
+                <para>Click on the <emphasis role="bold"><emphasis
+                role="bold">LOGGED IN AS:</emphasis></emphasis> link.</para>
+
+                <para>The User Details window opens. The default window opens
+                on the Summary tab.</para>
+
+                <para><figure>
+                    <title>User Details window</title>
+
+                    <mediaobject>
+                      <imageobject>
+                        <imagedata fileref="images/ECLWA474.jpg" />
+                      </imageobject>
+                    </mediaobject>
+                  </figure></para>
+              </listitem>
+
+              <listitem>
+                <para>From The User Details page Summary tab, you can Confirm
+                the User Name that you are logged in as.</para>
+
+                <para>You can change your password.</para>
+
+                <para>Note that Administrator rights are needed to manage
+                users and permissions.</para>
+
+                <para>Ensure you are using an account with Administrator
+                rights if you intend to manage users or permissions.</para>
+              </listitem>
+
+              <listitem>
+                <para>Verify the password expiration date, or if password is
+                set to expire.</para>
+              </listitem>
+            </orderedlist></para>
+
+          <sect4 id="ECLWatch_AdvancedMenuChangePassword" role="nobrk">
+            <title>Change Password</title>
+
+            <para>If authentication is enabled on your HPCC system, you can
+            change your password, right from the User Details window.
+            <orderedlist>
+                <listitem>
+                  <para>Click on the <emphasis role="bold"><emphasis
+                  role="bold">LOGGED IN AS:</emphasis></emphasis> link.</para>
+
+                  <para>The User Details window opens. The default window
+                  opens on the Summary tab. There are fields on the Summary
+                  tab where you can change your password.</para>
+                </listitem>
+
+                <listitem>
+                  <para>Enter your desired new password.</para>
+
+                  <para>Make sure it meets whatever criteria your system may
+                  have for passwords.</para>
+                </listitem>
+
+                <listitem>
+                  <para>Confirm your new password.</para>
+
+                  <para>Make sure that it matches the password you entered in
+                  the previous field.</para>
+                </listitem>
+
+                <listitem>
+                  <para>Press the Save button. It is in the upper left portion
+                  of the window.</para>
+                </listitem>
+              </orderedlist></para>
+          </sect4>
+
+          <sect4 id="ECLWatch_AdvancedMenuPermissionGroups">
+            <title>Permission groups</title>
+
+            <para>The second tab on the User Details window labelled Member
+            Of, displays a list of groups. The groups your account belongs to,
+            are indicated with a checkmark.</para>
+
+            <para>You must be an administrator to modify any of group
+            settings.</para>
+          </sect4>
+
+          <sect4 id="ECLWatch_AdvancedMenuUserPermissions">
+            <title>User Permissions tab</title>
+
+            <para>The third tab on the User Details window labelled <emphasis
+            role="bold">User Permissions</emphasis>, displays a list of
+            permission settings. Note that Administrator rights are needed to
+            manage users and permissions. Ensure you are using an account with
+            Administrator rights if you intend to manage users or
+            permissions.</para>
+
+            <para>This is where you can access the user permissions area. A
+            more detailed description of the user permissions settings is
+            covered in the <link linkend="User_Permissions_Chapter">User
+            Permissions</link> section.</para>
+          </sect4>
+        </sect3>
+      </sect2>
     </sect1>
   </chapter>
 
@@ -565,100 +990,8 @@
     </sect1>
 
     <xi:include href="ECLScheduler/ECLSched-Mods/ECLSchedComp.xml"
-                xpointer="ECLSched_Interface"
+                xpointer="xpointer(//*[@id='ECLSched_Interface'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
-
-    <sect1>
-      <title>Search Results</title>
-
-      <para>The <emphasis role="bold">Search Results</emphasis> tab displays
-      when you perform a search. The search capabilities of ECL Watch are a
-      very powerful tool.</para>
-
-      <sect2 id="ECLWatch_GlobalSearch">
-        <title>Global Search</title>
-
-        <para>The global search box can be found on the navigation bar at the
-        top of the ECL Watch page.<figure>
-            <title>Global Search box</title>
-
-            <mediaobject>
-              <imageobject>
-                <imagedata fileref="images/ECLWA008.jpg" />
-              </imageobject>
-            </mediaobject>
-          </figure></para>
-
-        <para>You can search ECL Workunits, DFU Workuntis, Logical Files, and
-        Queries using the global search box. The global search box also
-        supports wild cards. To limit or filter your search results you can
-        use keywords as displayed in the empty search box.</para>
-
-        <para><variablelist>
-            <varlistentry>
-              <term>file:</term>
-
-              <listitem>
-                <para>Preface the search string with
-                <emphasis>file:</emphasis> to search Logical Files.</para>
-              </listitem>
-            </varlistentry>
-
-            <varlistentry>
-              <term>wuid:</term>
-
-              <listitem>
-                <para>Preface the search string with
-                <emphasis>wuid:</emphasis> to search only Workunit ids.</para>
-              </listitem>
-            </varlistentry>
-
-            <varlistentry>
-              <term>ecl:</term>
-
-              <listitem>
-                <para>Preface the search string with <emphasis>ecl:</emphasis>
-                to search only the ECL workunits.</para>
-              </listitem>
-            </varlistentry>
-
-            <varlistentry>
-              <term>dfu:</term>
-
-              <listitem>
-                <para>Preface the search string with <emphasis>dfu:</emphasis>
-                to search only DFU workunits.</para>
-              </listitem>
-            </varlistentry>
-
-            <varlistentry>
-              <term>query:</term>
-
-              <listitem>
-                <para>Preface the search string with
-                <emphasis>query:</emphasis> to search only published
-                queries.</para>
-              </listitem>
-            </varlistentry>
-          </variablelist>Examples of using the global search:</para>
-
-        <para>Enter <emphasis>W201510*</emphasis> into the search box, and it
-        will return all of the workunits from October 2015.</para>
-
-        <para>Enter <emphasis>file:keys</emphasis> into the search box, and it
-        will return all of the logical files that contain "keys". <figure>
-            <title>Global Search Example</title>
-
-            <mediaobject>
-              <imageobject>
-                <imagedata fileref="images/ECLWA015.jpg" />
-              </imageobject>
-            </mediaobject>
-          </figure></para>
-
-        <!-- Enter <i>ecl:output</i> into the global search box and it will return all of the workunits that contain "output" in the ECL page of ECL Watch-->
-      </sect2>
-    </sect1>
   </chapter>
 
   <chapter id="ECLWatch_ECLWorkunits">
@@ -672,11 +1005,11 @@
     workunits there, but you can perform operations on workunits.</para>
 
     <xi:include href="ECLWatch/ECLWa_mods/ECLWatchSrc.xml"
-                xpointer="ECLWorkunits"
+                xpointer="xpointer(//*[@id='ECLWorkunits'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLPlayground/ECLPlay-Mods/ECL_Playground.xml"
-                xpointer="ECL_Playground"
+                xpointer="xpointer(//*[@id='ECL_Playground'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
   </chapter>
 
@@ -692,18 +1025,16 @@
     Distributed File Utility. This allows the collection of file parts to be
     referenced as a single entity.</para>
 
-    <!--  Might this be chapter for Xref?***-->
-
     <xi:include href="ECLWatch/ECLWa_mods/ECLWatchSrc.xml"
-                xpointer="ECLWatchLogicalFiles"
+                xpointer="xpointer(//*[@id='ECLWatchLogicalFiles'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLWatch/ECLWa_mods/ECLWatchSrc.xml"
-                xpointer="DFUWorkunits"
+                xpointer="xpointer(//*[@id='DFUWorkunits'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLWatch/ECLWa_mods/ECLWatchSrc.xml"
-                xpointer="Landing_Zones"
+                xpointer="xpointer(//*[@id='Landing_Zones'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <sect1 id="spray_and_despray">
@@ -742,42 +1073,43 @@
       </sect2>
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="LZ_Spray"
+                  xpointer="xpointer(//*[@id='LZ_Spray'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Spray_Fixed"
+                  xpointer="xpointer(//*[@id='Spray_Fixed'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Spray_Delimited"
+                  xpointer="xpointer(//*[@id='Spray_Delimited'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Spray_XML"
+                  xpointer="xpointer(//*[@id='Spray_XML'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Spray_JSON"
+                  xpointer="xpointer(//*[@id='Spray_JSON'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Spray_Variable"
+                  xpointer="xpointer(//*[@id='Spray_Variable'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Spray_Blob"
+                  xpointer="xpointer(//*[@id='Spray_Blob'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Desprays"
-                  xmlns:xi="http://www.w3.org/2001/XInclude" />
-
-      <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml" xpointer="Copy"
+                  xpointer="xpointer(//*[@id='Desprays'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
 
       <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
-                  xpointer="Remote_Copy"
+                  xpointer="xpointer(//*[@id='Copy'])"
+                  xmlns:xi="http://www.w3.org/2001/XInclude" />
+
+      <xi:include href="HPCCDataHandling/DH-Mods/DH-Mod1.xml"
+                  xpointer="xpointer(//*[@id='Remote_Copy'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
     </sect1>
 
@@ -786,11 +1118,10 @@
 
       <para>Under the <emphasis role="bold">Files</emphasis> Icon on the
       navigation sub-menu there is a link for XRef. This link will take you to
-      the XRef Clusters page. On the XRef clusters page you can run the XREF
-      utility.</para>
+      the XRef page. On the XRef page you can run the XREF utility.</para>
 
       <para><figure>
-          <title>XRef Clusters page</title>
+          <title>XRef page</title>
 
           <mediaobject>
             <imageobject>
@@ -799,150 +1130,173 @@
           </mediaobject>
         </figure></para>
 
-      <para>The XREF utility provides the ability to find "orphaned" and "lost
-      and found" files. These "orphan" are files which are found on the nodes
-      but not registered in the Distributed File System.</para>
+      <sect2 id="The_XREF_Utility">
+        <title>The XRef Utility</title>
 
-      <variablelist>
-        <varlistentry>
-          <term>Found File</term>
+        <para>The XREF utility provides the ability to find "orphaned",
+        "lost", and "found" files. These "orphan" are files which are found on
+        the nodes but not registered in the Distributed File System.</para>
 
+        <variablelist>
+          <varlistentry>
+            <term>Found File</term>
+
+            <listitem>
+              <para>A found file has file parts on disk that are not
+              referenced in the Dali server. All the file parts are accounted
+              for so they can be added back to the Dali server. They can also
+              be deleted from the cluster, if required.</para>
+            </listitem>
+          </varlistentry>
+
+          <varlistentry>
+            <term>Orphan File</term>
+
+            <listitem>
+              <para>An orphan file is a file without a Dali entry and without
+              a complete set of physical files. Since some of the physical
+              files are missing it is an incomplete file and it cannot be used
+              to add a logical file entry back into the Dali server. These
+              orphan file parts do not have a reference in the Dali
+              server.</para>
+            </listitem>
+          </varlistentry>
+
+          <varlistentry>
+            <term>Lost File</term>
+
+            <listitem>
+              <para>A logical file that is missing at least one file part on
+              both the primary and replicated locations in storage. The
+              logical file is still referenced in the Dali server. Deleting
+              the file removes the reference from the Dali server and any
+              remaining parts on disk.</para>
+            </listitem>
+          </varlistentry>
+        </variablelist>
+
+        <informaltable colsep="1" frame="all" rowsep="1">
+          <?dbfo keep-together="always"?>
+
+          <tgroup cols="2">
+            <colspec colwidth="49.50pt" />
+
+            <colspec />
+
+            <tbody>
+              <row>
+                <entry><inlinegraphic fileref="images/tip.jpg" /></entry>
+
+                <entry><para>On a large system, we suggest limiting the number
+                of users who can Generate XREF reports by setting
+                DfuXrefAccess access to FULL for only those
+                users.</para><para> </para></entry>
+              </row>
+            </tbody>
+          </tgroup>
+        </informaltable>
+
+        <para>To generate a list:</para>
+
+        <itemizedlist>
           <listitem>
-            <para>A found file has partial file parts on disk that are not
-            referenced in the Dali server. All the file parts are accounted
-            for so they can be added back to the Dali server. They can also be
-            deleted from the cluster, if required.</para>
+            <para>Press the <emphasis role="bold">Generate</emphasis>
+            button.</para>
+
+            <informaltable colsep="1" frame="all" rowsep="1">
+              <?dbfo keep-together="always"?>
+
+              <tgroup cols="2">
+                <colspec colwidth="49.50pt" />
+
+                <colspec />
+
+                <tbody>
+                  <row>
+                    <entry><inlinegraphic fileref="images/tip.jpg" /></entry>
+
+                    <entry><para>Sasha Server typically runs Xref at the times
+                    scheduled when deployed.</para><para> </para></entry>
+                  </row>
+                </tbody>
+              </tgroup>
+            </informaltable>
           </listitem>
-        </varlistentry>
+        </itemizedlist>
 
-        <varlistentry>
-          <term>Orphan File</term>
+        <para>To view results:</para>
 
+        <itemizedlist>
           <listitem>
-            <para>An orphan file has partial file parts on disk. However, a
-            full set of parts is not available to construct a complete logical
-            file. These partial file parts, therefore, do not have a reference
-            in the Dali server.</para>
+            <para>Click on one of the tabs (Found Files, Orphan Files, Lost
+            Files, Directories, or Errors/Warnings).</para>
           </listitem>
-        </varlistentry>
+        </itemizedlist>
 
-        <varlistentry>
-          <term>Lost File</term>
+        <sect3 id="ECLWatchXREFMultiThor">
+          <title>XREF with multiple Thor clusters</title>
 
-          <listitem>
-            <para>A logical file that is missing at least one file part on
-            both the primary and replicated locations in storage. The logical
-            file is still referenced in the Dali server. Deleting the file
-            removes the reference from the Dali server and any remaining parts
-            on disk.</para>
-          </listitem>
-        </varlistentry>
-      </variablelist>
+          <para>XREF runs on the primary Thor cluster. For a configuration
+          with more than one Thor cluster on the same physical node group, ECL
+          Watch only displays the primary Thor and not any other Thor that
+          shares the same node group. This is the Thor cluster whose name
+          matches the <emphasis>nodeGroup</emphasis> in the
+          configuration.</para>
 
-      <informaltable colsep="1" frame="all" rowsep="1">
-        <?dbfo keep-together="always"?>
+          <para>To allow XREF to run in an environment with multiple Thor
+          clusters, set the nodeGroup to the same value for all Thor
+          clusters.</para>
+        </sect3>
 
-        <tgroup cols="2">
-          <colspec colwidth="49.50pt" />
+        <sect3 id="ECLWatch_WorkingWithXref">
+          <title>Working with XREF results:</title>
 
-          <colspec />
+          <para>After XRef completes you can see a list of available reports.
+          Click on one of the tabs to see the results page of each
+          type.</para>
 
-          <tbody>
-            <row>
-              <entry><inlinegraphic fileref="images/tip.jpg" /></entry>
-
-              <entry><para>On a large system, we suggest limiting the number
-              of users who can Generate XREF reports by setting DfuXrefAccess
-              access to FULL for only those users.</para><para>
-              </para></entry>
-            </row>
-          </tbody>
-        </tgroup>
-      </informaltable>
-
-      <para>To generate a list:</para>
-
-      <itemizedlist>
-        <listitem>
-          <para>Press the <emphasis role="bold">Generate</emphasis>
-          button.</para>
-
-          <informaltable colsep="1" frame="all" rowsep="1">
-            <?dbfo keep-together="always"?>
-
-            <tgroup cols="2">
-              <colspec colwidth="49.50pt" />
-
-              <colspec />
-
-              <tbody>
-                <row>
-                  <entry><inlinegraphic fileref="images/tip.jpg" /></entry>
-
-                  <entry><para>Sasha Server typically runs Xref at the times
-                  scheduled when deployed.</para><para> </para></entry>
-                </row>
-              </tbody>
-            </tgroup>
-          </informaltable>
-        </listitem>
-      </itemizedlist>
-
-      <para>To view results:</para>
-
-      <itemizedlist>
-        <listitem>
-          <para>Click on one of the hyperlinks (Found Files, Orphan Files,
-          Lost Files, Directories, or Errors/Warnings).</para>
-        </listitem>
-      </itemizedlist>
-
-      <sect2 id="ECLWatch_WorkingWithXref">
-        <title>Working with XREF results:</title>
-
-        <para>After XRef completes you will see a list of available reports.
-        Click on one of the links to see the results page of each type.</para>
-
-        <figure>
-          <title>XRef Errors</title>
-
-          <mediaobject>
-            <imageobject>
-              <imagedata fileref="images/ECLWA435b.jpg" vendor="eclwatchSS" />
-            </imageobject>
-          </mediaobject>
-        </figure>
-
-        <para>The Orphan and Lost Files pages list any Orphan or Lost files.
-        Orphan and Lost files are difficult to recover, unless you have copies
-        of missing parts needed to reconstruct the file (for example, if a
-        missing part is on a hard drive that was replaced.)</para>
-
-        <figure>
-          <title>XRef: Delete Lost Files</title>
-
-          <mediaobject>
-            <imageobject>
-              <imagedata fileref="images/ECLWA436.jpg" vendor="eclwatchSS" />
-            </imageobject>
-          </mediaobject>
-        </figure>
-
-        <para>Typically, these files are deleted. To Delete, check the boxes
-        next to files you want to delete, then press the Delete button.</para>
-
-        <para>Found files can and usually are reattached. <figure>
-            <title>XRef: Attach Found Files</title>
+          <figure>
+            <title>XRef Errors</title>
 
             <mediaobject>
               <imageobject>
-                <imagedata fileref="images/ECLWA437.jpg" vendor="eclwatchSS" />
+                <imagedata fileref="images/ECLWA435b.jpg" vendor="eclwatchSS" />
               </imageobject>
             </mediaobject>
-          </figure></para>
+          </figure>
 
-        <para>Check the boxes next to files you want to reattach, then press
-        the Attach button.</para>
+          <para>The Orphan and Lost Files pages list any Orphan or Lost files.
+          Orphan and Lost files are difficult to recover, unless you have
+          copies of missing parts needed to reconstruct the file (for example,
+          if a missing part is on a hard drive that was replaced.)</para>
+
+          <figure>
+            <title>XRef: Delete Orphan Files</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/ECLWA436.jpg" vendor="eclwatchSS" />
+              </imageobject>
+            </mediaobject>
+          </figure>
+
+          <para>Typically, these files will need to be deleted. To Delete,
+          check the boxes next to files you want to delete, then press the
+          <emphasis role="bold">Delete</emphasis> button.</para>
+
+          <para>Found files can and usually are reattached. <figure>
+              <title>XRef: Attach Found Files</title>
+
+              <mediaobject>
+                <imageobject>
+                  <imagedata fileref="images/ECLWA437.jpg" vendor="eclwatchSS" />
+                </imageobject>
+              </mediaobject>
+            </figure></para>
+
+          <para>Check the boxes next to files you want to reattach, then press
+          the <emphasis role="bold">Attach</emphasis> button.</para>
+        </sect3>
       </sect2>
     </sect1>
   </chapter>
@@ -981,7 +1335,7 @@
     </figure>
 
     <xi:include href="ECLWatch/ECLWa_mods/ECLWatchQueries.xml"
-                xpointer="Queries_Page"
+                xpointer="xpointer(//*[@id='Queries_Page'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
   </chapter>
 
@@ -1028,7 +1382,7 @@
           </mediaobject>
         </figure></para>
 
-      <sect2 id="TopologyTargets">
+      <sect2 id="TopologyTargets" role="brk">
         <title>Targets</title>
 
         <para>The <emphasis role="bold">Targets</emphasis> Action button
@@ -1052,7 +1406,7 @@
         the selected component.</para>
       </sect2>
 
-      <sect2 id="TopologyServices">
+      <sect2 id="TopologyServices" role="brk">
         <title>Services</title>
 
         <para>Press the <emphasis role="bold">Services</emphasis> Action
@@ -1078,7 +1432,7 @@
         selected component.</para>
       </sect2>
 
-      <sect2 id="ECLWatch_Operations_TopologyMachines">
+      <sect2 id="ECLWatch_Operations_TopologyMachines" role="brk">
         <title>Machines</title>
 
         <para>Press the <emphasis role="bold">Machines</emphasis> Action
@@ -1099,6 +1453,22 @@
         opens a node oriented view of the tree. Expand the nodes to see the
         services on each node. Select the component to view the Summary,
         Configuration, or Logs tabs for that selected component.</para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>Roxie File Copy Status</title>
+
+        <para>In the Topology section for Roxie clusters, the <emphasis
+        role="bold">Roxie Files Copy Status</emphasis> tab shows the number of
+        files a cluster has left to copy.<figure>
+            <title>File Copy Status</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/ECLWA467.jpg" vendor="ECLWatchSS" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
       </sect2>
     </sect1>
 
@@ -1150,9 +1520,6 @@
       role="bold">Dynamic ESDL</emphasis> from the navigation sub-menu
       bar.</para>
 
-      <para>The DESDL-based ESP services available are listed in the navigator
-      pane on the left as children of their parent ESP process.</para>
-
       <figure>
         <title>Dynamic ESDL sub-menu</title>
 
@@ -1163,11 +1530,21 @@
         </mediaobject>
       </figure>
 
-      <para>This tab contains a list of all DESDL based ESP Services and their
-      ESDL Binding information.. For more information about Dynamic ESDL refer
-      to the documentation; <emphasis>Dynamic ESDL</emphasis> available from
-      the HPCC Systems portal: <ulink
-      url="https://hpccsystems.com/download/documentation/learning-ecl/dynamic-esdl">https://hpccsystems.com/download/documentation/learning-ecl/dynamic-esdl</ulink></para>
+      <para>The <emphasis role="bold">Dynamic ESDL</emphasis> tab contains a
+      list of all DESDL based ESP Services and their ESDL Binding information.
+      The DESDL-based ESP services available are listed in the navigator pane
+      on the left as children of their parent ESP process.</para>
+
+      <para>The <emphasis role="bold">Definitions</emphasis> tab, also
+      accessible from the <emphasis role="bold">Dynamic ESDL</emphasis>
+      button's sub-menu, lists all available ESDL definitions and provides a
+      view into any of the definitions. These definitions are used to
+      dynamically define interfaces for existing ESP web services.</para>
+
+      <para>For more information about Dynamic ESDL refer to the
+      documentation; <emphasis>Dynamic ESDL</emphasis> available from the HPCC
+      Systems portal: <ulink
+      url="https://hpccsystems.com/training/documentation/learning-ecl/">https://hpccsystems.com/training/documentation/learning-ecl/dynamic-esdl</ulink></para>
 
       <sect2 id="USING_Dynamic_ESDL">
         <title>Using Dynamic ESDL</title>
@@ -1322,11 +1699,11 @@
     </sect1>
 
     <xi:include href="HPCCCertify/Cert-Mods/CertPreflight.xml"
-                xpointer="Preflight_system_servers"
+                xpointer="xpointer(//*[@id='Preflight_system_servers'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="HPCCCertify/Cert-Mods/CertPreflight.xml"
-                xpointer="Preflight_Data_Refinery"
+                xpointer="xpointer(//*[@id='Preflight_Data_Refinery'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <!--
@@ -1341,7 +1718,7 @@
       from the ECL Watch interface.</para>
 
       <xi:include href="Installing_and_RunningTheHPCCPlatform/Inst-Mods/UserSecurityMaint.xml"
-                  xpointer="Sec_Adm_w_ECLWatch"
+                  xpointer="xpointer(//*[@id='Sec_Adm_w_ECLWatch'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
     </sect1> 
  -->
@@ -1357,20 +1734,20 @@
       Watch.</para>
 
       <xi:include href="Installing_and_RunningTheHPCCPlatform/Inst-Mods/UserSecurityMaint.xml"
-                  xpointer="Sec_Adm_w_ECLWatch"
+                  xpointer="xpointer(//*[@id='Sec_Adm_w_ECLWatch'])"
                   xmlns:xi="http://www.w3.org/2001/XInclude" />
     </sect1>
   </chapter>
 
   <chapter id="Plug-Ins_for_ECLWatch">
-    <title>Plug-ins</title>
+    <title>Plugins</title>
 
-    <para>You can add functionality to ECL Watch by installing plug-ins. These
-    plug-ins are designed to integrate into the ECL Watch interface. After you
-    install an approved plug-in, the plug-in icon displays in the navigation
-    bar at the top of the ECL Watch page to provide access to the plug-in(s).
-    Click on the plug-in icon to view the plug-ins page in ECL Watch. <figure>
-        <title>ECL Watch Plug-in icon</title>
+    <para>You can add functionality to ECL Watch by installing plugins. These
+    plugins are designed to integrate into the ECL Watch interface. After you
+    install an approved plugin, the plugin icon displays in the navigation bar
+    at the top of the ECL Watch page to provide access to the plugin(s). Click
+    on the plugin icon to view the plugins page in ECL Watch. <figure>
+        <title>ECL Watch Plugin icon</title>
 
         <mediaobject>
           <imageobject>
@@ -1383,10 +1760,10 @@
       <title>Ganglia in ECL Watch</title>
 
       <para>With the HPCC Systems<superscript>®</superscript>
-      Ganglia-monitoring plug-in installed, you can view the Ganglia
-      statistics and graphs through the ECL Watch interface. The default
-      monitoring displays several key statistics, but you can customize and
-      configure the views.</para>
+      Ganglia-monitoring plugin installed, you can view the Ganglia statistics
+      and graphs through the ECL Watch interface. The default monitoring
+      displays several key statistics, but you can customize and configure the
+      views.</para>
 
       <figure>
         <title>Ganglia in ECL Watch</title>
@@ -1453,180 +1830,8 @@
     </sect1>
 
     <xi:include href="HPCCMonitoring/MonRep-Mods/NagiosInECLWa.xml"
-                xpointer="Nagios_in_ECLWatch"
+                xpointer="xpointer(//*[@id='Nagios_in_ECLWatch'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
-  </chapter>
-
-  <chapter id="Account_Info">
-    <title>Advanced Menu</title>
-
-    <para>There is a section at the top right on the navigation bar with some
-    useful information and features. This section shows you who you are logged
-    in as (if your system has authentication enabled). The Advanced menu is
-    located on the right hand side of the navigation bar. There are several
-    items that you can access from the advanced menu.</para>
-
-    <para><figure>
-        <title>Advanced menu</title>
-
-        <mediaobject>
-          <imageobject>
-            <imagedata fileref="images/ECLWA007b.jpg" />
-          </imageobject>
-        </mediaobject>
-      </figure></para>
-
-    <para>There may be a number displayed on the menu link. A number displayed
-    next to it indicates how many errors and warnings have been generated
-    during your session. Click on the advanced menu to display a list of
-    features.</para>
-
-    <sect1 id="ECLWatch_AdvancedMenuAccess">
-      <title>Access the Advanced menu</title>
-
-      <para>You access the advanced menu items from the advanced menu link at
-      the top right corner of ECL Watch.<!--Removed some content stashed in GitStash : ECLWA-1115.xml others culled stored in git-br H8872-NewestECLfor50 **--></para>
-
-      <para>The <emphasis role="bold">Set Banner</emphasis> link allows you to
-      set a custom banner message at the top of your browser window when you
-      open ECL Watch. You can use this feature to send messages to
-      users.</para>
-
-      <para>The <emphasis role="bold">Error/Warning(s)</emphasis> link
-      displays a tab showing you Errors, Warnings, and Information messages.
-      You can filter this page by checking the boxes at the bottom of the tab.
-      A copy facility is also provided.</para>
-
-      <para>The <emphasis role="bold">Open Legacy ECL Watch</emphasis> link
-      opens a tab to the previous version of ECL Watch. The legacy version of
-      ECL Watch is deprecated; this link is only available for a limited time
-      to help in the transition.</para>
-
-      <para>The <emphasis role="bold">Additional Resources</emphasis> link
-      opens a tab to the HPCC Systems<superscript>®</superscript> download
-      page, where you can browse and download additional HPCC resources:
-      documentation, white papers, training videos, wiki pages, the red book
-      and other HPCC related source code.</para>
-
-      <para>The <emphasis role="bold">Release Notes</emphasis> link opens a
-      tab with the relevant release notes for the version of HPCC that you are
-      using. Read the release notes for more information specific to the
-      release you are working on.</para>
-
-      <para>The <emphasis role="bold">Configuration</emphasis> link opens for
-      viewing the xml version of the configuration file in use on your
-      system.</para>
-
-      <para>The <emphasis role="bold">About</emphasis> link opens a dialog to
-      display some information about the version of the HPCC platform and
-      graph controls installed on your server.</para>
-    </sect1>
-
-    <sect1 id="ECLWatch_AdvancedMenuUserDetails" role="nobrk">
-      <title>User Details</title>
-
-      <para>The LOGGED IN AS link shows information about the current user on
-      a cluster configured for authentication.</para>
-
-      <para><orderedlist>
-          <listitem>
-            <para>Click on the <emphasis role="bold"><emphasis
-            role="bold">LOGGED IN AS:</emphasis></emphasis> link.</para>
-
-            <para>The User Details window opens. The default window opens on
-            the Summary tab.</para>
-
-            <para><figure>
-                <title>User Details window</title>
-
-                <mediaobject>
-                  <imageobject>
-                    <imagedata fileref="images/ECLWA474.jpg" />
-                  </imageobject>
-                </mediaobject>
-              </figure></para>
-          </listitem>
-
-          <listitem>
-            <para>From The User Details page Summary tab, you can Confirm the
-            User Name that you are logged in as.</para>
-
-            <para>You can change your password.</para>
-
-            <para>Note that Administrator rights are needed to manage users
-            and permissions.</para>
-
-            <para>Ensure you are using an account with Administrator rights if
-            you intend to manage users or permissions.</para>
-          </listitem>
-
-          <listitem>
-            <para>Verify the password expiration date, or if password is set
-            to expire.</para>
-          </listitem>
-        </orderedlist></para>
-
-      <sect2 id="ECLWatch_AdvancedMenuChangePassword" role="nobrk">
-        <title>Change Password</title>
-
-        <para>If authentication is enabled on your HPCC system, you can change
-        your password, right from the User Details window. <!--***? is this still valid : don't see where this is in new ECLWatch ***--><orderedlist>
-            <listitem>
-              <para>Click on the <emphasis role="bold"><emphasis
-              role="bold">LOGGED IN AS:</emphasis></emphasis> link.</para>
-
-              <para>The User Details window opens. The default window opens on
-              the Summary tab. There are fields on the Summary tab where you
-              can change your password.</para>
-            </listitem>
-
-            <listitem>
-              <para>Enter your desired new password.</para>
-
-              <para>Make sure it meets whatever criteria your system may have
-              for passwords.</para>
-            </listitem>
-
-            <listitem>
-              <para>Confirm your new password.</para>
-
-              <para>Make sure that it matches the password you entered in the
-              previous field.</para>
-            </listitem>
-
-            <listitem>
-              <para>Press the Save button. It is in the upper left portion of
-              the window.</para>
-            </listitem>
-          </orderedlist></para>
-      </sect2>
-
-      <sect2 id="ECLWatch_AdvancedMenuPermissionGroups">
-        <title>Permission groups</title>
-
-        <para>The second tab on the User Details window labelled Member Of,
-        displays a list of groups. The groups your account belongs to, are
-        indicated with a checkmark.</para>
-
-        <para>You must be an administrator to modify any of group
-        settings.</para>
-      </sect2>
-
-      <sect2 id="ECLWatch_AdvancedMenuUserPermissions">
-        <title>User Permissions tab</title>
-
-        <para>The third tab on the User Details window labelled <emphasis
-        role="bold">User Permissions</emphasis>, displays a list of permission
-        settings. Note that Administrator rights are needed to manage users
-        and permissions. Ensure you are using an account with Administrator
-        rights if you intend to manage users or permissions.</para>
-
-        <para>This is where you can access the user permissions area. A more
-        detailed description of the user permissions settings is covered in
-        the <link linkend="User_Permissions_Chapter">User Permissions</link>
-        section.</para>
-      </sect2>
-    </sect1>
   </chapter>
 
   <chapter id="Resources">
@@ -1637,7 +1842,7 @@
     Systems<superscript>®</superscript> web portal. Visit the HPCC
     Systems<superscript>®</superscript> Web Portal at <ulink
     url="http://hpccsystems.com/">http://hpccsystems.com/</ulink> for software
-    updates, plug-ins, support, documentation, and more. This is where you can
+    updates, plugins, support, documentation, and more. This is where you can
     find resources useful for running and maintaining HPCC on the web
     portal.</para>
 

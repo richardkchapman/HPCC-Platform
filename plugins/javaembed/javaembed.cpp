@@ -2382,6 +2382,12 @@ public:
     virtual void outputXmlns(const char *name, const char *uri)
     {
     }
+    virtual void cutFrom(IInterface *location, StringBuffer& databuf)
+    {
+    }
+    virtual void outputInline(const char* text)
+    {
+    }
 
 public:
     JNIEnv *JNIenv;
@@ -2916,7 +2922,7 @@ public:
         argsig++;
         addArg(v);
     }
-    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, byte *val)
+    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, const byte *val) override
     {
         if (*argsig != 'L')  // should tell us the type of the object we need to create to pass in
             typeError("RECORD");

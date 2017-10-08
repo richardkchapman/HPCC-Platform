@@ -66,7 +66,7 @@
 #define MAX_SIMPLE_VAR_SIZE             99999
 #define MAX_STATIC_ROW_SIZE             10000
 #define MAX_LOCAL_ROW_SIZE              32
-#define DEFAULT_NLP_DETAIL              1
+#define DEFAULT_NLP_DETAIL              0
 #define DEFAULT_EXPIRY_PERIOD               7
 #define DEFAULT_PERSIST_EXPIRY_PERIOD       0           // Persists that expire by default have a period defined in sasha
 
@@ -1420,7 +1420,7 @@ HqlCppTranslator::HqlCppTranslator(IErrorReceiver * _errors, const char * _soNam
             cppSystemScope = createScope();
             Owned<ISourcePath> sysPath = createSourcePath("<system-definitions>");
             Owned<IFileContents> systemContents = createFileContentsFromText(systemText.str(), sysPath, true, NULL);
-            OwnedHqlExpr query = parseQuery(cppSystemScope, systemContents, ctx, NULL, NULL, false);
+            OwnedHqlExpr query = parseQuery(cppSystemScope, systemContents, ctx, NULL, NULL, false, false);
             if (errs.errCount())
             {
                 StringBuffer errtext;
@@ -1475,6 +1475,13 @@ HqlCppTranslator::~HqlCppTranslator()
 void HqlCppTranslator::setTargetClusterType(ClusterType clusterType)
 {
     targetClusterType = clusterType;
+}
+
+void HqlCppTranslator::ensureDiskAccessAllowed(IHqlExpression * expr)
+{
+    bool isSigned = expr->hasAttribute(_signed_Atom);
+    if (!queryCallback()->allowAccess("datafile", isSigned))
+        reportErrorNoAbort(expr, HQLERR_DatafileRequiresSigned, "You do not have permission to directly access datafiles");
 }
 
 void HqlCppTranslator::checkAbort()
@@ -1590,6 +1597,7 @@ void HqlCppTranslator::cacheOptions()
         DebugOption(options.defaultPersistExpiry, "defaultPersistExpiry", DEFAULT_PERSIST_EXPIRY_PERIOD),
         DebugOption(options.defaultExpiry, "defaultExpiry", DEFAULT_EXPIRY_PERIOD),
         DebugOption(options.searchDistanceThreshold, "searchDistanceThreshold", 1000000),
+        DebugOption(options.generateActivityThreshold, "generateActivityThreshold", 0),  // most users are not interested so disable by default
 
         DebugOption(options.checkAsserts,"checkAsserts", true),
         DebugOption(options.assertSortedDistributed,"assertSortedDistributed", false),
@@ -1796,7 +1804,9 @@ void HqlCppTranslator::cacheOptions()
         DebugOption(options.addLikelihoodToGraph,"addLikelihoodToGraph", true),
         DebugOption(options.varFieldAccessorThreshold,"varFieldAccessorThreshold",3),   // Generate accessor classes for rows with #variable width fields >= threshold
         DebugOption(options.translateDFSlayouts,"translateDFSlayouts", false),
+        DebugOption(options.timeTransforms,"timeTransforms", false),
         DebugOption(options.reportDFSinfo,"reportDFSinfo", 0),
+        DebugOption(options.useGlobalCompareClass,"useGlobalCompareClass", false),
     };
 
     //get options values from workunit
@@ -1899,6 +1909,8 @@ void HqlCppTranslator::postProcessOptions()
     if (options.resourceSequential)
         options.resourceConditionalActions = true;
 
+    options.generateActivityThresholdCycles = nanosec_to_cycle(options.generateActivityThreshold * I64C(1000000));
+
     //Probably best to ignore this warning. - possibly configure it based on some other option
     globalOnWarnings->addOnWarning(HQLWRN_FoldRemoveKeyed, ignoreAtom);
 
@@ -1909,7 +1921,7 @@ void HqlCppTranslator::postProcessOptions()
         wu()->setCloneable(true);
 }
 
-unsigned HqlCppTranslator::getOptimizeFlags() const
+unsigned HqlCppTranslator::getOptimizeFlags(bool insideChildQuery) const
 {
     unsigned optFlags = HOOfold;
     switch (targetClusterType)
@@ -1933,6 +1945,12 @@ unsigned HqlCppTranslator::getOptimizeFlags() const
         optFlags |= HOOexpensive;
     if (options.expandSelectCreateRow)
         optFlags  |= HOOexpandselectcreaterow;
+
+    //The following flag should possibly be dependent on this condition:
+    //if (targetThor() && !insideChildQuery)
+    //However it may be better to err on the side of caution - see HPCC-10144 since moving a project over a barrier may
+    //cause it in some circumstances to be evaluated many more times.  See HPCC-17439 to revisit later.
+    optFlags |= HOOminimizeNetworkAndMemory;
     return optFlags;
 }
 
@@ -2098,14 +2116,26 @@ void HqlCppTranslator::doReportWarning(WarnErrorCategory category, ErrorSeverity
     if (!location)
         location = queryActiveActivityLocation();
     unsigned activity = 0;
+    const char * scope = nullptr;
+    StringBuffer scopeText;
     if (activeActivities.ordinality())
-        activity = activeActivities.tos().queryActivityId();
+    {
+        ABoundActivity & top = activeActivities.tos();
+        activity = top.queryActivityId();
+        ActivityInstance * active = top.queryActive();
+        dbgassertex(active);
+        if (active)
+        {
+            active->getScope(scopeText);
+            scope = scopeText;
+        }
+    }
 
     ErrorSeverity severity = (explicitSeverity == SeverityUnknown) ? queryDefaultSeverity(category) : explicitSeverity;
     if (location)
-        warnError.setown(createError(category, severity, id, msg, str(location->querySourcePath()), location->getStartLine(), location->getStartColumn(), 0, activity));
+        warnError.setown(createError(category, severity, id, msg, str(location->querySourcePath()), location->getStartLine(), location->getStartColumn(), 0, activity, scope));
     else
-        warnError.setown(createError(category, severity, id, msg, activity));
+        warnError.setown(createError(category, severity, id, msg, activity, scope));
 
     errorProcessor->report(warnError);
 }
@@ -2133,7 +2163,7 @@ void HqlCppTranslator::reportWarning(WarnErrorCategory category, unsigned id, co
 void HqlCppTranslator::addWorkunitException(ErrorSeverity severity, unsigned code, const char * text, IHqlExpression * location)
 {
     Owned<IWUException> msg = wu()->createException();
-    msg->setExceptionSource("Code Generator");
+    msg->setExceptionSource("eclcc");
     if (code)
         msg->setExceptionCode(code);
     msg->setExceptionMessage(text);
@@ -2228,6 +2258,17 @@ void HqlCppTranslator::reportError(IHqlExpression * location, int code,const cha
     va_end(args);
 
     reportErrorDirect(location, code, errorMsg.str(), true);
+}
+
+void HqlCppTranslator::reportErrorNoAbort(IHqlExpression * location, int code,const char *format, ...)
+{
+    StringBuffer errorMsg;
+    va_list args;
+    va_start(args, format);
+    errorMsg.valist_appendf(format, args);
+    va_end(args);
+
+    reportErrorDirect(location, code, errorMsg.str(), false);
 }
 
 //---------------------------------------------------------------------------
@@ -2618,8 +2659,19 @@ void HqlCppTranslator::buildExprAssignViaType(BuildCtx & ctx, const CHqlBoundTar
     buildExprAssign(ctx, target, temp);
 }
 
-void HqlCppTranslator::buildExprAssignViaString(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr, unsigned len)
+void HqlCppTranslator::buildExprAssignViaString(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr, ITypeInfo *dest)
 {
+    unsigned len;
+    switch (dest->getTypeCode())
+    {
+    case type_varstring:
+    case type_varunicode:
+        len = UNKNOWN_LENGTH;
+        break;
+    default:
+        len = dest->getStringLen();
+        break;
+    }
     OwnedITypeInfo type = makeStringType(len, NULL, NULL);
     buildExprAssignViaType(ctx, target, expr, type);
 }
@@ -2992,6 +3044,9 @@ void HqlCppTranslator::buildExpr(BuildCtx & ctx, IHqlExpression * expr, CHqlBoun
             buildExpr(ctx, null, tgt); 
             return;
         }
+    case no_matched_injoin:
+        doBuildExprMatchedInJoin(ctx, expr, tgt);
+        return;
     case no_matched:
     case no_matchtext:
     case no_matchlength:
@@ -6118,6 +6173,11 @@ void HqlCppTranslator::doBuildCall(BuildCtx & ctx, const CHqlBoundTarget * tgt, 
                 normalizeBoundExpr(ctx, bound);
                 break;
             }
+        case type_record:
+            {
+                args.append(*buildMetaParameter(curParam));
+                break;
+            }
         default:
             {
                 buildExpr(ctx, castParam, bound);
@@ -6175,6 +6235,9 @@ void HqlCppTranslator::doBuildCall(BuildCtx & ctx, const CHqlBoundTarget * tgt, 
                 bound.expr.setown(getPointer(bound.expr));
                 break;
             }
+        case type_record:
+            done = true;
+            break;
         case type_array:
             UNIMPLEMENTED;
         }
@@ -7423,6 +7486,12 @@ bool HqlCppTranslator::ifRequiresAssignment(BuildCtx & ctx, IHqlExpression * exp
 
 void HqlCppTranslator::doBuildAssignIf(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr)
 {
+    CHqlBoundExpr bound;
+    if (expr->isPure() && ctx.getMatchExpr(expr, bound))
+    {
+        assign(ctx, target, bound);
+        return;
+    }
     if (!ifRequiresAssignment(ctx, expr))
     {
         doBuildExprAssign(ctx, target, expr);
@@ -9562,6 +9631,29 @@ void HqlCppTranslator::doBuildExprFailCode(BuildCtx & ctx, IHqlExpression * expr
     }
 }
 
+void HqlCppTranslator::doBuildExprMatchedInJoin(BuildCtx & ctx, IHqlExpression * expr, CHqlBoundExpr & tgt)
+{
+    IHqlExpression *selExpr = expr->queryChild(0);
+    assertex(selExpr);
+
+    node_operator op = selExpr->getOperator();
+    if (op==no_rows) //denormalize group
+    {
+        selExpr = selExpr->queryChild(0);
+        assertex(selExpr);
+        op = selExpr->getOperator();
+        if (op!=no_right)
+            throwError(HQLERR_InvalidMatchedPatternInJoin);
+    }
+
+    OwnedHqlExpr markerExpr = createValue(no_matched_injoin, makeBoolType(), LINK(selExpr));
+    if (!ctx.getMatchExpr(markerExpr, tgt))
+    {
+        if (!buildExprInCorrectContext(ctx, expr, tgt, false))
+            throwError(HQLERR_InvalidMatchedPatternInJoin); //to get this far they must be matching on a dataset that is not the current left or right
+        return;
+    }
+}
 
 void HqlCppTranslator::doBuildAssignFailMessage(BuildCtx & ctx, const CHqlBoundTarget & target, IHqlExpression * expr)
 {
@@ -10390,13 +10482,7 @@ void HqlCppTranslator::assign(BuildCtx & ctx, const CHqlBoundTarget & target, CH
                     {
                         //I can't think of any situation where this isn't true....
                         assertex(hasLinkCountedModifier(rhs.expr));
-                        StringBuffer assignText;
-                        generateExprCpp(assignText, lhs).append(".set(");
-                        generateExprCpp(assignText, rhs.expr).append(");");
-                        ctx.addQuoted(assignText);
-                        //Could generate the following instead
-                        //ctx.addAssign(lhs, no_link(rhs.expr));
-                        //And post-optimize to the above.
+                        ctx.addAssignLink(lhs, rhs.expr);
                     }
                     else
                         ctx.addAssign(lhs, rhs.expr);
@@ -10549,7 +10635,7 @@ void HqlCppTranslator::assignAndCast(BuildCtx & ctx, const CHqlBoundTarget & tar
         default:
             //Need to go via a temporary string.
             OwnedHqlExpr temp = pure.getTranslatedExpr();
-            buildExprAssignViaString(ctx, target, temp, to->getStringLen());
+            buildExprAssignViaString(ctx, target, temp, to);
             return;
         }
         break;
@@ -10666,7 +10752,7 @@ void HqlCppTranslator::assignAndCast(BuildCtx & ctx, const CHqlBoundTarget & tar
                     if (queryDefaultTranslation(tgtset, from->queryCharset()))
                     {
                         OwnedHqlExpr temp = pure.getTranslatedExpr();
-                        buildExprAssignViaString(ctx, target, temp, to->getStringLen());
+                        buildExprAssignViaString(ctx, target, temp, to);
                     }
                     else
                     {
@@ -10721,7 +10807,7 @@ void HqlCppTranslator::assignAndCast(BuildCtx & ctx, const CHqlBoundTarget & tar
                             break;
                         case type_varstring:
                             OwnedHqlExpr temp = pure.getTranslatedExpr();
-                            buildExprAssignViaString(ctx, target, temp, to->getStringLen());
+                            buildExprAssignViaString(ctx, target, temp, to);
                             return;
                         }
                         args.append(*getSizetConstant(toSize));
@@ -10865,7 +10951,7 @@ void HqlCppTranslator::assignAndCast(BuildCtx & ctx, const CHqlBoundTarget & tar
                     if (toType == type_varunicode)
                     {
                         OwnedHqlExpr temp = pure.getTranslatedExpr();
-                        OwnedITypeInfo type = makeUnicodeType(to->getStringLen(), NULL);
+                        OwnedITypeInfo type = makeUnicodeType(UNKNOWN_LENGTH, NULL);
                         buildExprAssignViaType(ctx, target, temp, type);
                         return;
                     }
@@ -10886,7 +10972,7 @@ void HqlCppTranslator::assignAndCast(BuildCtx & ctx, const CHqlBoundTarget & tar
             }
         default:
             OwnedHqlExpr temp = pure.getTranslatedExpr();
-            buildExprAssignViaString(ctx, target, temp, to->getStringLen());
+            buildExprAssignViaString(ctx, target, temp, to);
             return;
         }
         break;
@@ -10930,7 +11016,7 @@ void HqlCppTranslator::assignAndCast(BuildCtx & ctx, const CHqlBoundTarget & tar
             }
         default:
             OwnedHqlExpr temp = pure.getTranslatedExpr();
-            buildExprAssignViaString(ctx, target, temp, to->getStringLen());
+            buildExprAssignViaString(ctx, target, temp, to);
             return;
         }
         break;

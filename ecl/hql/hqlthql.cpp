@@ -23,6 +23,7 @@
 #include "hqlutil.hpp"
 #include "hqlmeta.hpp"
 #include "workunit.hpp"
+#include "hqlerrors.hpp"
 
 //The following constants can be uncommented to increase the level of detail which is added to the processed graphs
 //E.g. generated when -fl used in hqltest
@@ -448,7 +449,16 @@ StringBuffer &HqltHql::callEclFunction(StringBuffer &s, IHqlExpression * expr, b
 {
     assertex(expr->isNamedSymbol());
     IHqlExpression * funcdef = expr->queryFunctionDefinition();
-    assertex(funcdef->getOperator() == no_funcdef);
+    switch (funcdef->getOperator())
+    {
+    case no_funcdef:
+    case no_internalselect:
+    case no_delayedselect:
+        break;
+    default:
+        throw makeStringExceptionV(ERR_INTERNALEXCEPTION, "Internal: Unexpected function definition %s", getOpString(funcdef->getOperator()));
+    }
+
     IHqlExpression * formals = queryFunctionParameters(funcdef);
 
     s.append('(');
@@ -967,6 +977,34 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
                 break;
             }
         }
+        else if (expandProcessed && no == no_alias)
+        {
+            if (!isNamedSymbol)
+            {
+                if (!expr->queryTransformExtra())
+                {
+                    bool wasInsideNewTransform = insideNewTransform;
+                    insideNewTransform = false;
+
+                    StringBuffer temp;
+                    scope.append(NULL);
+                    temp.appendf("alias%p ", expr);
+                    temp.append(":= ");
+
+                    toECL(expr, temp, false, false, 0, true);
+                    temp.append(";").newline();
+                    addExport(temp);
+
+                    scope.pop();
+                    insideNewTransform = wasInsideNewTransform;
+                    expr->setTransformExtra(expr);
+                }
+                s.appendf("alias%p", expr);
+                if (paren)
+                    s.append(')');
+                return;
+            }
+        }
 
         if (expandProcessed && !isNamedSymbol && no == no_record)
         {
@@ -1148,6 +1186,7 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
             //First output the attributes...
             //MORE: Add attributes to the record definition
             bool first = true;
+            bool firstPayload = true;
             ForEachChild(idx, expr)
             {
                 IHqlExpression *child = queryChild(expr, idx);
@@ -1158,11 +1197,29 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
                     if (fieldsInline)
                     {
                         if (!first)
-                            s.append(",");
+                        {
+                            if (firstPayload && child->hasAttribute(_payload_Atom))
+                            {
+                                s.append(" =>");
+                                firstPayload = false;
+                            }
+                            else
+                                s.append(",");
+                        }
                         s.append(" ");
                     }
                     else
+                    {
+                        if (!first)
+                        {
+                            if (firstPayload && child->hasAttribute(_payload_Atom))
+                            {
+                                s.remove(s.length()-2,2).append("\n").pad(indent).append("=>\n");
+                                firstPayload = false;
+                            }
+                        }
                         s.pad(indent);
+                    }
                     toECL(child, s, false, inType, idx+1);
                     if (!fieldsInline)
                         s.append(";\n");
@@ -2080,6 +2137,12 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
             else
                 toECL(child0, s, false, inType);
             break;
+        case no_clustersize:
+            if (expandProcessed)
+                defaultToECL(expr, s, inType);
+            else
+                s.append(getEclOpString(no));
+            break;
         case no_map:
         {
             unsigned kids = expr->numChildren();
@@ -2563,6 +2626,7 @@ void HqltHql::toECL(IHqlExpression *expr, StringBuffer &s, bool paren, bool inTy
         case no_alias:
         case no_activerow:
         case no_outofline:
+        case no_inline:
             if (expandProcessed)
                 defaultToECL(expr, s, inType);
             else

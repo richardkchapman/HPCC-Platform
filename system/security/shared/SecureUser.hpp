@@ -34,11 +34,14 @@ private:
     StringBuffer    m_firstname;
     StringBuffer    m_lastname;
     StringBuffer    m_employeeID;
+    StringBuffer    m_distinguishedName;
     unsigned        m_userID;
     StringBuffer    m_Fqdn;
     StringBuffer    m_Peer;
     SecUserStatus   m_status;
     Owned<IProperties> m_parameters;
+    MemoryBuffer    m_sessionToken;
+    MemoryBuffer    m_signature;
 
     CriticalSection crit;
 public:
@@ -111,6 +114,17 @@ public:
     bool setEmployeeID(const char * emplID)
     {
         m_employeeID.set(emplID);
+        return true;
+    }
+
+    const char * getDistinguishedName()
+    {
+        return m_distinguishedName.str();
+    }
+
+    bool setDistinguishedName(const char * dn)
+    {
+        m_distinguishedName.set(dn);
         return true;
     }
 
@@ -200,10 +214,26 @@ public:
         return m_pw.str();
     }
 
-    bool addToken(unsigned type, void * data, unsigned length)
+    void setSessionToken(const MemoryBuffer * const token)
     {
-        return false;  //not supported yet
+        m_sessionToken.clear().append(token);
     }
+
+    const MemoryBuffer & getSessionToken()
+    {
+        return m_sessionToken;
+    }
+
+    void setSignature(const MemoryBuffer * const signature)
+    {
+        m_signature.clear().append(signature);
+    }
+
+    const MemoryBuffer & getSignature()
+    {
+        return m_signature;
+    }
+
     virtual unsigned getUserID()
     {
         return m_userID;
@@ -242,7 +272,6 @@ public:
         }
 
 
-        //addToken is not currently implemented....
 //      DBGLOG("Copied name %s to %s",getName(),destination.getName());
     }
 

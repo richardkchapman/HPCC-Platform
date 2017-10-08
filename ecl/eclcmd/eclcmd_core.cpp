@@ -807,6 +807,9 @@ public:
     {
         switch (state)
         {
+        case WUStateUnknown:
+        case WUStateArchived:
+        case WUStateAborting:
         case WUStateCompleted:
         case WUStateFailed:
         case WUStateAborted:
@@ -878,21 +881,41 @@ public:
         int ret = outputMultiExceptionsEx(resp->getExceptions());
 
         StringBuffer respwuid(resp->getWuid());
+        if (!respwuid.length()) //everything below requires workunit
+            return ret;
         if (optVerbose && respwuid.length() && !streq(wuid.str(), respwuid.str()))
             fprintf(stdout, "As %s\n", respwuid.str());
         WUState state = getWorkUnitState(resp->getState());
         if (optPoll && !isFinalState(state))
-            return pollForResults(client, wuid);
+            return pollForResults(client, respwuid);
 
         switch (state)
         {
-        case WUStateRunning:
-            fprintf(stderr, "Timed out waiting for %s to complete, workunit is still running.\n", wuid.str()); //server side waiting timed out
-            break;
         case WUStateCompleted:
             break;
+        case WUStateCompiled:
+        case WUStateSubmitted:
+        case WUStateCompiling:
+        case WUStateUploadingFiles:
+        case WUStateScheduled:
+        case WUStateWait:
+        case WUStateDebugPaused:
+        case WUStateDebugRunning:
+        case WUStatePaused:
+        case WUStateBlocked:
+        case WUStateRunning:
+            fprintf(stderr, "%s %s\n", respwuid.str(), resp->getState());
+            fprintf(stderr, "Timed out waiting for %s to complete, workunit may still be running.\n", wuid.str()); //server side waiting timed out
+            ret = 2;
+            break;
+        case WUStateUnknown:
+        case WUStateFailed:
+        case WUStateArchived:
+        case WUStateAborting:
+        case WUStateAborted:
         default:
             fprintf(stderr, "%s %s\n", respwuid.str(), resp->getState());
+            ret = 4;
         }
 
         if (resp->getResults())
@@ -1680,6 +1703,146 @@ private:
     unsigned int       optListLimit;
 };
 
+class EclCmdZapGen : public EclCmdCommon
+{
+public:
+    EclCmdZapGen()
+    {
+
+    }
+    virtual eclCmdOptionMatchIndicator parseCommandLineOptions(ArgvIterator &iter)
+    {
+        eclCmdOptionMatchIndicator retVal = EclCmdOptionNoMatch;
+        if (iter.done())
+            return EclCmdOptionNoMatch;
+
+        for (; !iter.done(); iter.next())
+        {
+            const char *arg = iter.query();
+            if (*arg != '-') //parameters don't start with '-'
+            {
+                if (optWuid.length())
+                {
+                    fprintf(stderr, "\nunrecognized argument %s\n", arg);
+                    return EclCmdOptionCompletion;
+                }
+                if (!looksLikeAWuid(arg, 'W'))
+                {
+                    fprintf(stderr, "\nargument should be a workunit id: %s\n", arg);
+                    return EclCmdOptionCompletion;
+                }
+                optWuid.set(arg);
+                continue;
+            }
+            if (iter.matchOption(optPath, ECLOPT_PATH))
+            {
+                if ((optPath.length() > 0) && (*optPath.str() != '-'))
+                {
+                    retVal = EclCmdOptionMatch;
+                    continue;
+                }
+                else
+                {
+                    fprintf(stderr, "\nPath should not be empty.\n");
+                    return EclCmdOptionCompletion;
+                }
+            }
+            if (iter.matchFlag(optIncThorSlave, ECLOPT_INC_THOR_SLAVE_LOGS))
+            {
+                retVal = EclCmdOptionMatch;
+                continue;
+            }
+            if (iter.matchOption(optProblemDesc, ECLOPT_PROBLEM_DESC))
+            {
+                if ((optProblemDesc.length() > 0) && (*optProblemDesc.str() != '-'))
+                {
+                    retVal = EclCmdOptionMatch;
+                    continue;
+                }
+                else
+                {
+                    fprintf(stderr, "\nDescription should not be empty.\n");
+                    return EclCmdOptionCompletion;
+                }
+            }
+            eclCmdOptionMatchIndicator ind = EclCmdCommon::matchCommandLineOption(iter, true);
+            if (ind != EclCmdOptionMatch)
+                return ind;
+        }
+        return retVal;
+    }
+    virtual bool finalizeOptions(IProperties *globals)
+    {
+        if (!EclCmdCommon::finalizeOptions(globals))
+            return false;
+        return true;
+    }
+    virtual int processCMD()
+    {
+        Owned<IClientWsWorkunits> client = createCmdClient(WsWorkunits, *this);
+
+        Owned<IClientWUCreateZAPInfoRequest> zapReq = client->createWUCreateZAPInfoRequest();
+        zapReq->setWuid(optWuid.get());
+        zapReq->setIncludeThorSlaveLog(optIncThorSlave);
+        zapReq->setProblemDescription(optProblemDesc.get());
+
+        Owned<IClientWUCreateZAPInfoResponse> zapResp = client->WUCreateZAPInfo(zapReq);
+        int ret = outputMultiExceptionsEx(zapResp->getExceptions());
+        if (ret == 0)
+        {
+            StringBuffer filePath;
+            if (optPath.length())
+            {
+                filePath.set(optPath);
+                const char *p = filePath.str();
+                p = (p + strlen(p) - 1);
+                if (!streq(p, PATHSEPSTR))
+                    filePath.append(PATHSEPSTR);
+            }
+            else
+                filePath.set(".").append(PATHSEPSTR);
+
+            filePath.append(zapResp->getZAPFileName());
+
+            const MemoryBuffer & zapFileData = zapResp->getThefile();
+
+            Owned<IFile> zapFile = createIFile(filePath.str());
+            Owned<IFileIO> zapFileIo = zapFile->open(IFOcreate);
+
+            size32_t written = zapFileIo->write(0, zapFileData.length(), (const void *)zapFileData.toByteArray());
+
+            if (written != zapFileData.length())
+                throw MakeStringException(-1, "truncated write to file %s, ZAP file creation cancelled.\n", filePath.str());
+
+            fprintf(stdout, "ZAP file written into %s.\n",filePath.str());
+        }
+
+        return 0;
+    }
+    virtual void usage()
+    {
+        fputs("\nUsage:\n"
+            "\n"
+            "Create and store ZAP file of the given workunit.\n"
+            "\n"
+            "ecl zapgen <WUID> -path <zap_file_path>\n"
+            "\n"
+            "   WUID                    workunit ID\n"
+            "   path                    path to store ZAP file\n"
+            " Options:\n"
+            "   --inc-thor-slave-logs   include Thor salve(s) log into the ZAP file\n"
+            "   --description <text>    problem description string\n",
+            stdout);
+        EclCmdCommon::usage();
+    }
+private:
+    StringAttr         optWuid;
+    StringAttr         optPath;
+    bool               optIncThorSlave = false;
+    StringAttr         optProblemDesc;
+};
+
+
 //=========================================================================================
 
 IEclCommand *createCoreEclCommand(const char *cmdname)
@@ -1708,5 +1871,7 @@ IEclCommand *createCoreEclCommand(const char *cmdname)
         return new EclCmdGetWuid();
     if (strieq(cmdname, "status"))
         return new EclCmdStatus();
+    if (strieq(cmdname, "zapgen"))
+        return new EclCmdZapGen();
     return NULL;
 }

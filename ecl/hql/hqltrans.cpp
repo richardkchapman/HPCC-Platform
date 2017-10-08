@@ -241,7 +241,7 @@ void HqlTransformerInfo::gatherTransformStats(IStatisticTarget & target) const
     {
         StringBuffer scope;
         scope.append("compile:transform:").append(name);
-        target.addStatistic(SSTcompilestage, scope, StNumStarted, nullptr, numInstances, 1, 0, StatsMergeSum);
+        target.addStatistic(SSTcompilestage, scope, StNumStarts, nullptr, numInstances, 1, 0, StatsMergeSum);
         stats.gatherTransformStats(target, scope);
     }
 #endif
@@ -319,7 +319,7 @@ unsigned activityHidesSelectorGetNumNonHidden(IHqlExpression * expr, IHqlExpress
         case childdataset_dataset:
         case childdataset_datasetleft:
         case childdataset_top_left_right:
-            if (expr->queryChild(0)->queryBody() == selector)
+            if (expr->queryChild(0)->queryNormalizedSelector() == selector)
                 return 1;
             break;
         }
@@ -1060,6 +1060,7 @@ QuickExpressionReplacer::QuickExpressionReplacer()
 
 void QuickExpressionReplacer::setMapping(IHqlExpression * oldValue, IHqlExpression * newValue)
 {
+    assertex(oldValue);
     for (;;)
     {
         oldValue->setTransformExtra(newValue);
@@ -1784,6 +1785,13 @@ void NewHqlTransformer::transformRoot(const HqlExprArray & in, HqlExprArray & ou
     }
 }
 
+void NewHqlTransformer::transformRoot(HqlExprArray & exprs)
+{
+    HqlExprArray temp;
+    transformRoot(exprs, temp);
+    exprs.swapWith(temp);
+}
+
 
 IHqlExpression * NewHqlTransformer::doTransformRootExpr(IHqlExpression * expr)
 {
@@ -1963,7 +1971,7 @@ IHqlExpression * NewHqlTransformer::transformCall(IHqlExpression * expr)
     bool same = transformChildren(body, args);
     if (same && (oldFuncdef == newFuncdef))
         return LINK(expr);
-    OwnedHqlExpr newCall = createBoundFunction(NULL, newFuncdef, args, NULL, DEFAULT_EXPAND_CALL);
+    OwnedHqlExpr newCall = createBoundFunction(NULL, newFuncdef, args, NULL, false);
     return expr->cloneAllAnnotations(newCall);
 }
 

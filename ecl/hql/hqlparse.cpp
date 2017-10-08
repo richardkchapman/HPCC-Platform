@@ -605,6 +605,8 @@ void HqlLex::pushMacro(IHqlExpression *expr)
 
 void HqlLex::checkSignature(const attribute & dummyToken)
 {
+    if (yyParser->lookupCtx.queryParseContext().ignoreSignatures)
+        return;
     Owned<IPipeProcess> pipe = createPipeProcess();
     if (!pipe->run("gpg", "gpg --verify -", ".", true, false, true, 0, false))
     {
@@ -1209,7 +1211,7 @@ void HqlLex::doExport(YYSTYPE & returnToken, bool toXml)
         {
             HqlLookupContext ctx(yyParser->lookupCtx);
             Owned<IFileContents> exportContents = createFileContentsFromText(curParam.str(), sourcePath, yyParser->inSignedModule, yyParser->gpgSignature);
-            expr.setown(parseQuery(scope, exportContents, ctx, xmlScope, NULL, true));
+            expr.setown(parseQuery(scope, exportContents, ctx, xmlScope, NULL, true, false));
 
             if (expr && (expr->getOperator() == no_sizeof))
             {
@@ -1642,7 +1644,7 @@ void HqlLex::doIsValid(YYSTYPE & returnToken)
         HqlLookupContext ctx(yyParser->lookupCtx);
         ctx.errs.clear();   //Deliberately ignore any errors
         Owned<IFileContents> contents = createFileContentsFromText(curParam.str(), sourcePath, yyParser->inSignedModule, yyParser->gpgSignature);
-        expr = parseQuery(scope, contents, ctx, xmlScope, NULL, true);
+        expr = parseQuery(scope, contents, ctx, xmlScope, NULL, true, false);
 
         if(expr)
         {
@@ -2488,7 +2490,7 @@ IPropertyTree * HqlLex::getClearJavadoc()
         return NULL;
 
     IPropertyTree * tree = createPTree("javadoc");
-    extractJavadoc(tree, javaDocComment.str());
+    tree->addProp("content", javaDocComment.str());
     javaDocComment.clear();
     return tree;
 }
@@ -2503,8 +2505,13 @@ unsigned HqlLex::getTypeSize(unsigned lengthTypeName)
 
 void HqlLex::enterEmbeddedMode()
 {
-    doEnterEmbeddedMode(scanner);
-    inCpp = true;
+    if (inmacro)
+        inmacro->enterEmbeddedMode();
+    else
+    {
+        doEnterEmbeddedMode(scanner);
+        inCpp = true;
+    }
 }
 
 int HqlLex::yyLex(YYSTYPE & returnToken, bool lookup, const short * activeState)

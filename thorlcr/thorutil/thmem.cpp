@@ -229,7 +229,8 @@ public:
 class CSpillableStreamBase : public CSpillable
 {
 protected:
-    bool preserveNulls, ownsRows;
+    bool ownsRows;
+    EmptyRowSemantics emptyRowSemantics;
     unsigned spillCompInfo;
     CThorSpillableRowArray rows;
     OwnedIFile spillFile;
@@ -252,13 +253,13 @@ protected:
         return true;
     }
 public:
-    CSpillableStreamBase(CActivityBase &_activity, CThorSpillableRowArray &inRows, IThorRowInterfaces *_rowIf, bool _preserveNulls, unsigned _spillPriority)
-        : CSpillable(_activity, _rowIf, _spillPriority), rows(_activity), preserveNulls(_preserveNulls)
+    CSpillableStreamBase(CActivityBase &_activity, CThorSpillableRowArray &inRows, IThorRowInterfaces *_rowIf, EmptyRowSemantics _emptyRowSemantics, unsigned _spillPriority)
+        : CSpillable(_activity, _rowIf, _spillPriority), rows(_activity), emptyRowSemantics(_emptyRowSemantics)
     {
         assertex(inRows.isFlushed());
         ownsRows = false;
         spillCompInfo = 0x0;
-        rows.setup(rowIf, _preserveNulls);
+        rows.setup(rowIf, emptyRowSemantics);
         rows.swap(inRows);
     }
     ~CSpillableStreamBase()
@@ -337,9 +338,7 @@ class CSharedSpillableRowSet : public CSpillableStreamBase
                     {
                         block.clearCB = true;
                         assertex(((offset_t)-1) != outputOffset);
-                        unsigned rwFlags = DEFAULT_RWFLAGS;
-                        if (owner->preserveNulls)
-                            rwFlags |= rw_grouped;
+                        unsigned rwFlags = DEFAULT_RWFLAGS | mapESRToRWFlags(owner->emptyRowSemantics);
                         spillStream.setown(::createRowStreamEx(owner->spillFile, owner->rowIf, outputOffset, (offset_t)-1, (unsigned __int64)-1, rwFlags));
                         owner->rows.unregisterWriteCallback(*this); // no longer needed
                         ret = spillStream->nextRow();
@@ -358,7 +357,7 @@ class CSharedSpillableRowSet : public CSpillableStreamBase
                 }
                 if (ret)
                     return ret;
-                if (!owner->preserveNulls)
+                if (ers_forbidden == owner->emptyRowSemantics)
                     eos = true;
             }
             return nullptr;
@@ -380,8 +379,8 @@ class CSharedSpillableRowSet : public CSpillableStreamBase
     };
 
 public:
-    CSharedSpillableRowSet(CActivityBase &_activity, CThorSpillableRowArray &inRows, IThorRowInterfaces *_rowIf, bool _preserveNulls, unsigned _spillPriority)
-        : CSpillableStreamBase(_activity, inRows, _rowIf, _preserveNulls, _spillPriority)
+    CSharedSpillableRowSet(CActivityBase &_activity, CThorSpillableRowArray &inRows, IThorRowInterfaces *_rowIf, EmptyRowSemantics _emptyRowSemantics, unsigned _spillPriority)
+        : CSpillableStreamBase(_activity, inRows, _rowIf, _emptyRowSemantics, _spillPriority)
     {
         activateSpillingCallback();
     }
@@ -391,9 +390,7 @@ public:
         if (spillFile) // already spilled?
         {
             block.clearCB = true;
-            unsigned rwFlags = DEFAULT_RWFLAGS;
-            if (preserveNulls)
-                rwFlags |= rw_grouped;
+            unsigned rwFlags = DEFAULT_RWFLAGS | mapESRToRWFlags(emptyRowSemantics);
             return ::createRowStream(spillFile, rowIf, rwFlags);
         }
         rowidx_t toRead = rows.numCommitted();
@@ -414,22 +411,26 @@ class CSpillableStream : public CSpillableStreamBase, implements IRowStream
 public:
     IMPLEMENT_IINTERFACE_USING(CSpillableStreamBase);
 
-    CSpillableStream(CActivityBase &_activity, CThorSpillableRowArray &inRows, IThorRowInterfaces *_rowIf, bool _preserveNulls, unsigned _spillPriority, unsigned _spillCompInfo)
-        : CSpillableStreamBase(_activity, inRows, _rowIf, _preserveNulls, _spillPriority)
+    CSpillableStream(CActivityBase &_activity, CThorSpillableRowArray &inRows, IThorRowInterfaces *_rowIf, EmptyRowSemantics _emptyRowSemantics, unsigned _spillPriority, unsigned _spillCompInfo)
+        : CSpillableStreamBase(_activity, inRows, _rowIf, _emptyRowSemantics, _spillPriority)
     {
         spillCompInfo = _spillCompInfo;
         pos = numReadRows = 0;
         granularity = 500; // JCSMORE - rows
 
+        activateSpillingCallback(); // NB: it's possible the small allocate below will trigger this, 'readRows' will be free as soon as nextRow sees the spill.
+
         // a small amount of rows to read from swappable rows
         readRows = static_cast<const void * *>(rowIf->queryRowManager()->allocate(granularity * sizeof(void*), activity.queryContainer().queryId(), inRows.queryDefaultMaxSpillCost()));
-        activateSpillingCallback();
     }
     ~CSpillableStream()
     {
         spillStream.clear();
-        roxiemem::ReleaseRoxieRowRange(readRows, pos, numReadRows);
-        ReleaseThorRow(readRows);
+        if (readRows)
+        {
+            roxiemem::ReleaseRoxieRowRange(readRows, pos, numReadRows);
+            ReleaseThorRow(readRows);
+        }
     }
 
 // IRowStream
@@ -449,9 +450,10 @@ public:
                     rwFlags |= rw_compress;
                     rwFlags |= spillCompInfo;
                 }
-                if (preserveNulls)
-                    rwFlags |= rw_grouped;
+                rwFlags |= mapESRToRWFlags(emptyRowSemantics);
                 spillStream.setown(createRowStream(spillFile, rowIf, rwFlags));
+                ReleaseThorRow(readRows);
+                readRows = nullptr;
                 return spillStream->nextRow();
             }
             rowidx_t available = rows.numCommitted();
@@ -668,18 +670,15 @@ inline bool CThorExpandingRowArray::_resize(rowidx_t requiredRows, unsigned maxS
     return true;
 }
 
-CThorExpandingRowArray::CThorExpandingRowArray(CActivityBase &_activity)
-    : activity(_activity)
+CThorExpandingRowArray::CThorExpandingRowArray(CActivityBase &_activity) : activity(_activity)
 {
-    initCommon();
-    setup(NULL, false, stableSort_none, true);
+    rowManager = activity.queryRowManager();
 }
 
-CThorExpandingRowArray::CThorExpandingRowArray(CActivityBase &_activity, IThorRowInterfaces *_rowIf, bool _allowNulls, StableSortFlag _stableSort, bool _throwOnOom, rowidx_t initialSize)
+CThorExpandingRowArray::CThorExpandingRowArray(CActivityBase &_activity, IThorRowInterfaces *_rowIf, EmptyRowSemantics _emptyRowSemantics, StableSortFlag _stableSort, bool _throwOnOom, rowidx_t initialSize)
     : activity(_activity)
 {
-    initCommon();
-    setup(_rowIf, _allowNulls, _stableSort, _throwOnOom);
+    setup(_rowIf, _emptyRowSemantics, _stableSort, _throwOnOom);
     if (initialSize)
     {
         rows = static_cast<const void * *>(rowManager->allocate(initialSize * sizeof(void*), activity.queryContainer().queryId(), defaultMaxSpillCost));
@@ -697,18 +696,10 @@ CThorExpandingRowArray::~CThorExpandingRowArray()
     ReleaseThorRow(stableTable);
 }
 
-void CThorExpandingRowArray::initCommon()
-{
-    stableTable = NULL;
-    rows = NULL;
-    maxRows = 0;
-    numRows = 0;
-}
-
-void CThorExpandingRowArray::setup(IThorRowInterfaces *_rowIf, bool _allowNulls, StableSortFlag _stableSort, bool _throwOnOom)
+void CThorExpandingRowArray::setup(IThorRowInterfaces *_rowIf, EmptyRowSemantics _emptyRowSemantics, StableSortFlag _stableSort, bool _throwOnOom)
 {
     rowIf = _rowIf;
-    allowNulls = _allowNulls;
+    emptyRowSemantics = _emptyRowSemantics;
     stableSort = _stableSort;
     throwOnOom = _throwOnOom;
     if (rowIf)
@@ -784,7 +775,7 @@ void CThorExpandingRowArray::swap(CThorExpandingRowArray &other)
     IThorRowInterfaces *otherRowIf = other.rowIf;
     const void **otherRows = other.rows;
     void **otherStableTable = other.stableTable;
-    bool otherAllowNulls = other.allowNulls;
+    EmptyRowSemantics otherEmptyRowSemantics = other.emptyRowSemantics;
     StableSortFlag otherStableSort = other.stableSort;
     bool otherThrowOnOom = other.throwOnOom;
     unsigned otherDefaultMaxSpillCost = other.defaultMaxSpillCost;
@@ -796,7 +787,7 @@ void CThorExpandingRowArray::swap(CThorExpandingRowArray &other)
     other.stableTable = stableTable;
     other.maxRows = maxRows;
     other.numRows = numRows;
-    other.setup(rowIf, allowNulls, stableSort, throwOnOom);
+    other.setup(rowIf, emptyRowSemantics, stableSort, throwOnOom);
     other.setDefaultMaxSpillCost(defaultMaxSpillCost);
 
     rowManager = otherRowManager;
@@ -804,7 +795,7 @@ void CThorExpandingRowArray::swap(CThorExpandingRowArray &other)
     stableTable = otherStableTable;
     maxRows = otherMaxRows;
     numRows = otherNumRows;
-    setup(otherRowIf, otherAllowNulls, otherStableSort, otherThrowOnOom);
+    setup(otherRowIf, otherEmptyRowSemantics, otherStableSort, otherThrowOnOom);
     setDefaultMaxSpillCost(otherDefaultMaxSpillCost);
 }
 
@@ -1160,7 +1151,7 @@ void CThorExpandingRowArray::serialize(MemoryBuffer &mb)
 {
     assertex(serializer);
     CMemoryRowSerializer s(mb);
-    if (!allowNulls)
+    if (emptyRowSemantics == ers_forbidden)
         serialize(s);
     else
     {
@@ -1234,7 +1225,7 @@ void CThorExpandingRowArray::deserializeRow(IRowDeserializerSource &in)
 
 void CThorExpandingRowArray::deserialize(size32_t sz, const void *buf)
 {
-    if (allowNulls)
+    if (emptyRowSemantics != ers_forbidden)
     {
         ASSERTEX((sz>=sizeof(short))&&(*(unsigned short *)buf==0x7631)); // check for mismatch
         buf = (const byte *)buf+sizeof(unsigned short);
@@ -1243,7 +1234,7 @@ void CThorExpandingRowArray::deserialize(size32_t sz, const void *buf)
     CThorStreamDeserializerSource d(sz,buf);
     while (!d.eos())
     {
-        if (allowNulls)
+        if (emptyRowSemantics != ers_forbidden)
         {
             bool nullrow;
             d.read(sizeof(bool),&nullrow);
@@ -1291,26 +1282,17 @@ void CThorSpillableRowArray::safeUnregisterWriteCallback(IWritePosCallback &cb)
 CThorSpillableRowArray::CThorSpillableRowArray(CActivityBase &activity)
     : CThorExpandingRowArray(activity)
 {
-    initCommon();
-    commitDelta = CommitStep;
     throwOnOom = false;
 }
 
-CThorSpillableRowArray::CThorSpillableRowArray(CActivityBase &activity, IThorRowInterfaces *rowIf, bool allowNulls, StableSortFlag stableSort, rowidx_t initialSize, size32_t _commitDelta)
-    : CThorExpandingRowArray(activity, rowIf, false, stableSort, false, initialSize), commitDelta(_commitDelta)
+CThorSpillableRowArray::CThorSpillableRowArray(CActivityBase &activity, IThorRowInterfaces *rowIf, EmptyRowSemantics emptyRowSemantics, StableSortFlag stableSort, rowidx_t initialSize, size32_t _commitDelta)
+    : CThorExpandingRowArray(activity, rowIf, ers_forbidden, stableSort, false, initialSize), commitDelta(_commitDelta)
 {
-    initCommon();
 }
 
 CThorSpillableRowArray::~CThorSpillableRowArray()
 {
     clearRows();
-}
-
-void CThorSpillableRowArray::initCommon()
-{
-    commitRows = 0;
-    firstRow = 0;
 }
 
 void CThorSpillableRowArray::clearRows()
@@ -1361,7 +1343,7 @@ rowidx_t CThorSpillableRowArray::save(IFile &iFile, unsigned _spillCompInfo, boo
     rowidx_t n = numCommitted();
     if (0 == n)
         return 0;
-    ActPrintLog(&activity, "%s: CThorSpillableRowArray::save (skipNulls=%s, allowNulls=%s) max rows = %"  RIPF "u", tracingPrefix, boolToStr(skipNulls), boolToStr(allowNulls), n);
+    ActPrintLog(&activity, "%s: CThorSpillableRowArray::save (skipNulls=%s, emptyRowSemantics=%u) max rows = %"  RIPF "u", tracingPrefix, boolToStr(skipNulls), emptyRowSemantics, n);
 
     if (_spillCompInfo)
         assertex(0 == writeCallbacks.ordinality()); // incompatible
@@ -1372,8 +1354,7 @@ rowidx_t CThorSpillableRowArray::save(IFile &iFile, unsigned _spillCompInfo, boo
         rwFlags |= rw_compress;
         rwFlags |= _spillCompInfo;
     }
-    if (allowNulls)
-        rwFlags |= rw_grouped;
+    rwFlags |= mapESRToRWFlags(emptyRowSemantics);
 
     // NB: This is always called within a CThorArrayLockBlock, as such no writebacks are added or updating
     rowidx_t nextCBI = RCIDXMAX; // indicates none
@@ -1420,7 +1401,7 @@ rowidx_t CThorSpillableRowArray::save(IFile &iFile, unsigned _spillCompInfo, boo
             }
             else if (!skipNulls)
             {
-                assertex(allowNulls);
+                assertex(emptyRowSemantics != ers_forbidden);
                 writer->putRow(NULL);
             }
             ++i;
@@ -1589,7 +1570,7 @@ void CThorSpillableRowArray::transferRowsCopy(const void **outRows, bool takeOwn
 IRowStream *CThorSpillableRowArray::createRowStream(unsigned spillPriority, unsigned spillCompInfo)
 {
     assertex(rowIf);
-    return new CSpillableStream(activity, *this, rowIf, allowNulls, spillPriority, spillCompInfo);
+    return new CSpillableStream(activity, *this, rowIf, emptyRowSemantics, spillPriority, spillCompInfo);
 }
 
 
@@ -1608,7 +1589,7 @@ protected:
     offset_t sizeSpill;
     ICompare *iCompare;
     StableSortFlag stableSort;
-    bool preserveGrouping;
+    EmptyRowSemantics emptyRowSemantics = ers_forbidden;
     CriticalSection readerLock;
     Owned<CSharedSpillableRowSet> spillableRowSet;
     unsigned options;
@@ -1646,10 +1627,10 @@ protected:
         spillCycles += spillTimer.elapsedCycles();
         return true;
     }
-    void setPreserveGrouping(bool _preserveGrouping)
+    void setEmptyRowSemantics(EmptyRowSemantics _emptyRowSemantics)
     {
-        preserveGrouping = _preserveGrouping;
-        spillableRows.setAllowNulls(preserveGrouping);
+        emptyRowSemantics = _emptyRowSemantics;
+        spillableRows.setEmptyRowSemantics(emptyRowSemantics);
     }
     bool flush()
     {
@@ -1719,10 +1700,8 @@ protected:
         ++outStreams;
 
         /* Ensure existing callback is cleared, before:
-         * a) instreams are built, since new spillFiles can be added to as long as existing callback is active
-         * b) locked CThorSpillableRowArrayLock section below, which in turn may add a new callback.
-         *    Otherwise, once this section has the lock, the existing callback may be called by roxiemem and block,
-         *    causing this section to deadlock inside roxiemem, if it tries to add a new callback.
+         * a) instrms are built, since new spillFiles can't be added to as long as existing callback is active
+         * b) streams created based on spillableRows, which take ownership of spillableRows and in turn add their own callbacks
          */
         deactivateSpillingCallback();
 
@@ -1734,8 +1713,7 @@ protected:
             rwFlags |= rw_compress;
             rwFlags |= spillCompInfo;
         }
-        if (preserveGrouping)
-            rwFlags |= rw_grouped;
+        rwFlags |= mapESRToRWFlags(emptyRowSemantics);
         IArrayOf<IRowStream> instrms;
         ForEachItemIn(f, spillFiles)
         {
@@ -1744,50 +1722,48 @@ protected:
             instrms.append(* new CStreamFileOwner(fileOwner, strm));
         }
 
+        if (spillableRowSet)
+            instrms.append(*spillableRowSet->createRowStream());
+        else if (spillableRows.numCommitted())
         {
-            if (spillableRowSet)
-                instrms.append(*spillableRowSet->createRowStream());
-            else if (spillableRows.numCommitted())
+            totalRows += spillableRows.numCommitted();
+            if (iCompare && (1 == outStreams))
             {
-                totalRows += spillableRows.numCommitted();
-                if (iCompare && (1 == outStreams))
+                // Option(rcflag_noAllInMemSort) - avoid sorting allMemRows
+                if ((NULL == allMemRows) || (0 == (options & rcflag_noAllInMemSort)))
                 {
-                    // Option(rcflag_noAllInMemSort) - avoid sorting allMemRows
-                    if ((NULL == allMemRows) || (0 == (options & rcflag_noAllInMemSort)))
-                    {
-                        CCycleTimer timer;
-                        spillableRows.sort(*iCompare, maxCores);
-                        sortCycles += timer.elapsedCycles();
-                    }
-                }
-
-                if ((rc_allDiskOrAllMem == diskMemMix) || // must supply allMemRows, only here if no spilling (see above)
-                    (NULL!=allMemRows && (rc_allMem == diskMemMix)) ||
-                    (NULL!=allMemRows && (rc_mixed == diskMemMix) && 0 == overflowCount) // if allMemRows given, only if no spilling
-                   )
-                {
-                    assertex(allMemRows);
-                    assertex(1 == outStreams);
-                    if (memUsage)
-                        *memUsage = spillableRows.getMemUsage(); // a bit expensive if variable rows
-                    allMemRows->transferFrom(spillableRows);
-                    // stream cannot be used
-                    return NULL;
-                }
-                if (!shared)
-                    instrms.append(*spillableRows.createRowStream(spillPriority, spillCompInfo)); // NB: stream will take ownership of rows in spillableRows
-                else
-                {
-                    spillableRowSet.setown(new CSharedSpillableRowSet(activity, spillableRows, rowIf, preserveGrouping, spillPriority));
-                    instrms.append(*spillableRowSet->createRowStream());
+                    CCycleTimer timer;
+                    spillableRows.sort(*iCompare, maxCores);
+                    sortCycles += timer.elapsedCycles();
                 }
             }
+
+            if ((rc_allDiskOrAllMem == diskMemMix) || // must supply allMemRows, only here if no spilling (see above)
+                (NULL!=allMemRows && (rc_allMem == diskMemMix)) ||
+                (NULL!=allMemRows && (rc_mixed == diskMemMix) && 0 == overflowCount) // if allMemRows given, only if no spilling
+               )
+            {
+                assertex(allMemRows);
+                assertex(1 == outStreams);
+                if (memUsage)
+                    *memUsage = spillableRows.getMemUsage(); // a bit expensive if variable rows
+                allMemRows->transferFrom(spillableRows);
+                // stream cannot be used
+                return NULL;
+            }
+            if (!shared)
+                instrms.append(*spillableRows.createRowStream(spillPriority, spillCompInfo)); // NB: stream will take ownership of rows in spillableRows
             else
             {
-                // If 0 rows, no overflow, don't return stream, except for rc_allDisk which will never fill allMemRows
-                if (allMemRows && (0 == overflowCount) && (diskMemMix != rc_allDisk))
-                    return NULL;
+                spillableRowSet.setown(new CSharedSpillableRowSet(activity, spillableRows, rowIf, emptyRowSemantics, spillPriority));
+                instrms.append(*spillableRowSet->createRowStream());
             }
+        }
+        else
+        {
+            // If 0 rows, no overflow, don't return stream, except for rc_allDisk which will never fill allMemRows
+            if (allMemRows && (0 == overflowCount) && (diskMemMix != rc_allDisk))
+                return NULL;
         }
         if (0 == instrms.ordinality())
             return createNullRowStream();
@@ -1815,7 +1791,6 @@ public:
           iCompare(_iCompare), stableSort(_stableSort), diskMemMix(_diskMemMix),
           spillableRows(_activity)
     {
-        preserveGrouping = false;
         totalRows = 0;
         overflowCount = outStreams = 0;
         sizeSpill = 0;
@@ -1825,7 +1800,7 @@ public:
             activateSpillingCallback();
         maxCores = activity.queryMaxCores();
         options = 0;
-        spillableRows.setup(rowIf, false, stableSort);
+        spillableRows.setup(rowIf, ers_forbidden, stableSort);
         if (activity.getOptBool(THOROPT_COMPRESS_SPILLS, true))
         {
             StringBuffer compType;
@@ -1914,7 +1889,7 @@ public:
             mmRegistered = false;
             activity.queryRowManager()->removeRowBuffer(this);
         }
-        spillableRows.setup(rowIf, false, stableSort);
+        spillableRows.setup(rowIf, ers_forbidden, stableSort);
     }
     virtual void resize(rowidx_t max)
     {
@@ -1967,7 +1942,7 @@ class CThorRowLoader : public CThorRowCollectorBase, implements IThorRowLoader
         if (doReset)
             reset();
         activateSpillingCallback();
-        setPreserveGrouping(trl_preserveGrouping == grouping);
+        setEmptyRowSemantics(trl_preserveGrouping == grouping ? ers_eogonly : ers_forbidden);
         while (!abort)
         {
             const void *next = in->nextRow();
@@ -2050,10 +2025,10 @@ public:
     {
     }
 // IThorRowCollectorCommon
-    virtual void setPreserveGrouping(bool tf)
+    virtual void setEmptyRowSemantics(EmptyRowSemantics emptyGroupSemantics)
     {
-        assertex(!iCompare || !tf); // can't sort if group preserving
-        CThorRowCollectorBase::setPreserveGrouping(tf);
+        assertex(!iCompare || (ers_forbidden == emptyGroupSemantics)); // can't sort if preserving end of groups or nulls
+        CThorRowCollectorBase::setEmptyRowSemantics(emptyGroupSemantics);
     }
     virtual rowcount_t numRows() const { return CThorRowCollectorBase::numRows(); }
     virtual unsigned numOverflows() const { return CThorRowCollectorBase::numOverflows(); }
@@ -2118,10 +2093,10 @@ public:
     virtual bool shrink(StringBuffer *traceInfo) { return CThorRowCollectorBase::shrink(traceInfo); }
 };
 
-IThorRowCollector *createThorRowCollector(CActivityBase &activity, IThorRowInterfaces *rowIf, ICompare *iCompare, StableSortFlag stableSort, RowCollectorSpillFlags diskMemMix, unsigned spillPriority, bool preserveGrouping)
+IThorRowCollector *createThorRowCollector(CActivityBase &activity, IThorRowInterfaces *rowIf, ICompare *iCompare, StableSortFlag stableSort, RowCollectorSpillFlags diskMemMix, unsigned spillPriority, EmptyRowSemantics emptyRowSemantics)
 {
     Owned<IThorRowCollector> collector = new CThorRowCollector(activity, rowIf, iCompare, stableSort, diskMemMix, spillPriority);
-    collector->setPreserveGrouping(preserveGrouping);
+    collector->setEmptyRowSemantics(emptyRowSemantics);
     return collector.getClear();
 }
 
@@ -2611,6 +2586,10 @@ public:
     {
         return childMeta->queryChildMeta(i);
     }
+    virtual const RtlRecord &queryRecordAccessor(bool expand) const
+    {
+        throwUnexpected();  // used for internal structures only - no need to implement
+    }
 };
 
 IOutputMetaData *createOutputMetaDataWithChildRow(IEngineRowAllocator *childAllocator, size32_t extraSz)
@@ -2619,149 +2598,3 @@ IOutputMetaData *createOutputMetaDataWithChildRow(IEngineRowAllocator *childAllo
 }
 
 
-class COutputMetaWithExtra : public CSimpleInterface, implements IOutputMetaData
-{
-    Linked<IOutputMetaData> meta;
-    size32_t metaSz;
-    Owned<IOutputRowSerializer> diskSerializer;
-    Owned<IOutputRowDeserializer> diskDeserializer;
-    Owned<IOutputRowSerializer> internalSerializer;
-    Owned<IOutputRowDeserializer> internalDeserializer;
-    Owned<ISourceRowPrefetcher> prefetcher;
-    Owned<IOutputMetaData> serializedmeta;
-
-    class CSerializer : public CSimpleInterface, implements IOutputRowSerializer
-    {
-        Owned<IOutputRowSerializer> serializer;
-        size32_t metaSz;
-    public:
-        IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
-
-        CSerializer(IOutputRowSerializer *_serializer, size32_t _metaSz) : serializer(_serializer), metaSz(_metaSz)
-        {
-        }
-        virtual void serialize(IRowSerializerTarget &out, const byte *self)
-        {
-            out.put(metaSz, self);
-            serializer->serialize(out, self+metaSz);
-        }
-    };
-    //GH - This code is the same as CPrefixedRowDeserializer
-    class CDeserializer : public CSimpleInterface, implements IOutputRowDeserializer
-    {
-        Owned<IOutputRowDeserializer> deserializer;
-        size32_t metaSz;
-    public:
-        IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
-
-        CDeserializer(IOutputRowDeserializer *_deserializer, size32_t _metaSz) : deserializer(_deserializer), metaSz(_metaSz)
-        {
-        }
-        virtual size32_t deserialize(ARowBuilder & rowBuilder, IRowDeserializerSource &in)
-        {
-            in.read(metaSz, rowBuilder.getSelf());
-            CPrefixedRowBuilder prefixedBuilder(metaSz, rowBuilder);
-            size32_t sz = deserializer->deserialize(prefixedBuilder, in);
-            return sz+metaSz;
-        }
-    };
-
-    class CPrefetcher : public CSimpleInterface, implements ISourceRowPrefetcher
-    {
-        Owned<ISourceRowPrefetcher> childPrefetcher;
-        size32_t metaSz;
-    public:
-        IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
-
-        CPrefetcher(ISourceRowPrefetcher *_childPrefetcher, size32_t _metaSz) : childPrefetcher(_childPrefetcher), metaSz(_metaSz)
-        {
-        }
-        virtual void readAhead(IRowDeserializerSource &in)
-        {
-            in.skip(metaSz);
-            childPrefetcher->readAhead(in);
-        }
-    };
-
-public:
-    IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
-
-    COutputMetaWithExtra(IOutputMetaData *_meta, size32_t _metaSz) : meta(_meta), metaSz(_metaSz)
-    {
-    }
-    virtual size32_t getRecordSize(const void *rec) 
-    {
-        size32_t sz = meta->getRecordSize(rec?((byte *)rec)+metaSz:NULL); 
-        return sz+metaSz;
-    }
-    virtual size32_t getMinRecordSize() const 
-    { 
-        return meta->getMinRecordSize() + metaSz;
-    }
-    virtual size32_t getFixedSize() const 
-    {
-        size32_t sz = meta->getFixedSize();
-        if (!sz)
-            return 0;
-        return sz+metaSz;
-    }
-
-    virtual void toXML(const byte * self, IXmlWriter & out) { meta->toXML(self, out); }
-    virtual unsigned getVersion() const { return meta->getVersion(); }
-
-//The following can only be called if getMetaDataVersion >= 1, may seh otherwise.  Creating a different interface was too painful
-    virtual unsigned getMetaFlags() { return meta->getMetaFlags(); }
-    virtual void destruct(byte * self) { meta->destruct(self); }
-    virtual IOutputRowSerializer * createDiskSerializer(ICodeContext * ctx, unsigned activityId)
-    {
-        if (!diskSerializer)
-            diskSerializer.setown(new CSerializer(meta->createDiskSerializer(ctx, activityId), metaSz));
-        return LINK(diskSerializer);
-    }
-    virtual IOutputRowDeserializer * createDiskDeserializer(ICodeContext * ctx, unsigned activityId)
-    {
-        if (!diskDeserializer)
-            diskDeserializer.setown(new CDeserializer(meta->createDiskDeserializer(ctx, activityId), metaSz));
-        return LINK(diskDeserializer);
-    }
-    virtual ISourceRowPrefetcher * createDiskPrefetcher(ICodeContext * ctx, unsigned activityId)
-    {
-        if (!prefetcher)
-            prefetcher.setown(new CPrefetcher(meta->createDiskPrefetcher(ctx, activityId), metaSz));
-        return LINK(prefetcher);
-    }
-    virtual IOutputMetaData * querySerializedDiskMeta() 
-    { 
-        IOutputMetaData *sm = meta->querySerializedDiskMeta();
-        if (sm==meta.get())
-            return this;
-        if (!serializedmeta.get())
-            serializedmeta.setown(new COutputMetaWithExtra(sm,metaSz));
-        return serializedmeta.get();
-    } 
-    virtual IOutputRowSerializer * createInternalSerializer(ICodeContext * ctx, unsigned activityId)
-    {
-        if (!internalSerializer)
-            internalSerializer.setown(new CSerializer(meta->createInternalSerializer(ctx, activityId), metaSz));
-        return LINK(internalSerializer);
-    }
-    virtual IOutputRowDeserializer * createInternalDeserializer(ICodeContext * ctx, unsigned activityId)
-    {
-        if (!internalDeserializer)
-            internalDeserializer.setown(new CDeserializer(meta->createInternalDeserializer(ctx, activityId), metaSz));
-        return LINK(internalDeserializer);
-    }
-    virtual void walkIndirectMembers(const byte * self, IIndirectMemberVisitor & visitor)
-    {
-        meta->walkIndirectMembers(self, visitor);
-    }
-    virtual IOutputMetaData * queryChildMeta(unsigned i)
-    {
-        return meta->queryChildMeta(i);
-    }
-};
-
-IOutputMetaData *createOutputMetaDataWithExtra(IOutputMetaData *meta, size32_t sz)
-{
-    return new COutputMetaWithExtra(meta, sz);
-}

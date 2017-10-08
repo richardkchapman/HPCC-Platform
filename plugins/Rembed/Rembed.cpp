@@ -423,7 +423,6 @@ public:
             theBoolSet = Rcpp::LogicalVector(elements);
             l[r] = theBoolSet;
             break;
-        case type_unsigned:
         case type_int:
             theIntSet = Rcpp::IntegerVector(elements);
             l[r] = theIntSet;
@@ -1300,7 +1299,7 @@ public:
             break;
         }
     }
-    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, byte *row)
+    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, const byte *row) override
     {
         // We create a list
         const RtlTypeInfo *typeInfo = metaVal.queryTypeInfo();

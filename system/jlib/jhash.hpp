@@ -298,6 +298,8 @@ class MappingXToIInterface : public MappingBetween<KEY, KEYINIT, IInterfacePtr,I
 template <class KEY, class KEYINIT>
 class MapXToIInterface  : public MapBetween<KEY, KEYINIT, IInterfacePtr,IInterfacePtr,MappingXToIInterface<KEY, KEYINIT> >
 {
+public:
+    using ELEMENT = MappingXToIInterface<KEY, KEYINIT>;
 };
 
 template <class KEY, class KEYINIT, class C> 
@@ -459,9 +461,9 @@ protected:
     }       
 
 public:
-    CMinHashTable<C>()
+    CMinHashTable<C>(unsigned _initialSize = 7)
     {
-        htn = 7;
+        htn = _initialSize;
         n = 0;
         table = (C **)calloc(sizeof(C *),htn);
     }
@@ -518,6 +520,23 @@ public:
         return c;
     }
 
+    unsigned findIndex(const char *key, unsigned h)
+    {
+        unsigned i=h%htn;
+        while (table[i]) {
+            if ((table[i]->hash==h)&&table[i]->eq(key))
+                return i;
+            if (++i==htn)
+                i = 0;
+        }
+        return (unsigned) -1;
+    }
+
+    C *getIndex(unsigned v) const
+    {
+        assert(v != (unsigned)-1 && v < htn);
+        return table[v];
+    }
 
     void remove(C *c)
     {

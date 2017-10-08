@@ -90,7 +90,7 @@ bool rltEnabled(IConstWorkUnit const * wu)
         return wu->getDebugValueBool("hthorLayoutTranslationEnabled", false);
 }
 
-IRecordLayoutTranslator * getRecordLayoutTranslator(IDefRecordMeta const * activityMeta, size32_t activityMetaSize, void const * activityMetaBuff, IDistributedFile * df, IRecordLayoutTranslatorCache * cache)
+IRecordLayoutTranslator * getRecordLayoutTranslator(IDefRecordMeta const * activityMeta, size32_t activityMetaSize, void const * activityMetaBuff, IDistributedFile * df, IRecordLayoutTranslatorCache * cache, IRecordLayoutTranslator::Mode mode)
 {
     IPropertyTree const & props = df->queryAttributes();
     MemoryBuffer diskMetaBuff;
@@ -107,9 +107,9 @@ IRecordLayoutTranslator * getRecordLayoutTranslator(IDefRecordMeta const * activ
     try
     {
         if(cache)
-            return cache->get(diskMetaBuff.length(), diskMetaBuff.bufferBase(), activityMetaSize, activityMetaBuff, activityMeta);
+            return cache->get(mode, diskMetaBuff.length(), diskMetaBuff.bufferBase(), activityMetaSize, activityMetaBuff, activityMeta);
         else
-            return createRecordLayoutTranslator(diskMetaBuff.length(), diskMetaBuff.bufferBase(), activityMetaSize, activityMetaBuff);
+            return createRecordLayoutTranslator(diskMetaBuff.length(), diskMetaBuff.bufferBase(), activityMetaSize, activityMetaBuff, mode);
     }
     catch (IException *E)
     {
@@ -404,7 +404,7 @@ CHThorIndexReadActivityBase::CHThorIndexReadActivityBase(IAgentContext &_agent, 
     seeks = 0;
     scans = 0;
     helper.setCallback(&callback);
-    limitTransformExtra = static_cast<IHThorSourceLimitTransformExtra *>(helper.selectInterface(TAIsourcelimittransformextra_1));
+    limitTransformExtra = nullptr;
     gotLayoutTrans = false;
 }
 
@@ -440,6 +440,7 @@ bool CHThorIndexReadActivityBase::doPreopenLimit(unsigned __int64 limit)
     if(superIterator)
     {
         superIterator->first();
+        superIndex = 0;
         do
         {
             df.set(&superIterator->query());
@@ -475,7 +476,7 @@ bool CHThorIndexReadActivityBase::doPreopenLimitFile(unsigned __int64 & count, u
         {
             Owned<IKeyIndex> tlk = openKeyFile(df->queryPart(num));
             verifyIndex(tlk);
-            Owned<IKeyManager> tlman = createKeyManager(tlk, keySize, NULL);
+            Owned<IKeyManager> tlman = createLocalKeyManager(tlk, keySize, NULL);
             initManager(tlman);
             while(tlman->lookup(false) && (count<=limit))
             {
@@ -511,7 +512,7 @@ IKeyIndex * CHThorIndexReadActivityBase::doPreopenLimitPart(unsigned __int64 & r
         verifyIndex(kidx);
     if (limit != (unsigned) -1)
     {
-        Owned<IKeyManager> kman = createKeyManager(kidx, keySize, NULL);
+        Owned<IKeyManager> kman = createLocalKeyManager(kidx, keySize, NULL);
         initManager(kman);
         result += kman->checkCount(limit-result);
     }
@@ -612,7 +613,7 @@ void CHThorIndexReadActivityBase::initManager(IKeyManager *manager)
 
 void CHThorIndexReadActivityBase::initPart()                                    
 { 
-    klManager.setown(createKeyManager(keyIndex, keySize, NULL));
+    klManager.setown(createLocalKeyManager(keyIndex, keySize, NULL));
     initManager(klManager);     
     callback.setManager(klManager);
 }
@@ -642,7 +643,7 @@ bool CHThorIndexReadActivityBase::firstMultiPart()
     if(!tlk)
         openTlk();
     verifyIndex(tlk);
-    tlManager.setown(createKeyManager(tlk, keySize, NULL));
+    tlManager.setown(createLocalKeyManager(tlk, keySize, NULL));
     initManager(tlManager);
     nextPartNumber = 0;
     return nextMultiPart();
@@ -742,7 +743,7 @@ IRecordLayoutTranslator * CHThorIndexReadActivityBase::getLayoutTranslator(IDist
         activityRecordMeta.setown(deserializeRecordMeta(buff, true));
     }
 
-    return getRecordLayoutTranslator(activityRecordMeta, activityRecordMetaSize, activityRecordMetaBuff, f, agent.queryRecordLayoutTranslatorCache());
+    return getRecordLayoutTranslator(activityRecordMeta, activityRecordMetaSize, activityRecordMetaBuff, f, agent.queryRecordLayoutTranslatorCache(), IRecordLayoutTranslator::TranslateAll);
 }
 
 void CHThorIndexReadActivityBase::verifyIndex(IKeyIndex * idx)
@@ -802,7 +803,8 @@ protected:
 CHThorIndexReadActivity::CHThorIndexReadActivity(IAgentContext &_agent, unsigned _activityId, unsigned _subgraphId, IHThorIndexReadArg &_arg, ThorActivityKind _kind, IDistributedFile * _df) 
     : CHThorIndexReadActivityBase(_agent, _activityId, _subgraphId, _arg, _kind, _df), helper(_arg)
 {
-    steppedExtra = static_cast<IHThorSteppedSourceExtra *>(helper.selectInterface(TAIsteppedsourceextra_1));
+    limitTransformExtra = &helper;
+    steppedExtra = helper.querySteppingExtra();
     needTransform = helper.needTransform();
     keyedLimit = (unsigned __int64)-1;
     rowLimit = (unsigned __int64)-1;
@@ -1121,6 +1123,7 @@ protected:
 
 CHThorIndexNormalizeActivity::CHThorIndexNormalizeActivity(IAgentContext &_agent, unsigned _activityId, unsigned _subgraphId, IHThorIndexNormalizeArg &_arg, ThorActivityKind _kind, IDistributedFile * _df) : CHThorIndexReadActivityBase(_agent, _activityId, _subgraphId, _arg, _kind, _df), helper(_arg), outBuilder(NULL)
 {
+    limitTransformExtra = &helper;
     keyedLimit = (unsigned __int64)-1;
     skipLimitReached = false;
     keyedProcessed = 0;
@@ -2500,28 +2503,15 @@ public:
     {
         rawStream->reset(pos);
         CriticalBlock procedure(transformCrit);
-        size32_t rowSize = 4096; // MORE - make configurable
         size32_t maxRowSize = 10*1024*1024; // MORE - make configurable
-        for (;;)
-        {
-            size32_t avail;
-            const void *peek = rawStream->peek(rowSize, avail);
-            if (csvSplitter.splitLine(avail, (const byte *)peek) < rowSize || avail < rowSize)
-                break;
-            if (rowSize == maxRowSize)
-                throw MakeStringException(0, "Row too big");
-            if (rowSize >= maxRowSize/2)
-                rowSize = maxRowSize;
-            else
-                rowSize += rowSize;
-        }
-
-        size32_t thisSize;
+        unsigned thisLineLength = csvSplitter.splitLine(rawStream, maxRowSize);
+        if (!thisLineLength)
+            return;
         try
         {
             RtlDynamicRowBuilder rowBuilder(rowAllocator);
-            thisSize = helper.transform(rowBuilder, csvSplitter.queryLengths(), (const char * *)csvSplitter.queryData(), fetch->left, fetch->pos);
-            if(thisSize)
+            size32_t thisSize = helper.transform(rowBuilder, csvSplitter.queryLengths(), (const char * *)csvSplitter.queryData(), fetch->left, fetch->pos);
+            if (thisSize)
             {
                 setRow(rowBuilder.finalizeRowClear(thisSize), fetch->seq);
             }
@@ -3136,7 +3126,7 @@ public:
             //Owned<IRecordLayoutTranslator> 
             trans.setown(owner.getLayoutTranslator(&f));
             owner.verifyIndex(&f, index, trans);
-            Owned<IKeyManager> manager = createKeyManager(index, index->keySize(), NULL);
+            Owned<IKeyManager> manager = createLocalKeyManager(index, index->keySize(), NULL);
             if(trans)
                 manager->setLayoutTranslator(trans);
             managers.append(*manager.getLink());
@@ -3177,7 +3167,7 @@ void KeyedLookupPartHandler::openPart()
     if(manager)
         return;
     Owned<IKeyIndex> index = openKeyFile(*part);
-    manager.setown(createKeyManager(index, index->keySize(), NULL));
+    manager.setown(createLocalKeyManager(index, index->keySize(), NULL));
     IRecordLayoutTranslator * trans = tlk->queryRecordLayoutTranslator();
     if(trans)
         manager->setLayoutTranslator(trans);
@@ -3257,7 +3247,7 @@ public:
             {
                 Owned<IKeyIndex> index = openKeyFile(f.queryPart(0));
                 owner.verifyIndex(&f, index, trans);
-                manager.setown(createKeyManager(index, index->keySize(), NULL));
+                manager.setown(createLocalKeyManager(index, index->keySize(), NULL));
             }
             else
             {
@@ -4062,7 +4052,7 @@ protected:
             activityRecordMeta.setown(deserializeRecordMeta(buff, true));
         }
 
-        return getRecordLayoutTranslator(activityRecordMeta, activityRecordMetaSize, activityRecordMetaBuff, f, agent.queryRecordLayoutTranslatorCache());
+        return getRecordLayoutTranslator(activityRecordMeta, activityRecordMetaSize, activityRecordMetaBuff, f, agent.queryRecordLayoutTranslatorCache(), IRecordLayoutTranslator::TranslateAll);
     }
 
     virtual void verifyIndex(IDistributedFile * f, IKeyIndex * idx, IRecordLayoutTranslator * trans)

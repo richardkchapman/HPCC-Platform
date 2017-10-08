@@ -591,7 +591,8 @@ bool EclGraphElement::prepare(IAgentContext & agent, const byte * parentExtract,
             break;
         case TAKif:
             {
-                Owned<IHThorArg> helper = createHelper(agent, NULL);
+                assertex(!subgraph->owner);
+                Owned<IHThorArg> helper = createHelper(agent, subgraph->owner);
                 try
                 {
                     helper->onStart(NULL, NULL);
@@ -641,7 +642,8 @@ bool EclGraphElement::prepare(IAgentContext & agent, const byte * parentExtract,
         //However that is far from trivial, so for the moment conditional statements won't be supported by hthor.
         case TAKifaction:
             {
-                Owned<IHThorArg> helper = createHelper(agent, NULL);
+                assertex(!subgraph->owner);
+                Owned<IHThorArg> helper = createHelper(agent, subgraph->owner);
                 //Problem if this is done in a child query...
                 try
                 {
@@ -658,7 +660,7 @@ bool EclGraphElement::prepare(IAgentContext & agent, const byte * parentExtract,
         case TAKsequential:
         case TAKparallel:
             {
-                Owned<IHThorArg> helper = createHelper(agent, NULL);
+                Owned<IHThorArg> helper = createHelper(agent, subgraph->owner);
                 unsigned numBranches = (kind == TAKsequential) ? 
                                         ((IHThorSequentialArg *)helper.get())->numBranches() : 
                                         ((IHThorParallelArg *)helper.get())->numBranches();
@@ -669,7 +671,8 @@ bool EclGraphElement::prepare(IAgentContext & agent, const byte * parentExtract,
 #endif
         case TAKcase:
             {
-                Owned<IHThorArg> helper = createHelper(agent, NULL);
+                assertex(!subgraph->owner);
+                Owned<IHThorArg> helper = createHelper(agent, subgraph->owner);
                 try
                 {
                     helper->onStart(NULL, NULL);
@@ -860,7 +863,7 @@ void EclSubGraph::updateProgress(IStatisticGatherer &progress)
 {
     StatsSubgraphScope subgraph(progress, id);
     if (startGraphTime)
-        progress.addStatistic(StWhenGraphStarted, startGraphTime);
+        progress.addStatistic(StWhenStarted, startGraphTime);
     if (elapsedGraphCycles)
         progress.addStatistic(StTimeElapsed, cycle_to_nanosec(elapsedGraphCycles));
     ForEachItemIn(idx, elements)
@@ -1036,13 +1039,13 @@ IHThorGraphResult * EclSubGraph::createGraphLoopResult(IEngineRowAllocator * own
     return graphLoopResults->createResult(ownedRowsetAllocator);
 }
 
-void EclSubGraph::getLinkedResult(unsigned & count, byte * * & ret, unsigned id)
+void EclSubGraph::getLinkedResult(unsigned & count, const byte * * & ret, unsigned id)
 {
     localResults->queryResult(id)->getLinkedResult(count, ret);
 }
 
 
-void EclSubGraph::getDictionaryResult(unsigned & count, byte * * & ret, unsigned id)
+void EclSubGraph::getDictionaryResult(unsigned & count, const byte * * & ret, unsigned id)
 {
     localResults->queryResult(id)->getLinkedResult(count, ret);
 }
@@ -1167,6 +1170,11 @@ void EclGraph::execute(const byte * parentExtract)
     if (agent->queryRemoteWorkunit())
         wu->setGraphState(queryGraphName(), WUGraphRunning);
 
+    {
+        Owned<IWorkUnit> wu(agent->updateWorkUnit());
+        addTimeStamp(wu, SSTgraph, queryGraphName(), StWhenStarted);
+    }
+
     try
     {
         unsigned startTime = msTick();
@@ -1186,15 +1194,8 @@ void EclGraph::execute(const byte * parentExtract)
             StringBuffer description;
             formatGraphTimerLabel(description, queryGraphName(), 0, 0);
 
-            unsigned __int64 totalTimeNs = 0;
-            unsigned __int64 totalThisTimeNs = 0;
             unsigned __int64 elapsedNs = milliToNano(elapsed);
-            const char *totalTimeStr = "Total cluster time";
-            getWorkunitTotalTime(wu, "hthor", totalTimeNs, totalThisTimeNs);
-
             updateWorkunitTimeStat(wu, SSTgraph, queryGraphName(), StTimeElapsed, description.str(), elapsedNs);
-            updateWorkunitTimeStat(wu, SSTglobal, GLOBAL_SCOPE, StTimeElapsed, NULL, totalThisTimeNs+elapsedNs);
-            wu->setStatistic(SCTsummary, "hthor", SSTglobal, GLOBAL_SCOPE, StTimeElapsed, totalTimeStr, totalTimeNs+elapsedNs, 1, 0, StatsMergeReplace);
         }
 
         if (agent->queryRemoteWorkunit())
@@ -1287,7 +1288,7 @@ const void * UninitializedGraphResult::queryRow(unsigned whichRow)
     throw MakeStringException(99, "Graph Result %d accessed before it is created", id);
 }
 
-void UninitializedGraphResult::getLinkedResult(unsigned & count, byte * * & ret)
+void UninitializedGraphResult::getLinkedResult(unsigned & count, const byte * * & ret)
 {
     throw MakeStringException(99, "Graph Result %d accessed before it is created", id);
 }
@@ -1321,16 +1322,16 @@ const void * GraphResult::queryRow(unsigned whichRow)
     return NULL;
 }
 
-void GraphResult::getLinkedResult(unsigned & count, byte * * & ret)
+void GraphResult::getLinkedResult(unsigned & count, const byte * * & ret)
 {
     unsigned max = rows.ordinality();
-    byte * * rowset = rowsetAllocator->createRowset(max);
+    const byte * * rowset = rowsetAllocator->createRowset(max);
     unsigned i;
     for (i = 0; i < max; i++)
     {
         const void * next = rows.item(i);
         if (next) LinkRoxieRow(next);
-        rowset[i] = (byte *)next;
+        rowset[i] = (const byte *)next;
     }
 
     count = max;
@@ -1597,6 +1598,7 @@ void EclAgent::executeThorGraph(const char * graphName)
             thorMaster.getUrlStr(s);
             s.append("; (").append(e->errorCode()).append(", ");
             e->errorMessage(s).append(")");
+            e->Release();
             throw MakeStringExceptionDirect(-1, s.str());
         }
         ThorReplyCodes replyCode;

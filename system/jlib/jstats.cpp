@@ -23,6 +23,7 @@
 #include "jlog.hpp"
 #include "jregexp.hpp"
 #include "jfile.hpp"
+#include "jerror.hpp"
 #include <math.h>
 
 #ifdef _WIN32
@@ -65,14 +66,14 @@ void setStatisticsComponentName(StatisticCreatorType processType, const char * p
 //--------------------------------------------------------------------------------------------------------------------
 
 // Textual forms of the different enumerations, first items are for none and all.
-static const char * const measureNames[] = { "", "all", "ns", "ts", "cnt", "sz", "cpu", "skw", "node", "ppm", "ip", "cy", NULL };
-static const char * const creatorTypeNames[]= { "", "all", "unknown", "hthor", "roxie", "roxie:s", "thor", "thor:m", "thor:s", "eclcc", "esp", "summary", NULL };
-static const char * const scopeTypeNames[] = { "", "all", "global", "graph", "subgraph", "activity", "allocator", "section", "compile", "dfu", "edge", "function", NULL };
+static constexpr const char * const measureNames[] = { "", "all", "ns", "ts", "cnt", "sz", "cpu", "skw", "node", "ppm", "ip", "cy", "en", "txt", "bool", NULL };
+static constexpr const char * const creatorTypeNames[]= { "", "all", "unknown", "hthor", "roxie", "roxie:s", "thor", "thor:m", "thor:s", "eclcc", "esp", "summary", NULL };
+static constexpr const char * const scopeTypeNames[] = { "", "all", "global", "graph", "subgraph", "activity", "allocator", "section", "compile", "dfu", "edge", "function", "workflow", "child", "unknown", nullptr };
 
-static unsigned matchString(const char * const * names, const char * search)
+static unsigned matchString(const char * const * names, const char * search, unsigned dft)
 {
     if (!search)
-        return 0;
+        return dft;
 
     if (streq(search, "*"))
         search = "all";
@@ -82,10 +83,79 @@ static unsigned matchString(const char * const * names, const char * search)
     {
         const char * next = names[i];
         if (!next)
-            return 0;
+            return dft;
         if (strieq(next, search))
             return i;
         i++;
+    }
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+
+static const StatisticScopeType scoreOrder[] = {
+    SSTedge,
+    SSTactivity,
+    SSTnone,
+    SSTall,
+    SSTglobal,
+    SSTgraph,
+    SSTsubgraph,
+    SSTallocator,
+    SSTsection,
+    SSTcompilestage,
+    SSTdfuworkunit,
+    SSTfunction,
+    SSTworkflow,
+    SSTchildgraph,
+    SSTunknown
+};
+static int scopePriority[SSTmax];
+
+MODULE_INIT(INIT_PRIORITY_STANDARD)
+{
+    static_assert(_elements_in(scoreOrder) == SSTmax, "Elements missing from scoreOrder[]");
+    for (unsigned i=0; i < _elements_in(scoreOrder); i++)
+        scopePriority[scoreOrder[i]] = i;
+    return true;
+}
+
+
+extern jlib_decl int compareScopeName(const char * left, const char * right)
+{
+    if (!*left)
+    {
+        if (!*right)
+            return 0;
+        else
+            return -1;
+    }
+    else
+    {
+        if (!*right)
+            return +1;
+    }
+
+    StatsScopeId leftId;
+    StatsScopeId rightId;
+    for(;;)
+    {
+        leftId.extractScopeText(left, &left);
+        rightId.extractScopeText(right, &right);
+        int result = leftId.compare(rightId);
+        if (result != 0)
+            return result;
+        left = strchr(left, ':');
+        right = strchr(right, ':');
+        if (!left || !right)
+        {
+            if (left)
+                return +1;
+            if (right)
+                return -1;
+            return 0;
+        }
+        left++;
+        right++;
     }
 }
 
@@ -275,7 +345,7 @@ static const unsigned oneKb = 1024;
 static const unsigned oneMb = 1024 * 1024;
 static const unsigned oneGb = 1024 * 1024 * 1024;
 static unsigned toPermille(unsigned x) { return (x * 1000) / 1024; }
-static void formatSize(StringBuffer & out, unsigned __int64 value)
+static StringBuffer & formatSize(StringBuffer & out, unsigned __int64 value)
 {
 
     unsigned Gb = (unsigned)(value / oneGb);
@@ -283,87 +353,173 @@ static void formatSize(StringBuffer & out, unsigned __int64 value)
     unsigned Kb = (unsigned)((value % oneMb) / oneKb);
     unsigned b = (unsigned)(value % oneKb);
     if (Gb)
-        out.appendf("%u.%03uGb", Gb, toPermille(Mb));
+        return out.appendf("%u.%03uGb", Gb, toPermille(Mb));
     else if (Mb)
-        out.appendf("%u.%03uMb", Mb, toPermille(Kb));
+        return out.appendf("%u.%03uMb", Mb, toPermille(Kb));
     else if (Kb)
-        out.appendf("%u.%03uKb", Kb, toPermille(b));
+        return out.appendf("%u.%03uKb", Kb, toPermille(b));
     else
-        out.appendf("%ub", b);
+        return out.appendf("%ub", b);
 }
 
-static void formatLoad(StringBuffer & out, unsigned __int64 value)
+static StringBuffer & formatLoad(StringBuffer & out, unsigned __int64 value)
 {
     //Stored as millionth of a core.  Display as a percentage => scale by 10,000
-    out.appendf("%u.%03u%%", (unsigned)(value / 10000), (unsigned)(value % 10000) / 10);
+    return out.appendf("%u.%03u%%", (unsigned)(value / 10000), (unsigned)(value % 10000) / 10);
 }
 
-static void formatSkew(StringBuffer & out, unsigned __int64 value)
+static StringBuffer & formatSkew(StringBuffer & out, unsigned __int64 value)
 {
     //Skew stored as 10000 = perfect, display as percentage
-    out.appendf("%.2f%%", ((double)(__int64)value) / 100.0);
+    return out.appendf("%.2f%%", ((double)(__int64)value) / 100.0);
 }
 
-static void formatIPV4(StringBuffer & out, unsigned __int64 value)
+static StringBuffer & formatIPV4(StringBuffer & out, unsigned __int64 value)
 {
     byte ip1 = (value & 255);
     byte ip2 = ((value >> 8) & 255);
     byte ip3 = ((value >> 16) & 255);
     byte ip4 = ((value >> 24) & 255);
-    out.appendf("%d.%d.%d.%d", ip1, ip2, ip3, ip4);
+    return out.appendf("%d.%d.%d.%d", ip1, ip2, ip3, ip4);
 }
 
-void formatStatistic(StringBuffer & out, unsigned __int64 value, StatisticMeasure measure)
+StringBuffer & formatStatistic(StringBuffer & out, unsigned __int64 value, StatisticMeasure measure)
 {
     switch (measure)
     {
     case SMeasureNone: // Unknown stat - e.g, on old esp accessing a new workunit
-        out.append(value);
-        break;
+        return out.append(value);
     case SMeasureTimeNs:
         formatTime(out, value);
-        break;
+        return out;
     case SMeasureTimestampUs:
         formatTimeStamp(out, value);
-        break;
+        return out;
     case SMeasureCount:
-        out.append(value);
-        break;
+        return out.append(value);
     case SMeasureSize:
-        formatSize(out, value);
-        break;
+        return formatSize(out, value);
     case SMeasureLoad:
-        formatLoad(out, value);
-        break;
+        return formatLoad(out, value);
     case SMeasureSkew:
-        formatSkew(out, value);
-        break;
+        return formatSkew(out, value);
     case SMeasureNode:
-        out.append(value);
-        break;
+        return out.append(value);
     case SMeasurePercent:
-        out.appendf("%.2f%%", (double)value / 10000.0);  // stored as ppm
-        break;
+        return out.appendf("%.2f%%", (double)value / 10000.0);  // stored as ppm
     case SMeasureIPV4:
-        formatIPV4(out, value);
-        break;
+        return formatIPV4(out, value);
     case SMeasureCycle:
-        out.append(value);
-        break;
+        return out.append(value);
+    case SMeasureBool:
+        return out.append(boolToStr(value != 0));
     default:
-        out.append(value).append('?');
+        return out.append(value).append('?');
     }
 }
 
-void formatStatistic(StringBuffer & out, unsigned __int64 value, StatisticKind kind)
+StringBuffer & formatStatistic(StringBuffer & out, unsigned __int64 value, StatisticKind kind)
 {
-    formatStatistic(out, value, queryMeasure(kind));
+    return formatStatistic(out, value, queryMeasure(kind));
 }
 
 //--------------------------------------------------------------------------------------------------------------------
 
-unsigned queryStatisticsDepth(const char * text)
+stat_type readStatisticValue(const char * cur, const char * * end, StatisticMeasure measure)
 {
+    char * next;
+    stat_type value = strtoll(cur, &next, 10);
+
+    switch (measure)
+    {
+    case SMeasureTimeNs:
+        //Allow s, ms and us as scaling suffixes
+        if (next[0] == 's')
+        {
+            value *= 1000000000;
+            next++;
+        }
+        else if ((next[0] == 'm') && (next[1] == 's'))
+        {
+            value *= 1000000;
+            next += 2;
+        }
+        else if ((next[0] == 'u') && (next[1] == 's'))
+        {
+            value *= 1000;
+            next += 2;
+        }
+        break;
+    case SMeasureCount:
+    case SMeasureSize:
+        //Allow K, M, G as scaling suffixes
+        if (next[0] == 'K')
+        {
+            value *= 0x400;
+            next++;
+        }
+        else if (next[0] == 'M')
+        {
+            value *= 0x100000;
+            next++;
+        }
+        else if (next[0] == 'G')
+        {
+            value *= 0x40000000;
+            next++;
+        }
+        //Skip bytes marker
+        if ((*next == 'b') || (*next == 'B'))
+            next++;
+        break;
+    case SMeasurePercent:
+        //MORE: Extend to allow fractional percentages
+        //Allow % to mean a percentage - instead of ppm
+        if (next[0] == '%')
+        {
+            value *= 10000;
+            next++;
+        }
+        break;
+    }
+
+    if (end)
+        *end = next;
+    return value;
+}
+
+
+void validateScopeId(const char * idText)
+{
+    StatsScopeId id;
+    if (!id.setScopeText(idText))
+        throw makeStringExceptionV(JLIBERR_UnexpectedValue, "'%s' does not appear to be a valid scope id", idText);
+}
+
+
+void validateScope(const char * scopeText)
+{
+    StatsScopeId id;
+    const char * cur = scopeText;
+    for(;;)
+    {
+        if (!id.setScopeText(cur, &cur))
+            throw makeStringExceptionV(JLIBERR_UnexpectedValue, "'%s' does not appear to be a valid scope id", cur);
+        cur = strchr(cur, ':');
+        if (!cur)
+            return;
+        cur++;
+    }
+}
+
+
+//--------------------------------------------------------------------------------------------------------------------
+
+unsigned queryScopeDepth(const char * text)
+{
+    if (!*text)
+        return 0;
+
     unsigned depth = 1;
     for (;;)
     {
@@ -379,6 +535,44 @@ unsigned queryStatisticsDepth(const char * text)
     }
 }
 
+const char * queryScopeTail(const char * scope)
+{
+    const char * colon = strrchr(scope, ':');
+    if (colon)
+        return colon+1;
+    else
+        return scope;
+}
+
+bool getParentScope(StringBuffer & parent, const char * scope)
+{
+    const char * colon = strrchr(scope, ':');
+    if (colon)
+    {
+        parent.append(colon-scope, scope);
+        return true;
+    }
+    else
+        return false;
+}
+
+
+void describeScope(StringBuffer & description, const char * scope)
+{
+    if (!*scope)
+        return;
+
+    StatsScopeId id;
+    for(;;)
+    {
+        id.extractScopeText(scope, &scope);
+        id.describe(description);
+        if (!*scope)
+            return;
+        description.append(": ");
+        scope++;
+    }
+}
 
 const char * queryMeasurePrefix(StatisticMeasure measure)
 {
@@ -395,6 +589,9 @@ const char * queryMeasurePrefix(StatisticMeasure measure)
     case SMeasurePercent:       return "Per";
     case SMeasureIPV4:          return "Ip";
     case SMeasureCycle:         return "Cycle";
+    case SMeasureEnum:          return "";
+    case SMeasureText:          return "";
+    case SMeasureBool:          return "Is";
     default:
         return "Unknown";
     }
@@ -405,28 +602,25 @@ const char * queryMeasureName(StatisticMeasure measure)
     return measureNames[measure];
 }
 
-StatisticMeasure queryMeasure(const char * measure)
+StatisticMeasure queryMeasure(const char * measure, StatisticMeasure dft)
 {
     //MORE: Use a hash table??
-    StatisticMeasure ret = (StatisticMeasure)matchString(measureNames, measure);
+    StatisticMeasure ret = (StatisticMeasure)matchString(measureNames, measure, SMeasureMax);
+    if (ret != SMeasureMax)
+        return ret;
+
     //Legacy support for an unusual statistic - pretend the sizes are in bytes instead of kb.
-    if ((ret == SMeasureNone) && measure)
+    if (streq(measure, "kb"))
+        return SMeasureSize;
+
+    for (unsigned i1=SMeasureAll+1; i1 < SMeasureMax; i1++)
     {
-        if (streq(measure, "kb"))
-        {
-            ret = SMeasureSize;
-        }
-        else
-        {
-            for (unsigned i1=SMeasureAll+1; i1 < SMeasureMax; i1++)
-            {
-                const char * prefix = queryMeasurePrefix((StatisticMeasure)i1);
-                if (strieq(measure, prefix))
-                    return (StatisticMeasure)i1;
-            }
-        }
+        const char * prefix = queryMeasurePrefix((StatisticMeasure)i1);
+        if (strieq(measure, prefix))
+            return (StatisticMeasure)i1;
     }
-    return ret;
+
+    return dft;
 }
 
 StatsMergeAction queryMergeMode(StatisticMeasure measure)
@@ -443,6 +637,9 @@ StatsMergeAction queryMergeMode(StatisticMeasure measure)
     case SMeasurePercent:       return StatsMergeReplace;
     case SMeasureIPV4:          return StatsMergeKeepNonZero;
     case SMeasureCycle:         return StatsMergeSum;
+    case SMeasureEnum:          return StatsMergeKeepNonZero;
+    case SMeasureText:          return StatsMergeKeepNonZero;
+    case SMeasureBool:          return StatsMergeKeepNonZero;
     default:
 #ifdef _DEBUG
         throwUnexpected();
@@ -541,11 +738,11 @@ public:
 static const StatisticMeta statsMetaData[StMax] = {
     { StKindNone, SMeasureNone, StKindNone, StKindNone, { "none" }, { "@none" } },
     { StKindAll, SMeasureAll, StKindAll, StKindAll, { "all" }, { "@all" } },
-    { WHENSTAT(GraphStarted) },
-    { WHENSTAT(GraphFinished) },
+    { WHENSTAT(GraphStarted) }, // Deprecated - use WhenStart
+    { WHENSTAT(GraphFinished) }, // Deprecated - use WhenFinished
     { WHENSTAT(FirstRow) },
-    { WHENSTAT(QueryStarted) },
-    { WHENSTAT(QueryFinished) },
+    { WHENSTAT(QueryStarted) }, // Deprecated - use WhenStart
+    { WHENSTAT(QueryFinished) }, // Deprecated - use WhenFinished
     { WHENSTAT(Created) },
     { WHENSTAT(Compiled) },
     { WHENSTAT(WorkunitModified) },
@@ -558,8 +755,8 @@ static const StatisticMeta statsMetaData[StMax] = {
     { SIZESTAT(MaxRowSize) },
     { NUMSTAT(RowsProcessed) },
     { NUMSTAT(Slaves) },
-    { NUMSTAT(Started) },
-    { NUMSTAT(Stopped) },
+    { NUMSTAT(Starts) },
+    { NUMSTAT(Stops) },
     { NUMSTAT(IndexSeeks) },
     { NUMSTAT(IndexScans) },
     { NUMSTAT(IndexWildSeeks) },
@@ -624,6 +821,10 @@ static const StatisticMeta statsMetaData[StMax] = {
     { CYCLESTAT(Soapcall) },
     { CYCLESTAT(FirstExecute) },
     { CYCLESTAT(TotalNested) },
+    { TIMESTAT(Generate) },
+    { CYCLESTAT(Generate) },
+    { WHENSTAT(Started) },
+    { WHENSTAT(Finished) },
 };
 
 
@@ -761,10 +962,10 @@ const char * queryTreeTag(StatisticKind kind)
 
 //--------------------------------------------------------------------------------------------------------------------
 
-StatisticKind queryStatisticKind(const char * search)
+StatisticKind queryStatisticKind(const char * search, StatisticKind dft)
 {
     if (!search)
-        return StKindNone;
+        return dft;
     if (streq(search, "*"))
         return StKindAll;
 
@@ -779,7 +980,7 @@ StatisticKind queryStatisticKind(const char * search)
                 return kind;
         }
     }
-    return StKindNone;
+    return dft;
 }
 
 //--------------------------------------------------------------------------------------------------------------------
@@ -789,10 +990,10 @@ const char * queryCreatorTypeName(StatisticCreatorType sct)
     return creatorTypeNames[sct];
 }
 
-StatisticCreatorType queryCreatorType(const char * sct)
+StatisticCreatorType queryCreatorType(const char * sct, StatisticCreatorType dft)
 {
     //MORE: Use a hash table??
-    return (StatisticCreatorType)matchString(creatorTypeNames, sct);
+    return (StatisticCreatorType)matchString(creatorTypeNames, sct, dft);
 }
 
 //--------------------------------------------------------------------------------------------------------------------
@@ -802,10 +1003,10 @@ const char * queryScopeTypeName(StatisticScopeType sst)
     return scopeTypeNames[sst];
 }
 
-extern jlib_decl StatisticScopeType queryScopeType(const char * sst)
+extern jlib_decl StatisticScopeType queryScopeType(const char * sst, StatisticScopeType dft)
 {
     //MORE: Use a hash table??
-    return (StatisticScopeType)matchString(scopeTypeNames, sst);
+    return (StatisticScopeType)matchString(scopeTypeNames, sst, dft);
 }
 
 //--------------------------------------------------------------------------------------------------------------------
@@ -885,39 +1086,27 @@ static int compareUnsigned(unsigned const * left, unsigned const * right)
     return (*left < *right) ? -1 : (*left > *right) ? +1 : 0;
 }
 
-StatisticsMapping::StatisticsMapping(StatisticKind kind, ...)
+StatisticsMapping::StatisticsMapping(const std::initializer_list<StatisticKind> &kinds)
 {
-    if (kind != StKindNone)
+    for (auto kind : kinds)
     {
+        assert(kind != StKindNone);
+        assert(!indexToKind.contains(kind));
         indexToKind.append(kind);
-        va_list args;
-        va_start(args, kind);
-        for (;;)
-        {
-            unsigned next  = va_arg(args, unsigned);
-            if (!next)
-                break;
-            indexToKind.appendUniq(next);
-        }
-        va_end(args);
     }
     createMappings();
 }
 
-StatisticsMapping::StatisticsMapping(const StatisticsMapping * from, ...)
+StatisticsMapping::StatisticsMapping(const StatisticsMapping * from, const std::initializer_list<StatisticKind> &kinds)
 {
     ForEachItemIn(idx, from->indexToKind)
         indexToKind.append(from->indexToKind.item(idx));
-    va_list args;
-    va_start(args, from);
-    for (;;)
+    for (auto kind : kinds)
     {
-        unsigned next  = va_arg(args, unsigned);
-        if (!next)
-            break;
-        indexToKind.appendUniq(next);
+        assert(kind != StKindNone);
+        assert(!indexToKind.contains(kind));
+        indexToKind.append(kind);
     }
-    va_end(args);
     createMappings();
 }
 
@@ -945,11 +1134,11 @@ void StatisticsMapping::createMappings()
 }
 
 const StatisticsMapping allStatistics;
-const StatisticsMapping heapStatistics(StNumAllocations, StNumAllocationScans, StKindNone);
-const StatisticsMapping diskLocalStatistics(StCycleDiskReadIOCycles, StSizeDiskRead, StNumDiskReads, StCycleDiskWriteIOCycles, StSizeDiskWrite, StNumDiskWrites, StNumDiskRetries, StKindNone);
-const StatisticsMapping diskRemoteStatistics(StTimeDiskReadIO, StSizeDiskRead, StNumDiskReads, StTimeDiskWriteIO, StSizeDiskWrite, StNumDiskWrites, StNumDiskRetries, StKindNone);
-const StatisticsMapping diskReadRemoteStatistics(StTimeDiskReadIO, StSizeDiskRead, StNumDiskReads, StNumDiskRetries, StKindNone);
-const StatisticsMapping diskWriteRemoteStatistics(StTimeDiskWriteIO, StSizeDiskWrite, StNumDiskWrites, StNumDiskRetries, StKindNone);
+const StatisticsMapping heapStatistics({StNumAllocations, StNumAllocationScans});
+const StatisticsMapping diskLocalStatistics({StCycleDiskReadIOCycles, StSizeDiskRead, StNumDiskReads, StCycleDiskWriteIOCycles, StSizeDiskWrite, StNumDiskWrites, StNumDiskRetries});
+const StatisticsMapping diskRemoteStatistics({StTimeDiskReadIO, StSizeDiskRead, StNumDiskReads, StTimeDiskWriteIO, StSizeDiskWrite, StNumDiskWrites, StNumDiskRetries});
+const StatisticsMapping diskReadRemoteStatistics({StTimeDiskReadIO, StSizeDiskRead, StNumDiskReads, StNumDiskRetries});
+const StatisticsMapping diskWriteRemoteStatistics({StTimeDiskWriteIO, StSizeDiskWrite, StNumDiskWrites, StNumDiskRetries});
 
 //--------------------------------------------------------------------------------------------------------------------
 
@@ -967,11 +1156,11 @@ public:
         in.read(value);
     }
 
-    virtual StatisticKind queryKind() const
+    StatisticKind queryKind() const
     {
         return kind;
     }
-    virtual unsigned __int64 queryValue() const
+    unsigned __int64 queryValue() const
     {
         return value;
     }
@@ -1011,6 +1200,12 @@ StringBuffer & StatsScopeId::getScopeText(StringBuffer & out) const
         return out.append(EdgeScopePrefix).append(id).append("_").append(extra);
     case SSTfunction:
         return out.append(FunctionScopePrefix).append(name);
+    case SSTworkflow:
+        return out.append(WorkflowScopePrefix).append(id);
+    case SSTchildgraph:
+        return out.append(ChildGraphScopePrefix).append(id);
+    case SSTunknown:
+        return out.append(name);
     default:
 #ifdef _DEBUG
         throwUnexpected();
@@ -1024,11 +1219,63 @@ unsigned StatsScopeId::getHash() const
     switch (scopeType)
     {
     case SSTfunction:
+    case SSTunknown:
         return hashc((const byte *)name.get(), strlen(name), (unsigned)scopeType);
     default:
         return hashc((const byte *)&id, sizeof(id), (unsigned)scopeType);
     }
 }
+
+bool StatsScopeId::isWildcard() const
+{
+    return (id == 0) && (extra == 0) && !name;
+}
+
+int StatsScopeId::compare(const StatsScopeId & other) const
+{
+    if (scopeType != other.scopeType)
+        return scopePriority[scopeType] - scopePriority[other.scopeType];
+    if (id != other.id)
+        return (int)(id - other.id);
+    if (extra != other.extra)
+        return (int)(extra - other.extra);
+    if (name && other.name)
+        return strcmp(name, other.name);
+    if (name)
+        return +1;
+    if (other.name)
+        return -1;
+    return 0;
+}
+
+void StatsScopeId::describe(StringBuffer & description) const
+{
+    const char * name = queryScopeTypeName(scopeType);
+    description.append((char)toupper(*name)).append(name+1);
+    switch (scopeType)
+    {
+    case SSTgraph:
+        description.append(" graph").append(id);
+        break;
+    case SSTsubgraph:
+    case SSTactivity:
+    case SSTworkflow:
+    case SSTchildgraph:
+        description.append(' ').append(id);
+        break;
+    case SSTedge:
+        description.append(' ').append(id).append(',').append(extra);
+        break;
+    case SSTfunction:
+        description.append(' ').append(name);
+        break;
+    default:
+        throwUnexpected();
+        break;
+    }
+
+}
+
 
 bool StatsScopeId::matches(const StatsScopeId & other) const
 {
@@ -1057,6 +1304,8 @@ void StatsScopeId::deserialize(MemoryBuffer & in, unsigned version)
     case SSTgraph:
     case SSTsubgraph:
     case SSTactivity:
+    case SSTworkflow:
+    case SSTchildgraph:
         in.read(id);
         break;
     case SSTedge:
@@ -1080,6 +1329,8 @@ void StatsScopeId::serialize(MemoryBuffer & out) const
     case SSTgraph:
     case SSTsubgraph:
     case SSTactivity:
+    case SSTworkflow:
+    case SSTchildgraph:
         out.append(id);
         break;
     case SSTedge:
@@ -1102,33 +1353,109 @@ void StatsScopeId::setId(StatisticScopeType _scopeType, unsigned _id, unsigned _
     extra = _extra;
 }
 
-bool StatsScopeId::setScopeText(const char * text)
+bool StatsScopeId::setScopeText(const char * text, const char * * _next)
 {
-    if (MATCHES_CONST_PREFIX(text, ActivityScopePrefix))
-        setActivityId(atoi(text + CONST_STRLEN(ActivityScopePrefix)));
-    else if (MATCHES_CONST_PREFIX(text, GraphScopePrefix))
-        setId(SSTgraph, atoi(text + CONST_STRLEN(GraphScopePrefix)));
-    else if (MATCHES_CONST_PREFIX(text, SubGraphScopePrefix))
-        setSubgraphId(atoi(text + CONST_STRLEN(SubGraphScopePrefix)));
-    else if (MATCHES_CONST_PREFIX(text, EdgeScopePrefix))
+    char * * next = (char * *)_next;
+    switch (*text)
     {
-        const char * underscore = strchr(text, '_');
-        if (!underscore)
-            return false;
-        setEdgeId(atoi(text + CONST_STRLEN(EdgeScopePrefix)), atoi(underscore+1));
+    case ActivityScopePrefix[0]:
+        if (MATCHES_CONST_PREFIX(text, ActivityScopePrefix))
+        {
+            if (isdigit(text[CONST_STRLEN(ActivityScopePrefix)]))
+            {
+                unsigned id = strtoul(text + CONST_STRLEN(ActivityScopePrefix), next, 10);
+                setActivityId(id);
+                return true;
+            }
+        }
+        break;
+    case GraphScopePrefix[0]:
+        if (MATCHES_CONST_PREFIX(text, GraphScopePrefix))
+        {
+            if (isdigit(text[CONST_STRLEN(GraphScopePrefix)]))
+            {
+                unsigned id = strtoul(text + CONST_STRLEN(GraphScopePrefix), next, 10);
+                setId(SSTgraph, id);
+                return true;
+            }
+        }
+        break;
+    case SubGraphScopePrefix[0]:
+        if (MATCHES_CONST_PREFIX(text, SubGraphScopePrefix))
+        {
+            if (isdigit(text[CONST_STRLEN(SubGraphScopePrefix)]))
+            {
+                unsigned id = strtoul(text + CONST_STRLEN(SubGraphScopePrefix), next, 10);
+                setSubgraphId(id);
+                return true;
+            }
+        }
+        break;
+    case EdgeScopePrefix[0]:
+        if (MATCHES_CONST_PREFIX(text, EdgeScopePrefix))
+        {
+            const char * underscore = strchr(text, '_');
+            if (!underscore || !isdigit(underscore[1]))
+                return false;
+            unsigned id1 = atoi(text + CONST_STRLEN(EdgeScopePrefix));
+            unsigned id2 = strtoul(underscore+1, next, 10);
+            setEdgeId(id1, id2);
+            return true;
+        }
+        break;
+    case FunctionScopePrefix[0]:
+        if (MATCHES_CONST_PREFIX(text, FunctionScopePrefix))
+        {
+            setFunctionId(text+CONST_STRLEN(FunctionScopePrefix));
+            return true;
+        }
+        break;
+    case WorkflowScopePrefix[0]:
+        if (MATCHES_CONST_PREFIX(text, WorkflowScopePrefix))
+        {
+            setWorkflowId(atoi(text+CONST_STRLEN(WorkflowScopePrefix)));
+            return true;
+        }
+        break;
+    case ChildGraphScopePrefix[0]:
+        if (MATCHES_CONST_PREFIX(text, ChildGraphScopePrefix))
+        {
+            setChildGraphId(atoi(text+CONST_STRLEN(ChildGraphScopePrefix)));
+            return true;
+        }
+        break;
     }
-    else if (MATCHES_CONST_PREFIX(text, FunctionScopePrefix))
-        setFunctionId(text+CONST_STRLEN(FunctionScopePrefix));
-    else
-        return false;
-
-    return true;
+    return false;
 }
+
+bool StatsScopeId::extractScopeText(const char * text, const char * * next)
+{
+    if (setScopeText(text, next))
+        return true;
+
+    scopeType = SSTunknown;
+    const char * end = strchr(text, ':');
+    if (end)
+    {
+        name.set(text, end-text);
+        if (next)
+            *next = end;
+    }
+    else
+    {
+        name.set(text);
+        if (next)
+            *next = text + strlen(text);
+    }
+    return false;
+}
+
 
 void StatsScopeId::setActivityId(unsigned _id)
 {
     setId(SSTactivity, _id);
 }
+
 void StatsScopeId::setEdgeId(unsigned _id, unsigned _output)
 {
     setId(SSTedge, _id, _output);
@@ -1141,6 +1468,14 @@ void StatsScopeId::setFunctionId(const char * _name)
 {
     scopeType = SSTfunction;
     name.set(_name);
+}
+void StatsScopeId::setWorkflowId(unsigned _id)
+{
+    setId(SSTworkflow, _id);
+}
+void StatsScopeId::setChildGraphId(unsigned _id)
+{
+    setId(SSTchildgraph, _id);
 }
 
 //--------------------------------------------------------------------------------------------------------------------
@@ -1170,6 +1505,20 @@ public:
     virtual bool matchesElement(const void *et, const void *searchET) const;
 };
 typedef IArrayOf<CStatisticCollection> CollectionArray;
+
+static int compareCollection(IInterface * const * pl, IInterface * const *pr);
+
+class SortedCollectionIterator : public ArrayIIteratorOf<IArrayOf<IStatisticCollection>, IStatisticCollection, IStatisticCollectionIterator>
+{
+    IArrayOf<IStatisticCollection> elems;
+public:
+    SortedCollectionIterator(IStatisticCollectionIterator &iter) : ArrayIIteratorOf<IArrayOf<IStatisticCollection>, IStatisticCollection, IStatisticCollectionIterator>(elems)
+    {
+        ForEach(iter)
+            elems.append(iter.get());
+        elems.sort(compareCollection);
+    }
+};
 
 class CStatisticCollection : public CInterfaceOf<IStatisticCollection>
 {
@@ -1207,21 +1556,21 @@ public:
     StringBuffer &toXML(StringBuffer &out) const;
 
 //interface IStatisticCollection:
-    virtual StatisticScopeType queryScopeType() const
+    virtual StatisticScopeType queryScopeType() const override
     {
         return id.queryScopeType();
     }
-    virtual unsigned __int64 queryWhenCreated() const
+    virtual unsigned __int64 queryWhenCreated() const override
     {
         if (parent)
             return parent->queryWhenCreated();
         return 0;
     }
-    virtual StringBuffer & getScope(StringBuffer & str) const
+    virtual StringBuffer & getScope(StringBuffer & str) const override
     {
         return id.getScopeText(str);
     }
-    virtual StringBuffer & getFullScope(StringBuffer & str) const
+    virtual StringBuffer & getFullScope(StringBuffer & str) const override
     {
         if (parent)
         {
@@ -1231,7 +1580,7 @@ public:
         id.getScopeText(str);
         return str;
     }
-    virtual unsigned __int64 queryStatistic(StatisticKind kind) const
+    virtual unsigned __int64 queryStatistic(StatisticKind kind) const override
     {
         ForEachItemIn(i, stats)
         {
@@ -1241,23 +1590,39 @@ public:
         }
         return 0;
     }
-    virtual unsigned getNumStatistics() const
+    virtual bool getStatistic(StatisticKind kind, unsigned __int64 & value) const override
+    {
+        ForEachItemIn(i, stats)
+        {
+            const Statistic & cur = stats.item(i);
+            if (cur.kind == kind)
+            {
+                value = cur.value;
+                return true;
+            }
+        }
+        return false;
+    }
+    virtual unsigned getNumStatistics() const override
     {
         return stats.ordinality();
     }
-    virtual void getStatistic(StatisticKind & kind, unsigned __int64 & value, unsigned idx) const
+    virtual void getStatistic(StatisticKind & kind, unsigned __int64 & value, unsigned idx) const override
     {
         const Statistic & cur = stats.item(idx);
         kind = cur.kind;
         value = cur.value;
     }
-    virtual IStatisticCollectionIterator & getScopes(const char * filter)
+    virtual IStatisticCollectionIterator & getScopes(const char * filter, bool sorted) override
     {
         assertex(!filter);
-        return * new SuperHashIIteratorOf<IStatisticCollection, IStatisticCollectionIterator, false>(children);
+        Owned<IStatisticCollectionIterator> hashIter = new SuperHashIIteratorOf<IStatisticCollection, IStatisticCollectionIterator, false>(children);
+        if (!sorted)
+            return *hashIter.getClear();
+        return * new SortedCollectionIterator(*hashIter);
     }
 
-    virtual void getMinMaxScope(IStringVal & minValue, IStringVal & maxValue, StatisticScopeType searchScopeType) const
+    virtual void getMinMaxScope(IStringVal & minValue, IStringVal & maxValue, StatisticScopeType searchScopeType) const override
     {
         if (id.queryScopeType() == searchScopeType)
         {
@@ -1276,7 +1641,7 @@ public:
             iter.query().getMinMaxScope(minValue, maxValue, searchScopeType);
     }
 
-    virtual void getMinMaxActivity(unsigned & minValue, unsigned & maxValue) const
+    virtual void getMinMaxActivity(unsigned & minValue, unsigned & maxValue) const override
     {
         unsigned activityId = id.queryActivity();
         if (activityId)
@@ -1355,6 +1720,8 @@ public:
             iter.query().serialize(out);
     }
 
+    inline const StatsScopeId & queryScopeId() const { return id; }
+
 private:
     StatsScopeId id;
     CStatisticCollection * parent;
@@ -1379,6 +1746,13 @@ StringBuffer &CStatisticCollection::toXML(StringBuffer &out) const
         iter.query().toXML(out);
     out.append("</Scope>\n");
     return out;
+}
+
+static int compareCollection(IInterface * const * pl, IInterface * const *pr)
+{
+    CStatisticCollection * l = static_cast<CStatisticCollection *>(static_cast<IStatisticCollection *>(*pl));
+    CStatisticCollection * r = static_cast<CStatisticCollection *>(static_cast<IStatisticCollection *>(*pr));
+    return l->queryScopeId().compare(r->queryScopeId());
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -1643,15 +2017,25 @@ void CRuntimeStatistic::merge(unsigned __int64 otherValue, StatsMergeAction merg
 CRuntimeStatisticCollection::~CRuntimeStatisticCollection()
 {
     delete [] values;
-    delete nested;
+    delete queryNested();
+}
+
+CNestedRuntimeStatisticMap * CRuntimeStatisticCollection::queryNested() const
+{
+    return nested.load(std::memory_order_relaxed);
+}
+
+CNestedRuntimeStatisticMap * CRuntimeStatisticCollection::createNested() const
+{
+    return new CNestedRuntimeStatisticMap;
 }
 
 CNestedRuntimeStatisticMap & CRuntimeStatisticCollection::ensureNested()
 {
-    if (!nested)
-        nested = new CNestedRuntimeStatisticMap;
-    return *nested;
+    return *querySingleton(nested, nestlock, [this]{ return this->createNested(); });
 }
+
+CriticalSection CRuntimeStatisticCollection::nestlock;
 
 unsigned __int64 CRuntimeStatisticCollection::getSerialStatisticValue(StatisticKind kind) const
 {
@@ -1687,9 +2071,10 @@ void CRuntimeStatisticCollection::merge(const CRuntimeStatisticCollection & othe
                 mergeStatistic(kind, value);
         }
     }
-    if (other.nested)
+    CNestedRuntimeStatisticMap *otherNested = other.queryNested();
+    if (otherNested)
     {
-        ensureNested().merge(*other.nested);
+        ensureNested().merge(*otherNested);
     }
 }
 
@@ -1714,9 +2099,10 @@ void CRuntimeStatisticCollection::updateDelta(CRuntimeStatisticCollection & targ
                 target.mergeStatistic(kind, sourceValue);
         }
     }
-    if (source.nested)
+    CNestedRuntimeStatisticMap *sourceNested = source.queryNested();
+    if (sourceNested)
     {
-        ensureNested().updateDelta(target.ensureNested(), *source.nested);
+        ensureNested().updateDelta(target.ensureNested(), *sourceNested);
     }
 }
 
@@ -1776,8 +2162,9 @@ void CRuntimeStatisticCollection::recordStatistics(IStatisticGatherer & target) 
         }
     }
     reportIgnoredStats();
-    if (nested)
-        nested->recordStatistics(target);
+    CNestedRuntimeStatisticMap *qn = queryNested();
+    if (qn)
+        qn->recordStatistics(target);
 }
 
 void CRuntimeStatisticCollection::reportIgnoredStats() const
@@ -1798,8 +2185,9 @@ StringBuffer & CRuntimeStatisticCollection::toXML(StringBuffer &str) const
             str.appendf("<%s>%" I64F "d</%s>", name, value, name);
         }
     }
-    if (nested)
-        nested->toXML(str);
+    CNestedRuntimeStatisticMap *qn = queryNested();
+    if (qn)
+        qn->toXML(str);
     return str;
 }
 
@@ -1811,13 +2199,18 @@ StringBuffer & CRuntimeStatisticCollection::toStr(StringBuffer &str) const
         if (value)
         {
             StatisticKind kind = getKind(iStat);
-            const char * name = queryStatisticName(kind);
+            StatisticKind serialKind = querySerializedKind(kind);
+            if (kind != serialKind)
+                value = convertMeasure(kind, serialKind, value);
+
+            const char * name = queryStatisticName(serialKind);
             str.append(' ').append(name).append("=");
-            formatStatistic(str, value, kind);
+            formatStatistic(str, value, serialKind);
         }
     }
-    if (nested)
-        nested->toStr(str);
+    CNestedRuntimeStatisticMap *qn = queryNested();
+    if (qn)
+        qn->toStr(str);
     return str;
 }
 
@@ -1894,10 +2287,11 @@ bool CRuntimeStatisticCollection::serialize(MemoryBuffer& out) const
     }
 
     bool nonEmpty = (numValid != 0);
-    out.append(nested != nullptr);
-    if (nested)
+    CNestedRuntimeStatisticMap *qn = queryNested();
+    out.append(qn != nullptr);
+    if (qn)
     {
-        if (nested->serialize(out))
+        if (qn->serialize(out))
             nonEmpty = true;
     }
     return nonEmpty;
@@ -1943,11 +2337,9 @@ CRuntimeSummaryStatisticCollection::~CRuntimeSummaryStatisticCollection()
     delete[] derived;
 }
 
-CNestedRuntimeStatisticMap & CRuntimeSummaryStatisticCollection::ensureNested()
+CNestedRuntimeStatisticMap * CRuntimeSummaryStatisticCollection::createNested() const
 {
-    if (!nested)
-        nested = new CNestedSummaryRuntimeStatisticMap;
-    return *nested;
+    return new CNestedSummaryRuntimeStatisticMap;
 }
 
 void CRuntimeSummaryStatisticCollection::mergeStatistic(StatisticKind kind, unsigned __int64 value)
@@ -2086,17 +2478,33 @@ void CNestedRuntimeStatisticCollection::updateDelta(CNestedRuntimeStatisticColle
 
 CNestedRuntimeStatisticCollection & CNestedRuntimeStatisticMap::addNested(const StatsScopeId & scope, const StatisticsMapping & mapping)
 {
-    ForEachItemIn(i, map)
+    unsigned mapSize;
+    unsigned entry;
     {
-        CNestedRuntimeStatisticCollection & cur = map.item(i);
-        if (cur.matches(scope))
-            return cur;
+        ReadLockBlock b(lock);
+        mapSize = map.length();
+        for (entry = 0; entry < mapSize; entry++)
+        {
+            CNestedRuntimeStatisticCollection & cur = map.item(entry);
+            if (cur.matches(scope))
+                return cur;
+        }
     }
-    CNestedRuntimeStatisticCollection * stats = new CNestedRuntimeStatisticCollection(scope, createStats(mapping));
-    map.append(*stats);
-    return *stats;
+    {
+        WriteLockBlock b(lock);
+        // Check no-one added anything between the read and write locks
+        mapSize = map.length();
+        for (; entry < mapSize; entry++)
+        {
+            CNestedRuntimeStatisticCollection & cur = map.item(entry);
+            if (cur.matches(scope))
+                return cur;
+        }
+        CNestedRuntimeStatisticCollection * stats = new CNestedRuntimeStatisticCollection(scope, createStats(mapping));
+        map.append(*stats);
+        return *stats;
+    }
 }
-
 
 void CNestedRuntimeStatisticMap::deserialize(MemoryBuffer& in)
 {
@@ -2130,6 +2538,7 @@ void CNestedRuntimeStatisticMap::deserializeMerge(MemoryBuffer& in)
 
 void CNestedRuntimeStatisticMap::merge(const CNestedRuntimeStatisticMap & other)
 {
+    ReadLockBlock b(other.lock);
     ForEachItemIn(i, other.map)
     {
         CNestedRuntimeStatisticCollection & cur = other.map.item(i);
@@ -2140,6 +2549,7 @@ void CNestedRuntimeStatisticMap::merge(const CNestedRuntimeStatisticMap & other)
 
 void CNestedRuntimeStatisticMap::updateDelta(CNestedRuntimeStatisticMap & target, const CNestedRuntimeStatisticMap & source)
 {
+    ReadLockBlock b(source.lock);
     ForEachItemIn(i, source.map)
     {
         CNestedRuntimeStatisticCollection & curSource = source.map.item(i);
@@ -2151,6 +2561,7 @@ void CNestedRuntimeStatisticMap::updateDelta(CNestedRuntimeStatisticMap & target
 
 bool CNestedRuntimeStatisticMap::serialize(MemoryBuffer& out) const
 {
+    ReadLockBlock b(lock);
     out.appendPacked(map.ordinality());
     bool nonEmpty = false;
     ForEachItemIn(i, map)
@@ -2163,12 +2574,14 @@ bool CNestedRuntimeStatisticMap::serialize(MemoryBuffer& out) const
 
 void CNestedRuntimeStatisticMap::recordStatistics(IStatisticGatherer & target) const
 {
+    ReadLockBlock b(lock);
     ForEachItemIn(i, map)
         map.item(i).recordStatistics(target);
 }
 
 StringBuffer & CNestedRuntimeStatisticMap::toStr(StringBuffer &str) const
 {
+    ReadLockBlock b(lock);
     ForEachItemIn(i, map)
         map.item(i).toStr(str);
     return str;
@@ -2176,6 +2589,7 @@ StringBuffer & CNestedRuntimeStatisticMap::toStr(StringBuffer &str) const
 
 StringBuffer & CNestedRuntimeStatisticMap::toXML(StringBuffer &str) const
 {
+    ReadLockBlock b(lock);
     ForEachItemIn(i, map)
         map.item(i).toXML(str);
     return str;
@@ -2189,6 +2603,251 @@ CRuntimeStatisticCollection * CNestedRuntimeStatisticMap::createStats(const Stat
 CRuntimeStatisticCollection * CNestedSummaryRuntimeStatisticMap::createStats(const StatisticsMapping & mapping)
 {
     return new CRuntimeSummaryStatisticCollection(mapping);
+}
+
+//---------------------------------------------------
+
+void StatsAggregation::noteValue(stat_type value)
+{
+    if (count == 0)
+    {
+        minValue = value;
+        maxValue = value;
+    }
+    else
+    {
+        if (value < minValue)
+            minValue = value;
+        else if (value > maxValue)
+            maxValue = value;
+    }
+
+    count++;
+    sumValue += value;
+}
+
+stat_type StatsAggregation::getAve() const
+{
+    return (sumValue / count);
+}
+
+
+//---------------------------------------------------
+
+ScopeCompare compareScopes(const char * scope, const char * key)
+{
+    byte left = *scope;
+    byte right = *key;
+    //Check for root scope "" compared with anything
+    if (!left)
+    {
+        if (!right)
+            return SCequal;
+        return SCparent;
+    }
+    else if (!right)
+    {
+        return SCchild;
+    }
+
+    bool hadCommonScope = false;
+    for (;;)
+    {
+        if (left != right)
+        {
+            //FUTURE: Extend this function to support skipping numbers to allow wildcard matching
+            if (!left)
+            {
+                if (right == ':')
+                    return SCparent; // scope is a parent (prefix) of the key
+            }
+            if (!right)
+            {
+                if (left == ':')
+                    return SCchild;  // scope is a child (superset) of the key
+            }
+            return hadCommonScope ? SCrelated : SCunrelated;
+        }
+
+        if (!left)
+            return SCequal;
+
+        if (left == ':')
+            hadCommonScope = true;
+
+        left = *++scope;
+        right =*++key;
+    }
+}
+
+ScopeFilter::ScopeFilter(const char * scopeList)
+{
+    //MORE: This currently expands a list of scopes - it should probably be improved
+    scopes.appendList(scopeList, ",");
+}
+
+void ScopeFilter::addScope(const char * scope)
+{
+    if (!scope)
+        return;
+
+    if (streq(scope, "*"))
+    {
+        scopes.kill();
+        minDepth = 0;
+        maxDepth = UINT_MAX;
+        return;
+    }
+
+    dbgassertex(!ids && !scopeTypes); // Illegal to specify scopes and ids or scope Types.
+    unsigned depth = queryScopeDepth(scope);
+    if ((scopes.ordinality() == 0) || (depth < minDepth))
+        minDepth = depth;
+    if ((scopes.ordinality() == 0) || (depth > maxDepth))
+        maxDepth = depth;
+    scopes.append(scope);
+}
+
+void ScopeFilter::addScopes(const char * scope)
+{
+    StringArray list;
+    list.appendList(scope, ",");
+    ForEachItemIn(i, list)
+        addScope(list.item(i));
+}
+
+void ScopeFilter::addScopeType(StatisticScopeType scopeType)
+{
+    if (scopeType == SSTall)
+        return;
+
+    dbgassertex(!scopes && !ids);
+    scopeTypes.append(scopeType);
+}
+
+void ScopeFilter::addId(const char * id)
+{
+    dbgassertex(!scopes && !scopeTypes);
+    ids.append(id);
+}
+
+void ScopeFilter::setDepth(unsigned low, unsigned high)
+{
+    if (low > high)
+        throw makeStringExceptionV(0, "Depth parameters in wrong order %u..%u", low, high);
+
+    minDepth = low;
+    maxDepth = high;
+}
+
+
+ScopeCompare ScopeFilter::compare(const char * scope) const
+{
+    ScopeCompare result = SCunknown;
+    if (scopes)
+    {
+        //If scopes have been provided, then we are searching for an exact match against that scope
+        ForEachItemIn(i, scopes)
+            result |= compareScopes(scope, scopes.item(i));
+    }
+    else
+    {
+        //How does the depth of the scope compare with the range we are expecting?
+        unsigned depth = queryScopeDepth(scope);
+        if (depth < minDepth)
+            return SCparent;
+        if (depth > maxDepth)
+            return SCchild;
+
+        //Assume it is a match until proven otherwise
+        result |= SCequal;
+        // Could be the child of a match
+        if (depth > minDepth)
+            result |= SCchild;
+        //Could be the parent of a match
+        if (depth < maxDepth)
+            result |= SCparent;
+
+        //Check if the type of the current object matches the type
+        const char * tail = queryScopeTail(scope);
+        if (scopeTypes.ordinality())
+        {
+            StatsScopeId id(tail);
+            if (!scopeTypes.contains(id.queryScopeType()))
+                result &= ~SCequal;
+        }
+
+        if (ids)
+        {
+            if (!ids.contains(tail))
+                result &= ~SCequal;
+        }
+    }
+
+    if (!(result & SCequal))
+        return result;
+
+    //Have a match - now check that the attributes match as required
+    //MORE:
+    if (false)
+    {
+        result &= ~SCequal;
+    }
+
+    return result;
+}
+
+bool ScopeFilter::canAlwaysPreFilter() const
+{
+    //If the only filter being applied is a restriction on the minimum depth, then you can always apply it as a pre-filter
+    return (!ids && !scopeTypes && !scopes && maxDepth == UINT_MAX);
+}
+
+int ScopeFilter::compareDepth(unsigned depth) const
+{
+    if (depth < minDepth)
+        return -1;
+    if (depth > maxDepth)
+        return +1;
+    return 0;
+}
+
+bool ScopeFilter::hasSingleMatch() const
+{
+    return scopes.ordinality() == 1 || ids.ordinality() == 1;
+}
+
+bool ScopeFilter::matchOnly(StatisticScopeType scopeType) const
+{
+    if ((scopeTypes.ordinality() == 1) && (scopeTypes.item(0) == scopeType))
+        return true;
+
+    //Check the types of the scopes that are being searched
+    if (scopes.ordinality())
+    {
+        ForEachItemIn(i, scopes)
+        {
+            const char * scopeId = queryScopeTail(scopes.item(i));
+            StatsScopeId id(scopeId);
+            if (id.queryScopeType() != scopeType)
+                return false;
+        }
+        return true;
+    }
+
+    if (ids.ordinality())
+    {
+        ForEachItemIn(i, ids)
+        {
+            const char * scopeId = ids.item(i);
+            StatsScopeId id(scopeId);
+            if (id.queryScopeType() != scopeType)
+                return false;
+        }
+        return true;
+    }
+
+    return false;
 }
 
 //---------------------------------------------------
@@ -2222,7 +2881,7 @@ bool ScopedItemFilter::match(const char * search) const
 
         if (minDepth || maxDepth)
         {
-            unsigned searchDepth = queryStatisticsDepth(search);
+            unsigned searchDepth = queryScopeDepth(search);
             if (searchDepth < minDepth)
                 return false;
             if (maxDepth && searchDepth > maxDepth)
@@ -2238,17 +2897,17 @@ bool ScopedItemFilter::recurseChildScopes(const char * curScope) const
     if (maxDepth == 0 || !curScope)
         return true;
 
-    if (queryStatisticsDepth(curScope) >= maxDepth)
+    if (queryScopeDepth(curScope) >= maxDepth)
         return false;
     return true;
 }
 
 void ScopedItemFilter::set(const char * _value)
 {
-    if (_value && *_value && !streq(_value, "*") )
+    if (_value && !streq(_value, "*") )
     {
         value.set(_value);
-        minDepth = queryStatisticsDepth(_value);
+        minDepth = queryScopeDepth(_value);
         if (!strchr(_value, '*'))
         {
             maxDepth = minDepth;
@@ -2370,8 +3029,8 @@ bool StatisticsFilter::recurseChildScopes(StatisticScopeType curScopeType, const
 
 void StatisticsFilter::set(const char * creatorTypeText, const char * scopeTypeText, const char * kindText)
 {
-    StatisticCreatorType creatorType = queryCreatorType(creatorTypeText);
-    StatisticScopeType scopeType = queryScopeType(scopeTypeText);
+    StatisticCreatorType creatorType = queryCreatorType(creatorTypeText, SCTnone);
+    StatisticScopeType scopeType = queryScopeType(scopeTypeText, SSTnone);
 
     if (creatorType != SCTnone)
         setCreatorType(creatorType);
@@ -2382,7 +3041,7 @@ void StatisticsFilter::set(const char * creatorTypeText, const char * scopeTypeT
 
 void StatisticsFilter::set(const char * _creatorTypeText, const char * _creator, const char * _scopeTypeText, const char * _scope, const char * _measureText, const char * _kindText)
 {
-    StatisticMeasure newMeasure = queryMeasure(_measureText);
+    StatisticMeasure newMeasure = queryMeasure(_measureText, SMeasureNone);
     if (newMeasure != SMeasureNone)
         setMeasure(newMeasure);
     set(_creatorTypeText, _scopeTypeText, _kindText);
@@ -2420,7 +3079,7 @@ void StatisticsFilter::addFilter(const char * filter)
     if (hasPrefix(filter, "creator[", false))
         setCreator(value);
     else if (hasPrefix(filter, "creatortype[", false))
-        setCreatorType(queryCreatorType(value));
+        setCreatorType(queryCreatorType(value, SCTall));
     else if (hasPrefix(filter, "depth[", false))
     {
         const char * comma = strchr(value, ',');
@@ -2432,11 +3091,11 @@ void StatisticsFilter::addFilter(const char * filter)
     else if (hasPrefix(filter, "kind[", false))
         setKind(value);
     else if (hasPrefix(filter, "measure[", false))
-        setMeasure(queryMeasure(value));
+        setMeasure(queryMeasure(value, SMeasureAll));
     else if (hasPrefix(filter, "scope[", false))
         setScope(value);
     else if (hasPrefix(filter, "scopetype[", false))
-        setScopeType(queryScopeType(value));
+        setScopeType(queryScopeType(value, SSTall));
     else if (hasPrefix(filter, "value[", false))
     {
         //value[exact|low..high] where low and high are optional
@@ -2553,7 +3212,7 @@ void StatisticsFilter::setKind(const char * _kind)
     {
         const char * prefix = queryMeasurePrefix((StatisticMeasure)i1);
         size_t len = strlen(prefix);
-        if (strnicmp(_kind, prefix, len) == 0)
+        if (len && strnicmp(_kind, prefix, len) == 0)
         {
             setMeasure((StatisticMeasure)i1);
             //Treat When* and When as filters on times.
@@ -2563,7 +3222,7 @@ void StatisticsFilter::setKind(const char * _kind)
     }
 
     //Other wildcards not currently supported
-    kind = queryStatisticKind(_kind);
+    kind = queryStatisticKind(_kind, StKindAll);
 }
 
 
@@ -2650,29 +3309,29 @@ static void checkDistributedKind(StatisticKind kind)
 
 void verifyStatisticFunctions()
 {
-    assertex(_elements_in(measureNames) == SMeasureMax+1 && !measureNames[SMeasureMax]);
-    assertex(_elements_in(creatorTypeNames) == SCTmax+1 && !creatorTypeNames[SCTmax]);
-    assertex(_elements_in(scopeTypeNames) == SSTmax+1 && !scopeTypeNames[SSTmax]);
+    static_assert(_elements_in(measureNames) == SMeasureMax+1 && !measureNames[SMeasureMax], "measureNames needs updating");
+    static_assert(_elements_in(creatorTypeNames) == SCTmax+1 && !creatorTypeNames[SCTmax], "creatorTypeNames needs updating");
+    static_assert(_elements_in(scopeTypeNames) == SSTmax+1 && !scopeTypeNames[SSTmax], "scopeTypeNames needs updating");
 
     //Check the various functions return values for all possible values.
     for (unsigned i1=SMeasureAll; i1 < SMeasureMax; i1++)
     {
         const char * prefix __attribute__((unused)) = queryMeasurePrefix((StatisticMeasure)i1);
         const char * name = queryMeasureName((StatisticMeasure)i1);
-        assertex(queryMeasure(name) == i1);
+        assertex(queryMeasure(name, SMeasureMax) == i1);
     }
 
     for (StatisticScopeType sst = SSTnone; sst < SSTmax; sst = (StatisticScopeType)(sst+1))
     {
         const char * name = queryScopeTypeName(sst);
-        assertex(queryScopeType(name) == sst);
+        assertex(queryScopeType(name, SSTmax) == sst);
 
     }
 
     for (StatisticCreatorType sct = SCTnone; sct < SCTmax; sct = (StatisticCreatorType)(sct+1))
     {
         const char * name = queryCreatorTypeName(sct);
-        assertex(queryCreatorType(name) == sct);
+        assertex(queryCreatorType(name, SCTmax) == sct);
     }
 
     for (unsigned i2=StKindAll+1; i2 < StMax; i2++)

@@ -21,6 +21,7 @@
 #include "errorlist.h"
 #include "dadfs.hpp"
 #include "workunit.hpp"
+#include "layouttrans.hpp"
 
 // error codes
 #define PACKAGE_TARGET_NOT_FOUND      PACKAGE_ERROR_START
@@ -37,7 +38,7 @@ interface IHpccPackage : extends IInterface
     virtual const char *locateSuperFile(const char *superFileName) const = 0;
 
     virtual const char *queryEnv(const char *varname) const = 0;
-    virtual bool getEnableFieldTranslation() const = 0;
+    virtual IRecordLayoutTranslator::Mode getEnableFieldTranslation() const = 0;
     virtual bool isCompulsory() const = 0;
     virtual bool isPreload() const = 0;
     virtual const IPropertyTree *queryTree() const = 0;
@@ -53,6 +54,7 @@ interface IHpccPackageMap : extends IInterface
     virtual bool isActive() const = 0;
     virtual bool validate(StringArray &queriesToVerify, StringArray &warn, StringArray &err, StringArray &unmatchedQueries, StringArray &unusedPackages, StringArray &unmatchedFiles) const = 0;
     virtual void gatherFileMappingForQuery(const char *queryname, IPropertyTree *fileInfo) const = 0;
+    virtual const StringArray &getPartIds() const = 0;
 };
 
 interface IHpccPackageSet : extends IInterface

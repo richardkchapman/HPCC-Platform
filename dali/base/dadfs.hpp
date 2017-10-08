@@ -270,7 +270,8 @@ enum DFUQResultField
     DFUQRFsuperowners = 20,
     DFUQRFpersistent = 21,
     DFUQRFprotect = 22,
-    DFUQRFterm = 23,
+    DFUQRFiscompressed = 23,
+    DFUQRFterm = 24,
     DFUQRFreverse = 256,
     DFUQRFnocase = 512,
     DFUQRFnumeric = 1024
@@ -725,6 +726,7 @@ interface INamedGroupStore: implements IGroupResolver
 extern da_decl INamedGroupStore  &queryNamedGroupStore();
 
 extern da_decl bool decodeChildGroupName(const char *gname,StringBuffer &parentname, StringBuffer &range);
+extern da_decl StringBuffer &encodeChildGroupRange(UnsignedArray &positions, StringBuffer &rangeText);
 
 
 // ==MISC========================================================================================================
@@ -788,7 +790,8 @@ extern da_decl bool removeClusterSpares(const char *clusterName, const char *typ
 // should poss. belong in lib workunit
 extern da_decl StringBuffer &getClusterGroupName(IPropertyTree &cluster, StringBuffer &groupName);
 extern da_decl StringBuffer &getClusterSpareGroupName(IPropertyTree &cluster, StringBuffer &groupName);
-extern da_decl IGroup *getClusterNodeGroup(const char *clusterName, const char *type, unsigned timems=INFINITE);
+extern da_decl IGroup *getClusterNodeGroup(const char *clusterName, const char *type, unsigned timems=INFINITE); // returns the raw cluster group (as defined in the Cluster topology)
+extern da_decl IGroup *getClusterProcessNodeGroup(const char *clusterName, const char *type, unsigned timems=INFINITE); // returns the group of all processes of cluster group (i.e. cluster group * slavesPerNode)
 
 extern da_decl IDistributedFileTransaction *createDistributedFileTransaction(IUserDescriptor *user, ICodeContext *ctx=NULL);
 

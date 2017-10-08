@@ -37,8 +37,14 @@ ds2 := DATASET([{'Spain', 40397842},
 
 persistRefresh := #IFDEFINED(root.persistRefresh, true);
 
-ds := if(persistRefresh=true, ds2, ds1);
+#if (persistRefresh)
+    persistFileName := '~REGRESS::PersistRefresh';
+    ds := ds2;
+#else
+    persistFileName := '~REGRESS::PersistNoRefresh';
+    ds := ds1;
+#end
 
-CountriesDS := ds:PERSIST('~REGRESS::PersistRefresh', SINGLE, REFRESH(persistRefresh));
+CountriesDS := ds:PERSIST(persistFileName, SINGLE, REFRESH(persistRefresh));
 
 OUTPUT(CountriesDS);

@@ -111,6 +111,53 @@ StringBuffer &CVSBuildToEspVersion(char const * tag, StringBuffer & out)
     return out;
 }
 
+void CEspConfig::ensureSDSSessionDomains()
+{
+    bool hasAuthDomainSettings = false;
+    bool hasSessionAuth = false;
+    bool hasDefaultSessionDomain = false;
+    Owned<IPropertyTree> proc_cfg = getProcessConfig(m_envpt, m_process.str());
+    Owned<IPropertyTreeIterator> it = proc_cfg->getElements("AuthDomains/AuthDomain");
+    ForEach(*it)
+    {
+        hasAuthDomainSettings = true;
+        IPropertyTree& authDomain = it->query();
+        const char* authType = authDomain.queryProp("@authType");
+        if (isEmptyString(authType) || (!strieq(authType, "AuthPerSessionOnly") && !strieq(authType, "AuthTypeMixed")))
+            continue;
+
+        hasSessionAuth = true;
+        const char* authDomainName = authDomain.queryProp("@domainName");
+        if (isEmptyString(authDomainName) || strieq(authDomainName, "default"))
+        {
+            if (hasDefaultSessionDomain)
+                throw MakeStringException(-1, ">1 AuthDomains are not named.");
+
+            hasDefaultSessionDomain = true;
+        }
+    }
+    //Ensure SDS Session tree if there is session auth or there is no AuthDomain setting (ex. old environment.xml)
+    if (hasSessionAuth || !hasAuthDomainSettings)
+    {
+        Owned<IRemoteConnection> conn = querySDS().connect(PathSessionRoot, myProcessSession(), RTM_LOCK_WRITE|RTM_CREATE_QUERY, SESSION_SDS_LOCK_TIMEOUT);
+        if (!conn)
+            throw MakeStringException(-1, "Failed to connect to %s.", PathSessionRoot);
+
+        ensureESPSessionInTree(conn->queryRoot(), m_process.str());
+    }
+}
+
+void CEspConfig::ensureESPSessionInTree(IPropertyTree* sessionRoot, const char* procName)
+{
+    VStringBuffer xpath("%s[@name=\"%s\"]", PathSessionProcess, procName);
+    IPropertyTree* procSessionTree = sessionRoot->queryBranch(xpath.str());
+    if (!procSessionTree)
+    {
+        IPropertyTree* processSessionTree = sessionRoot->addPropTree(PathSessionProcess);
+        processSessionTree->setProp("@name", procName);
+    }
+}
+
 
 
 CEspConfig::CEspConfig(IProperties* inputs, IPropertyTree* envpt, IPropertyTree* procpt, bool isDali)
@@ -325,6 +372,7 @@ void CEspConfig::initDali(const char *servers)
         setPasswordsFromSDS();
 
         serverstatus = new CSDSServerStatus("ESPserver");
+        ensureSDSSessionDomains();
     }
 }
 
@@ -467,7 +515,15 @@ void CEspConfig::loadServices()
     map<string, srv_cfg*>::iterator iter = m_services.begin();
     while (iter!=m_services.end())
     {
-        loadService(*(iter->second));
+#ifndef _USE_OPENLDAP
+        const string svcName = iter->first;
+        if (!strstr(svcName.data(), "ws_access"))
+#endif
+            loadService(*(iter->second));
+#ifndef _USE_OPENLDAP
+        else
+            DBGLOG("Not loading service %s, platform built without LDAP", svcName.data());
+#endif
         iter++;
     }
 }
@@ -488,7 +544,15 @@ void CEspConfig::loadBindings()
     
     while (iter!=m_bindings.end())
     {
-        loadBinding(**iter);
+#ifndef _USE_OPENLDAP
+        const char * bindingName = (**iter).name.str();
+        if (!strstr(bindingName, "ws_access"))
+#endif
+            loadBinding(**iter);
+#ifndef _USE_OPENLDAP
+        else
+            DBGLOG("Not binding %s, platform built without LDAP", bindingName);
+#endif
         iter++;
     }
 }
@@ -733,5 +797,23 @@ IEspPlugin* CEspConfig::getPlugin(const char* name)
     }
 
     return NULL;
+}
+
+bool CEspConfig::checkESPCache()
+{
+    bool espCacheAvailable = false ;
+    list<binding_cfg*>::iterator iter = m_bindings.begin();
+    while (iter!=m_bindings.end())
+    {
+        binding_cfg& xcfg = **iter;
+        if (xcfg.bind->getCacheMethodCount() > 0)
+        {
+            Owned<IEspCache> espCache = createESPCache(m_cfg->queryProp("@espCacheInitString"));
+            espCacheAvailable = (espCache != nullptr);
+            break;
+        }
+        iter++;
+    }
+    return espCacheAvailable;
 }
 

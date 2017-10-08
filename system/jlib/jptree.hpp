@@ -61,6 +61,10 @@ typedef unsigned IPTIteratorCodes;
 #define iptiter_remote 0x02
 #define iptiter_remoteget 0x06
 #define iptiter_remotegetbranch 0x0e
+
+extern jlib_decl unsigned queryNumLocalTrees();
+extern jlib_decl unsigned queryNumAtomTrees();
+
 interface jlib_decl IPropertyTree : extends serializable
 {
     virtual bool hasProp(const char *xpath) const = 0;
@@ -97,6 +101,9 @@ interface jlib_decl IPropertyTree : extends serializable
     virtual IPropertyTree *queryPropTree(const char *xpath) const = 0;
     virtual IPropertyTree *setPropTree(const char *xpath, IPropertyTree *val) = 0;
     virtual IPropertyTree *addPropTree(const char *xpath, IPropertyTree *val) = 0;
+
+    virtual IPropertyTree *setPropTree(const char *xpath) = 0;
+    virtual IPropertyTree *addPropTree(const char *xpath) = 0;
 
     virtual bool removeProp(const char *xpath) = 0;
     virtual bool removeTree(IPropertyTree *child) = 0;
@@ -170,9 +177,19 @@ interface IPTreeNodeCreator : extends IInterface
     virtual IPropertyTree *create(const char *tag) = 0;
 };
 
-// NB ipt_ext4 - used by SDS
-// NB ipt_ext5 - used by SDS
-enum ipt_flags { ipt_none=0x00, ipt_caseInsensitive=0x01, ipt_binary=0x02, ipt_ordered=0x04, ipt_ext1=0x08, ipt_ext2=16, ipt_ext3=32, ipt_ext4=64, ipt_ext5=128 };
+enum ipt_flags
+{
+    ipt_none=0x00,
+    ipt_caseInsensitive=0x01,
+    ipt_binary  = 0x02,
+    ipt_ordered = 0x04,   // Preserve element ordering
+    ipt_fast    = 0x08,   // Prioritize speed over low memory usage
+    ipt_lowmem  = 0x10,   // Prioritize low memory usage over speed
+    ipt_ext3    = 0x20,   // Unused
+    ipt_ext4    = 0x40,   // Used internally in Dali
+    ipt_ext5    = 0x80    // Used internally in Dali
+};
+
 jlib_decl IPTreeMaker *createPTreeMaker(byte flags=ipt_none, IPropertyTree *root=NULL, IPTreeNodeCreator *nodeCreator=NULL);
 jlib_decl IPTreeMaker *createRootLessPTreeMaker(byte flags=ipt_none, IPropertyTree *root=NULL, IPTreeNodeCreator *nodeCreator=NULL);
 jlib_decl IPTreeReader *createXMLStreamReader(ISimpleReadStream &stream, IPTreeNotifyEvent &iEvent, PTreeReaderOptions xmlReaderOptions=ptr_ignoreWhiteSpace, size32_t bufSize=0);
@@ -194,7 +211,7 @@ jlib_decl void synchronizePTree(IPropertyTree *target, IPropertyTree *source);
 jlib_decl IPropertyTree *ensurePTree(IPropertyTree *root, const char *xpath);
 jlib_decl bool areMatchingPTrees(IPropertyTree * left, IPropertyTree * right);
 
-jlib_decl IPropertyTree *createPTree(MemoryBuffer &src);
+jlib_decl IPropertyTree *createPTree(MemoryBuffer &src, byte flags=ipt_none);
 
 jlib_decl IPropertyTree *createPTree(byte flags=ipt_none);
 jlib_decl IPropertyTree *createPTree(const char *name, byte flags=ipt_none);
@@ -205,7 +222,6 @@ jlib_decl IPropertyTree *createPTreeFromXMLString(const char *xml, byte flags=ip
 jlib_decl IPropertyTree *createPTreeFromXMLString(unsigned len, const char *xml, byte flags=ipt_none, PTreeReaderOptions readFlags=ptr_ignoreWhiteSpace, IPTreeMaker *iMaker=NULL);
 jlib_decl IPropertyTree *createPTreeFromXMLFile(const char *filename, byte flags=ipt_none, PTreeReaderOptions readFlags=ptr_ignoreWhiteSpace, IPTreeMaker *iMaker=NULL);
 jlib_decl IPropertyTree *createPTreeFromIPT(const IPropertyTree *srcTree, ipt_flags flags=ipt_none);
-
 jlib_decl IPropertyTree *createPTreeFromJSONString(const char *json, byte flags=ipt_none, PTreeReaderOptions readFlags=ptr_ignoreWhiteSpace, IPTreeMaker *iMaker=NULL);
 jlib_decl IPropertyTree *createPTreeFromJSONString(unsigned len, const char *json, byte flags=ipt_none, PTreeReaderOptions readFlags=ptr_ignoreWhiteSpace, IPTreeMaker *iMaker=NULL);
 
@@ -213,6 +229,9 @@ jlib_decl IPropertyTree *createPTreeFromJSONString(unsigned len, const char *jso
 jlib_decl IPropertyTree *createPTreeFromHttpPath(const char *nameWithAttrs, IPropertyTree *content, bool nestedRoot, ipt_flags flags);
 jlib_decl IPropertyTree *createPTreeFromHttpParameters(const char *nameWithAttrs, IProperties *parameters, bool skipLeadingDotParameters, bool nestedRoot, ipt_flags flags=ipt_none);
 jlib_decl bool checkParseUrlPathNodeValue(const char *s, StringBuffer &name, StringAttr &value);
+
+typedef int (*TreeCompareFunc)(IInterface * const *ll, IInterface * const *rr);
+jlib_decl IPropertyTreeIterator * createSortedIterator(IPropertyTreeIterator & iter, TreeCompareFunc compare);
 
 
 #define XML_SortTags 0x01
@@ -232,6 +251,8 @@ jlib_decl void saveXML(const char *filename, const IPropertyTree *tree, unsigned
 jlib_decl void saveXML(IFile &ifile, const IPropertyTree *tree, unsigned indent = 0, unsigned=XML_Format);
 jlib_decl void saveXML(IFileIO &ifileio, const IPropertyTree *tree, unsigned indent = 0, unsigned flags=XML_Format);
 jlib_decl void saveXML(IIOStream &stream, const IPropertyTree *tree, unsigned indent = 0, unsigned flags=XML_Format);
+jlib_decl void printXML(const IPropertyTree *tree, unsigned indent = 0, unsigned flags=XML_Format);
+jlib_decl void dbglogXML(const IPropertyTree *tree, unsigned indent = 0, unsigned flags=XML_Format);
 
 #define JSON_SortTags 0x01
 #define JSON_Format   0x02

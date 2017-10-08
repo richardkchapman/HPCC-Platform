@@ -431,7 +431,7 @@ protected:
     virtual aindex_t getBaseCount() const = 0;
     virtual const CRoxiePackageNode *getBaseNode(aindex_t pos) const = 0;
 
-    virtual bool getSysFieldTranslationEnabled() const {return fieldTranslationEnabled;} //roxie configured value
+    virtual IRecordLayoutTranslator::Mode getSysFieldTranslationEnabled() const { return fieldTranslationEnabled; } //roxie configured value
 
     // Use local package file only to resolve subfile into physical file info
     IResolvedFile *resolveLFNusingPackage(const char *fileName) const
@@ -598,7 +598,7 @@ protected:
     void doPreload(unsigned channel, const IResolvedFile *resolved)
     {
         if (resolved->isKey())
-            keyArrays.append(*resolved->getKeyArray(NULL, NULL, false, channel, false));
+            keyArrays.append(*resolved->getKeyArray(NULL, NULL, false, channel, IRecordLayoutTranslator::NoTranslation));
         else
             fileArrays.append(*resolved->getIFileIOArray(false, channel));
     }
@@ -739,7 +739,7 @@ public:
     {
         return CPackageNode::queryEnv(varname);
     }
-    virtual bool getEnableFieldTranslation() const
+    virtual IRecordLayoutTranslator::Mode getEnableFieldTranslation() const override
     {
         return CPackageNode::getEnableFieldTranslation();
     }
@@ -812,6 +812,10 @@ public:
     virtual bool isActive() const
     {
         return BASE::isActive();
+    }
+    virtual const StringArray &getPartIds() const
+    {
+        return BASE::getPartIds();
     }
     virtual bool validate(StringArray &queryids, StringArray &wrn, StringArray &err, StringArray &unmatchedQueries, StringArray &unusedPackages, StringArray &unmatchedFiles) const
     {
@@ -1321,7 +1325,17 @@ public:
 
     void getInfo(StringBuffer &reply, const IRoxieContextLogger &logctx) const
     {
-        reply.appendf(" <PackageSet id=\"%s\" querySet=\"%s\"/>\n", queryPackageId(), querySet.get());
+        reply.appendf(" <PackageSet id=\"%s\" querySet=\"%s\"", queryPackageId(), querySet.get());
+        if (!packages || !packages->getPartIds().ordinality())
+        {
+            reply.append("/>\n");
+            return;
+        }
+        reply.append(">\n");
+        const StringArray &parts = packages->getPartIds();
+        ForEachItemIn(i, parts)
+            reply.appendf("  <Part id='%s'/>\n", parts.item(i));
+        reply.append(" </PackageSet>\n");
     }
 
     bool resetStats(const char *queryId, const IRoxieContextLogger &logctx)
@@ -1360,13 +1374,13 @@ public:
             {
                 StringBuffer freply;
                 serverManager->getStats(queryId, graphName, freply, logctx);
-                Owned<IPropertyTree> stats = createPTreeFromXMLString(freply.str());
+                Owned<IPropertyTree> stats = createPTreeFromXMLString(freply.str(), ipt_fast);
                 for (unsigned channel = 0; channel < numChannels; channel++)
                     if (slaveManagers->item(channel))
                     {
                         StringBuffer sreply;
                         slaveManagers->item(channel)->getStats(queryId, graphName, sreply, logctx);
-                        Owned<IPropertyTree> cstats = createPTreeFromXMLString(sreply.str());
+                        Owned<IPropertyTree> cstats = createPTreeFromXMLString(sreply.str(), ipt_fast);
                         mergeStats(stats, cstats, 1);
                     }
                 toXML(stats, reply);
@@ -1509,7 +1523,7 @@ public:
     virtual void load(bool forceReload)
     {
         hash64_t newHash = numChannels;
-        Owned<IPropertyTree> newQuerySet = createPTree("QuerySet");
+        Owned<IPropertyTree> newQuerySet = createPTree("QuerySet", ipt_lowmem);
         newQuerySet->setProp("@name", "_standalone");
         newQuerySet->addPropTree("Query", standaloneDll.getLink());
         Owned<CRoxieSlaveQuerySetManagerSet> newSlaveManagers = new CRoxieSlaveQuerySetManagerSet(numChannels, querySet);
@@ -1545,7 +1559,7 @@ public:
     : stateHash(0), daliHelper(_daliHelper)
     {
         Owned<IPropertyTree> standAloneDllTree;
-        standAloneDllTree.setown(createPTree("Query"));
+        standAloneDllTree.setown(createPTree("Query", ipt_lowmem));
         standAloneDllTree->setProp("@id", "roxie");
         standAloneDllTree->setProp("@dll", standAloneDll->queryDll()->queryName());
         Owned<CRoxieQueryPackageManager> qpm = new CStandaloneQueryPackageManager(numChannels, querySet, LINK(&queryEmptyRoxiePackageMap()), standAloneDllTree.getClear());
@@ -2188,7 +2202,16 @@ private:
         case 'F':
             if (stricmp(queryName, "control:fieldTranslationEnabled")==0)
             {
-                fieldTranslationEnabled = control->getPropBool("@val", true);
+                const char *val = control->queryProp("@val");
+                if (val)
+                {
+                    if (strieq(val, "payload"))
+                        fieldTranslationEnabled = IRecordLayoutTranslator::TranslatePayload;
+                    else if (!val || strToBool(val))
+                        fieldTranslationEnabled = IRecordLayoutTranslator::TranslateAll;
+                    else
+                        fieldTranslationEnabled = IRecordLayoutTranslator::NoTranslation;
+                }
                 topology->setPropInt("@fieldTranslationEnabled", fieldTranslationEnabled);
             }
             else if (stricmp(queryName, "control:flushJHtreeCacheOnOOM")==0)
@@ -2744,11 +2767,6 @@ private:
             {
                 traceServerSideCache = control->getPropBool("@val", true);
                 topology->setPropInt("@traceServerSideCache", traceServerSideCache);
-            }
-            else if (stricmp(queryName, "control:traceJHtreeAllocations")==0)
-            {
-                traceJHtreeAllocations = control->getPropBool("@val", true);
-                topology->setPropInt("@traceJHtreeAllocations", traceJHtreeAllocations);
             }
             else if (stricmp(queryName, "control:traceSmartStepping")==0)
             {

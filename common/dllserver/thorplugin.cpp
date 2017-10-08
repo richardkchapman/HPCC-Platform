@@ -580,6 +580,16 @@ extern DLLSERVER_API bool getEmbeddedWorkUnitXML(ILoadedDllEntry *dll, StringBuf
     return decompressResource(len, data, xml);
 }
 
+extern DLLSERVER_API bool getEmbeddedGraphXML(ILoadedDllEntry *dll, StringBuffer &xml)
+{
+    size32_t len = 0;
+    const void * data = NULL;
+    if (!dll->getResource(len, data, "GRAPH", 1001, false))
+        if (!dll->getResource(len, data, "GRAPH", 1000, false))
+            return false;
+    return decompressResource(len, data, xml);
+}
+
 extern DLLSERVER_API bool getEmbeddedManifestXML(ILoadedDllEntry *dll, StringBuffer &xml)
 {
     size32_t len = 0;

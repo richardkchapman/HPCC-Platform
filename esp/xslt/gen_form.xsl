@@ -40,9 +40,10 @@
     <xsl:param name="includeSoapTest" select="1"/>
     <xsl:param name="includeRoxieTest" select="0"/>
     <xsl:param name="includeJsonTest" select="0"/>
-    <!--xsl:param name="includeGatewayTest" select="0"/-->
+    <xsl:param name="includeJsonReqSample" select="0"/>
     <xsl:param name="schemaRoot" select="xsd:schema"/>
     <xsl:param name="esdl_links" select="0"/>
+    <xsl:param name="showLogout" select="showLogout"/>
     
     
     <!-- ===============================================================================
@@ -103,8 +104,8 @@
                 <script type="text/javascript" src="files_/req_array.js"/>
                 <script type="text/javascript" src="files_/hashtable.js"/>
                 <script type="text/javascript" src="files_/gen_form.js"/>
+                <script type="text/javascript" src="files_/logout.js"/>
                 <script type="text/javascript">         
-  
   var isIE = (navigator.appName == "Microsoft Internet Explorer");  
   
   function getRequestFormHtml()
@@ -168,6 +169,9 @@
                                 </b>
                             </font>
                         </td>
+                        <xsl:if test="$showLogout">
+                            <td><a href="javascript:void(0)" onclick="logout();">Log Out</a></td>
+                        </xsl:if>
                     </tr>
                     <tr class='method'>
                         <td height="23" align="left">
@@ -182,6 +186,9 @@
                                 &nbsp;<a><xsl:attribute name="href"><xsl:call-template name="build_link"><xsl:with-param name="type" select="'xsd'"/></xsl:call-template></xsl:attribute>XSD</a>
                                 &nbsp;<a><xsl:attribute name="href"><xsl:call-template name="build_link"><xsl:with-param name="type" select="'reqxml'"/></xsl:call-template></xsl:attribute>XMLRequest</a>
                                 &nbsp;<a><xsl:attribute name="href"><xsl:call-template name="build_link"><xsl:with-param name="type" select="'respxml'"/></xsl:call-template></xsl:attribute>XMLResponse</a>
+                                <xsl:if test="$includeJsonTest">
+                                    &nbsp;<a><xsl:attribute name="href"><xsl:call-template name="build_link"><xsl:with-param name="type" select="'reqjson'"/></xsl:call-template></xsl:attribute>JSONRequest</a>
+                                </xsl:if>
                                 &nbsp;<a><xsl:attribute name="href"><xsl:call-template name="build_link"><xsl:with-param name="type" select="'respjson'"/></xsl:call-template></xsl:attribute>JSONResponse</a>
                         </td>
                     </tr>
@@ -765,6 +772,7 @@
             <xsl:with-param name="inputCtrlHtml" select="$inputCtrlHtml"/>
             <xsl:with-param name="isAttr" select="name($node)='xsd:attribute'"/>
             <xsl:with-param name="isBool" select="$node/@type='xsd:boolean'"/>
+            <xsl:with-param name="optional" select="$node/xsd:annotation/xsd:appinfo/form/@optional | $node/xsd:annotation/xsd:appinfo/xsd:form/@optional"/>
         </xsl:call-template>
     </xsl:template >
     
@@ -778,6 +786,7 @@
         <xsl:param name="inputCtrlHtml" select="''"/>
         <xsl:param name="isAttr" select="false()"/>
         <xsl:param name="isBool" select="false()"/>
+        <xsl:param name="optional" select="''"/>
 
         <!--    <xsl:if test="$verbose"><xsl:value-of select="concat('GenOneInputCtrlHtmlRaw(parentId=', $parentId, ', fieldId=', $fieldId, ', ui=', $ui, ', inputCtrlHtml=', $inputCtrlHtml, ')&lt;br/&gt;') "/> </xsl:if> -->     
 
@@ -821,6 +830,9 @@
                                 <xsl:text disable-output-escaping="yes"><![CDATA['> <b>]]></xsl:text>
                 <xsl:value-of select="$fieldName"/>
                 <xsl:text disable-output-escaping="yes"><![CDATA[</b>]]></xsl:text>
+                <xsl:call-template name="showOptionalSupscript">
+                    <xsl:with-param name="optional" select="$optional"/>
+                </xsl:call-template>
                 <xsl:value-of select="$ctrlId"/>
                 <xsl:choose>
                     <xsl:when test="$isBool">
@@ -841,6 +853,9 @@
                 <xsl:value-of select="$fieldName"/>
                 <xsl:if test="$isAttr"><![CDATA[</i>]]></xsl:if>
                 <xsl:text disable-output-escaping="yes"><![CDATA[</b></span>]]></xsl:text>
+                <xsl:call-template name="showOptionalSupscript">
+                    <xsl:with-param name="optional" select="$optional"/>
+                </xsl:call-template>
                 <xsl:value-of select="$ctrlId"/>
                 <xsl:choose>
                     <xsl:when test="$isBool">
@@ -1452,6 +1467,7 @@
                     <xsl:choose>
                         <xsl:when test="$type='reqxml'"><xsl:value-of select="concat($methodName,'?reqxml_','&amp;',$params)"/></xsl:when>
                         <xsl:when test="$type='respxml'"><xsl:value-of select="concat($methodName,'?respxml_','&amp;',$params)"/></xsl:when>
+                        <xsl:when test="$type='reqjson'"><xsl:value-of select="concat($methodName,'?reqjson_','&amp;',$params)"/></xsl:when>
                         <xsl:when test="$type='respjson'"><xsl:value-of select="concat($methodName,'?respjson_','&amp;',$params)"/></xsl:when>
                         <xsl:when test="$type='xsd'"><xsl:value-of select="concat($methodName,'?xsd','&amp;',$params)"/></xsl:when>
                         <xsl:when test="$type='wsdl'"><xsl:value-of select="concat($methodName,'?wsdl','&amp;',$params)"/></xsl:when>
@@ -1459,6 +1475,15 @@
                     </xsl:choose>
             </xsl:otherwise>
         </xsl:choose>
+    </xsl:template>
+    <xsl:template name="showOptionalSupscript">
+      <xsl:param name="optional" select="''"/>
+      <!-- optional starts with _ is deeemed as implementation specific and don't show it -->
+      <xsl:if test="$optional and substring($optional,1,1)!='_' and substring($optional,1,2)!='!_'">
+        <xsl:text><![CDATA[<sup style='color:red'>]]></xsl:text>
+        <xsl:value-of select="$optional"/>
+        <xsl:text><![CDATA[</sup>]]></xsl:text>
+      </xsl:if>
     </xsl:template>
 </xsl:stylesheet>
 

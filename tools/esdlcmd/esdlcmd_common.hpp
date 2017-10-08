@@ -62,6 +62,8 @@ typedef IEsdlCommand *(*EsdlCommandFactory)(const char *cmdname);
 #define ESDLOPT_XSLT_PATH               "--xslt"
 
 #define ESDLOPT_VERSION                 "--version"
+#define ESDLOPT_INTERFACE_VERSION       "--interface-version"
+#define ESDLOPT_INTERFACE_VERSION_S     "-iv"
 #define ESDLOPT_SERVICE                 "--service"
 #define ESDLOPT_METHOD                  "--method"
 #define ESDLOPT_PREPROCESS_OUT          "--preprocess-output"
@@ -74,6 +76,7 @@ typedef IEsdlCommand *(*EsdlCommandFactory)(const char *cmdname);
 #define ESDLOPT_NUMBER                  "-n"
 #define ESDLOPT_NO_COLLAPSE             "--show-inheritance"
 #define ESDLOPT_NO_ARRAYOF              "--no-arrayof"
+#define ESDLOPT_OUTPUT_CATEGORIES       "--output-categories"
 
 #define ESDLOPT_WSDL_ADDRESS            "--wsdl-address"
 
@@ -100,7 +103,11 @@ typedef IEsdlCommand *(*EsdlCommandFactory)(const char *cmdname);
 #define ESDL_OPTION_ECL_INCLUDE_LIST    "--ecl-imports"
 #define ESDL_OPTION_ECL_HEADER_BLOCK    "--ecl-header"
 
-
+#define ESDLOPT_INCLUDE_PATH            "--include-path"
+#define ESDLOPT_INCLUDE_PATH_S          "-I"
+#define ESDLOPT_INCLUDE_PATH_ENV        "ESDL_INCLUDE_PATH"
+#define ESDLOPT_INCLUDE_PATH_INI        "esdlIncludePath"
+#define ESDLOPT_INCLUDE_PATH_USAGE      "   -I, --include-path <include path>    Locations to look for included esdl files\n"
 bool matchVariableOption(ArgvIterator &iter, const char prefix, IArrayOf<IEspNamedValue> &values);
 
 enum esdlCmdOptionMatchIndicator
@@ -122,8 +129,8 @@ public:
     virtual void usage()
     {
         fprintf(stdout,
-            "   --help                 display usage information for the given command\n"
-            "   -v,--verbose           output additional tracing information\n"
+            "   --help                               Display usage information for the given command\n"
+            "   -v,--verbose                         Output additional tracing information\n"
         );
     }
 public:
@@ -152,7 +159,7 @@ public:
         return new EsdlCmdHelper();
     }
 
-    void loadDefinition(const char * sourceFileName, const char * serviceName, double version)
+    void loadDefinition(const char * sourceFileName, const char * serviceName, double version, const char* includePath)
     {
         if (!esdlDef.get())
             esdlDef.set(createEsdlDefinition());
@@ -165,36 +172,19 @@ public:
             if (stricmp(extension.str(),LEGACY_FILE_EXTENSION)==0 || stricmp(extension.str(),ESDL_FILE_EXTENSION)==0)
             {
                 StringBuffer esxml;
-                EsdlCmdHelper::convertECMtoESXDL(sourceFileName, filename.str(), esxml, true, verbose, false, true);
-                if (!serviceName || !*serviceName)
-                {
-                    Owned<IPropertyTree> esdldeftree = createPTreeFromXMLString(esxml);
-                    if (esdldeftree->getCount("EsdlService") == 1)
-                    {
-                        Owned<IPropertyTreeIterator> it = esdldeftree->getElements("EsdlService");
-                        ForEach(*it)
-                        {
-                            IPropertyTree* pChildNode = &it->query();
-                            serviceName = pChildNode->queryProp("@name");
-                        }
-                    }
-                    else
-                        throw( MakeStringException(0, "Target service name must be specified if ESDL definition contains multiple service definitions") );
-                }
-
-                VStringBuffer serviceid("%s.%f", serviceName, version);
-                esdlDef->addDefinitionFromXML(esxml, serviceid.str());
+                EsdlCmdHelper::convertECMtoESXDL(sourceFileName, filename.str(), esxml, true, verbose, false, true, includePath);
+                esdlDef->addDefinitionFromXML(esxml, sourceFileName);
             }
             else
             {
-                loadEsdlDef(sourceFileName);
+                loadEXSDLFromFile(sourceFileName);
             }
         }
     }
 
-    void getServiceESXDL(const char * sourceFileName, const char * serviceName, StringBuffer & xmlOut, double version, IProperties *opts=NULL, unsigned flags=0)
+    void getServiceESXDL(const char * sourceFileName, const char * serviceName, StringBuffer & xmlOut, double version, IProperties *opts=NULL, unsigned flags=0, const char* includePath=NULL)
     {
-        loadDefinition(sourceFileName, serviceName, version);
+        loadDefinition(sourceFileName, serviceName, version, includePath);
 
         if (esdlDef)
         {
@@ -211,12 +201,13 @@ public:
         }
     }
 
-    static void convertECMtoESXDL(const char * filepath, const char * esxdlname, StringBuffer & esxml, bool recursive, bool verbose, bool outputincludes, bool isIncludedESDL)
+    static void convertECMtoESXDL(const char * filepath, const char * esxdlname, StringBuffer & esxml, bool recursive, bool verbose, bool outputincludes, bool isIncludedESDL, const char* includePath)
     {
         if (verbose)
             fprintf(stdout,"Converting ESDL file %s to XML\n", filepath);
 
         Owned<Esdl2Esxdl> cmd = new Esdl2Esxdl(recursive, verbose);
+        cmd->setIncluePath(includePath);
         esxml.setf( "<esxdl name=\"%s\">", esxdlname);
         cmd->transform(filepath, "", &esxml, outputincludes, isIncludedESDL); //output to buffer
         esxml.append("</esxdl>");
@@ -251,7 +242,7 @@ public:
 
 protected:
 
-    void loadEsdlDef(const char * sourceFileName)
+    void loadEXSDLFromFile(const char * sourceFileName)
     {
         serviceDefFile.setown( createIFile(sourceFileName) );
         if( serviceDefFile->exists() )
@@ -301,12 +292,13 @@ public:
     virtual void usage()
     {
         EsdlCmdCommon::usage();
-        puts("   --outdir=<out dir path> Location to generate output\n");
+        puts("   --outdir=<out dir path>              Location to generate output\n");
     }
 
 public:
     StringAttr optSource;
     StringAttr optOutDirPath;
+    StringBuffer optIncludePath;
 };
 
 class EsdlHelperConvertCmd : public EsdlConvertCmd

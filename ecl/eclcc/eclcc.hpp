@@ -77,6 +77,7 @@ const char * const helpText[] = {
     "!   -b            Batch mode.  Each source file is processed in turn.  Output",
     "!                 name depends on the input filename",
     "!   -checkVersion Enable/disable ecl version checking from archives",
+    "?   -checkDirty   Report any modified attributes using git status",
     "!   --component   Set the name of the component this is executing on behalf of",
 #ifdef _WIN32
     "!   -brk <n>      Trigger a break point in eclcc after nth allocation",
@@ -94,12 +95,15 @@ const char * const helpText[] = {
     "!   -legacywhen   Use legacy when/side-effects semantics (deprecated)",
     "    --logfile <file> Write log to specified file",
     "!   --logdetail=n Set the level of detail in the log file",
+    "!   --maxErrors=<n> Limit the number of errors, aborting on the nth (default = 5)",
+    "    --metacache=x Specify directory to store distributed meta information",
     "!   --nologfile   Do not write any logfile",
 #ifdef _WIN32
     "!   -m            Enable leak checking",
 #endif
+    "!   --nogpg       Do not run gpg to check signatures on signed code",
     "    --nosourcepath Compile as if the source came from stdin",
-    "!   --maxErrors=<n> Limit the number of errors, aborting on the nth (default = 5)",
+    "!   --nostdinc    Do not include the current directory in -I",
 #ifndef _WIN32
     "!   -pch          Generate precompiled header for eclinclude4.hpp",
 #endif
@@ -121,6 +125,7 @@ const char * const helpText[] = {
     "?!  -fcheckAsserts          Check ASSERT() statements",
     "?!  -fexportDependencies    Generate information about inter-definition dependencies",
     "?!  -fmaxCompileThreads     Number of compiler instances to compile the c++",
+    "?!  -fmaxErrors             Maximum number of errors to report",
     "?!  -fnoteRecordSizeInGraph Add estimates of record sizes to the graph",
     "?!  -fpickBestEngine        Allow simple thor queries to be passed to thor",
     "?!  -fobfuscateOutput       Remove details of the original ECL from output",
@@ -131,6 +136,7 @@ const char * const helpText[] = {
     "?!  -fshowRecordCountInGraph  Show estimates of record counts in the graph",
     "?!  -fspanMultipleCpp       Generate a work unit in multiple c++ files",
     "?!  -fsubgraphToRegenerate=n Regenerate the ECL for a particular subgraph",
+    "?!  -ftimeTransforms        Add timings for internal transforms to the workunit",
     "",
 };
 

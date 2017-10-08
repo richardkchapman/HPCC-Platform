@@ -41,6 +41,11 @@ public:
         helper = (IHThorFirstNArg *)container.queryHelper();
         appendOutputLinked(this);
     }
+    void doStopInput()
+    {
+        stopInput(0);
+        abortSoon = true;
+    }
     virtual void start() override
     {
         ActivityTimer s(totalCycles, timeActivities);
@@ -100,7 +105,7 @@ public:
                     OwnedConstThorRow row = inputStream->ungroupedNextRow();
                     if (!row)
                     {
-                        stopInput(0);
+                        doStopInput();
                         return NULL;
                     }
                     skipped++;
@@ -115,7 +120,7 @@ public:
                     return row.getClear();
                 }
             }
-            stopInput(0); // NB: really whatever is pulling, should stop asap.
+            doStopInput(); // NB: really whatever is pulling, should stop asap.
         }
         return NULL;
     }
@@ -160,7 +165,7 @@ public:
                         {
                             if (0 == skipped)
                             {
-                                stopInput(0);
+                                doStopInput();
                                 return NULL;
                             }
                             skipped = 0; // reset, skip group
@@ -179,7 +184,7 @@ public:
                     }
                     else if (0 == countThisGroup && 0==skipCount)
                     {
-                        stopInput(0);
+                        doStopInput();
                         return NULL;
                     }
                 }
@@ -212,6 +217,22 @@ class CFirstNSlaveGlobal : public CFirstNSlaveBase, implements ILookAheadStopNot
     ThorDataLinkMetaInfo inputMeta;
     Owned<IEngineRowStream> originalInputStream;
 
+    void ensureSendCount()
+    {
+        if (isFastThrough(input)) // i.e. no readahead
+        {
+            if (RCUNBOUND == maxres)
+            {
+                maxres = getDataLinkCount();
+                sendCount();
+            }
+        }
+    }
+    void doStopInput()
+    {
+        ensureSendCount();
+        PARENT::doStopInput();
+    }
 public:
     CFirstNSlaveGlobal(CGraphElementBase *container) : CFirstNSlaveBase(container)
     {
@@ -231,15 +252,19 @@ public:
         firstget = true;
         input->getMetaInfo(inputMeta);
         totallimit = (rowcount_t)helper->getLimit();
-        rowcount_t _skipCount = validRC(helper->numToSkip()); // max
-        rowcount_t maxRead = (totallimit>(RCUNBOUND-_skipCount))?RCUNBOUND:totallimit+_skipCount;
-        IStartableEngineRowStream *lookAhead = createRowStreamLookAhead(this, inputStream, queryRowInterfaces(input), FIRSTN_SMART_BUFFER_SIZE, isSmartBufferSpillNeeded(this), false,
-                                                                              maxRead, this, &container.queryJob().queryIDiskUsage()); // if a very large limit don't bother truncating
-        originalInputStream.setown(replaceInputStream(0, lookAhead));
-        lookAhead->start();
+        if (!isFastThrough(input))
+        {
+            rowcount_t _skipCount = validRC(helper->numToSkip()); // max
+            rowcount_t maxRead = (totallimit>(RCUNBOUND-_skipCount))?RCUNBOUND:totallimit+_skipCount;
+            IStartableEngineRowStream *lookAhead = createRowStreamLookAhead(this, inputStream, queryRowInterfaces(input), FIRSTN_SMART_BUFFER_SIZE, isSmartBufferSpillNeeded(this), false,
+                                                                                  maxRead, this, &container.queryJob().queryIDiskUsage()); // if a very large limit don't bother truncating
+            originalInputStream.setown(replaceInputStream(0, lookAhead));
+            lookAhead->start();
+        }
     }
     virtual void stop() override
     {
+        ensureSendCount();
         PARENT::stop();
         if (originalInputStream)
         {
@@ -330,7 +355,7 @@ public:
                     OwnedConstThorRow row = inputStream->ungroupedNextRow();
                     if (!row)
                     {
-                        stopInput(0);
+                        doStopInput();
                         return NULL;
                     }
                     skipped++;
@@ -345,7 +370,7 @@ public:
                     return row.getClear();
                 }
             }
-            stopInput(0); // NB: really whatever is pulling, should stop asap.
+            doStopInput(); // NB: really whatever is pulling, should stop asap.
         }
         return NULL;
     }

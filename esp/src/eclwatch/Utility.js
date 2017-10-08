@@ -20,6 +20,19 @@
         ;
     }
 
+    function parseXML (val) {
+        var xmlDoc;
+        if (window.DOMParser) {
+            var parser = new DOMParser();
+            xmlDoc = parser.parseFromString(val,"text/xml");
+        } else {
+            xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+            xmlDoc.async = false;
+            xmlDoc.loadXML(val);
+        }
+        return xmlDoc;
+    }
+
     function csvEncode(cell) {
         if (!isNaN(cell)) return cell;
         return '"' + String(cell).replace('"', '""') + '"';
@@ -188,7 +201,7 @@
             });
 
             arrayUtil.forEach(container, function (header, idx) {
-                dataString = header.join(",");
+                var dataString = header.join(",");
                 csvContent += dataString + "\n";
             });
 
@@ -267,7 +280,7 @@
         var aa = chunkify(a);
         var bb = chunkify(b);
 
-        for (x = 0; aa[x] && bb[x]; x++) {
+        for (var x = 0; aa[x] && bb[x]; x++) {
             if (aa[x] !== bb[x]) {
                 var c = Number(aa[x]), d = Number(bb[x]);
                 if (c == aa[x] && d == bb[x]) {   // jshint ignore:line
@@ -304,7 +317,7 @@
         var aa = chunkify(a.toLowerCase());
         var bb = chunkify(b.toLowerCase());
 
-        for (x = 0; aa[x] && bb[x]; x++) {
+        for (var x = 0; aa[x] && bb[x]; x++) {
             if (aa[x] !== bb[x]) {
                 var c = Number(aa[x]), d = Number(bb[x]);
                 if (c == aa[x] && d == bb[x]) {   // jshint ignore:line
@@ -333,6 +346,7 @@
         xmlEncode: xmlEncode,
         xmlEncode2: xmlEncode2,
         alphanumSort: alphanumSort,
-        downloadToCSV: downloadToCSV
+        downloadToCSV: downloadToCSV,
+        parseXML: parseXML
     }
 });

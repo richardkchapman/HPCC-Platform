@@ -129,7 +129,7 @@ protected:
     }
 
     virtual void noteReleased(const void *ptr) = 0;
-    virtual void noteReleased(unsigned count, byte * * rowset) = 0;
+    virtual void noteReleased(unsigned count, const byte * * rowset) = 0;
     virtual bool _isShared(const void *ptr) const = 0;
     virtual memsize_t _capacity() const = 0;
     virtual void _setDestructorFlag(const void *ptr) = 0;
@@ -148,7 +148,7 @@ public:
     }
 
     static void release(const void *ptr);
-    static void releaseRowset(unsigned count, byte * * rowset);
+    static void releaseRowset(unsigned count, const byte * * rowset);
     static bool isShared(const void *ptr);
     static void link(const void *ptr);
     static memsize_t capacity(const void *ptr);
@@ -244,7 +244,7 @@ private:
     void released();
 
     virtual void noteReleased(const void *ptr) override;
-    virtual void noteReleased(unsigned count, byte * * rowset) override;
+    virtual void noteReleased(unsigned count, const byte * * rowset) override;
     virtual bool _isShared(const void *ptr) const;
     virtual memsize_t _capacity() const;
     virtual void _setDestructorFlag(const void *ptr);
@@ -422,6 +422,7 @@ enum RoxieHeapFlags
     //internal flags
     RHForphaned         = 0x80000000,   // heap will no longer be used, can be deleted
 };
+inline RoxieHeapFlags operator | (RoxieHeapFlags l, RoxieHeapFlags r) { return (RoxieHeapFlags)((unsigned)l | (unsigned)r); }
 
 //This interface is here to allow atomic updates to allocations when they are being resized.  There are a few complications:
 //- If a new block is allocated, we just need to update the capacity/pointer atomically

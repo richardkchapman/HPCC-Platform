@@ -203,8 +203,17 @@ public:
         else if (!validateTarget(target))
             throw MakeStringException(THORHELPER_DATA_ERROR, "HTTP-GET Target not found");
     }
-    inline void setFormContent(const char *content)
+
+    inline void checkSetFormPostContent(const char *content)
     {
+        while ((*content==' ') || (*content=='\t'))
+            content++;
+        if (*content=='<')
+        {
+            contentType.set("text/xml"); //backward compatible.  Some clients have a bug where XML is sent as "form-urlenncoded"
+            return;
+        }
+        checkTarget();
         if (!form)
             form.setown(createProperties(false));
         parseHttpParameterString(form, content);
@@ -332,6 +341,7 @@ interface SafeSocket : extends IInterface
     virtual void sendSoapException(IException *E, const char *queryName) = 0;
     virtual void sendJsonException(IException *E, const char *queryName) = 0;
     virtual void setHttpMode(const char *queryName, bool arrayMode, HttpHelper &httphelper) = 0;
+    virtual void setHttpMode(bool mode) = 0;
     virtual void setHeartBeat() = 0;
     virtual bool sendHeartBeat(const IContextLogger &logctx) = 0;
     virtual void flush() = 0;
@@ -374,6 +384,7 @@ public:
     bool readBlock(MemoryBuffer &ret, unsigned maxBlockSize, unsigned timeout = (unsigned) WAIT_FOREVER);
     bool readBlock(StringBuffer &ret, unsigned timeout, HttpHelper *pHttpHelper, bool &, bool &, unsigned maxBlockSize);
     void setHttpMode(const char *queryName, bool arrayMode, HttpHelper &httphelper);
+    void setHttpMode(bool mode) override {httpMode = mode;}
     void setAdaptiveRoot(bool adaptive){adaptiveRoot=adaptive;}
     bool getAdaptiveRoot(){return adaptiveRoot;}
     void checkSendHttpException(HttpHelper &httphelper, IException *E, const char *queryName);
@@ -403,6 +414,7 @@ protected:
     CriticalSection crit;
     PointerArray queued;
     UnsignedArray lengths;
+    bool first = true;
 
     bool needsFlush(bool closing);
 public:
@@ -429,7 +441,11 @@ public:
     virtual void appendf(const char *format, ...) __attribute__((format(printf, 2, 3)));
     virtual void encodeString(const char *x, unsigned len, bool utf8=false);
     virtual void encodeData(const void *data, unsigned len);
-    virtual void flushXML(StringBuffer &current, bool isClosing);
+    virtual void flushXML(StringBuffer &current, bool isClosing)
+    {
+        flushXML(current, isClosing, nullptr);
+    }
+    void flushXML(StringBuffer &current, bool isClosing, const char *delim);
     virtual void flush(bool closing) ;
     virtual void addPayload(StringBuffer &s, unsigned int reserve=0);
     virtual void *getPayload(size32_t &length);
@@ -445,9 +461,12 @@ public:
 
 class THORHELPER_API FlushingJsonBuffer : public FlushingStringBuffer
 {
+protected:
+    bool extend;
+
 public:
-    FlushingJsonBuffer(SafeSocket *_sock, bool _isBlocked, bool _isHttp, const IContextLogger &_logctx) :
-        FlushingStringBuffer(_sock, _isBlocked, MarkupFmt_JSON, false, _isHttp, _logctx)
+    FlushingJsonBuffer(SafeSocket *_sock, bool _isBlocked, bool _isHttp, const IContextLogger &_logctx, bool _extend = false) :
+        FlushingStringBuffer(_sock, _isBlocked, MarkupFmt_JSON, false, _isHttp, _logctx), extend(_extend)
     {
     }
 
@@ -458,6 +477,10 @@ public:
     void startScalar(const char *resultName, unsigned sequence, bool simpleTag, const char *simplename=nullptr);
     virtual void setScalarInt(const char *resultName, unsigned sequence, __int64 value, unsigned size, bool simpleTag = false, const char *simplename=nullptr);
     virtual void setScalarUInt(const char *resultName, unsigned sequence, unsigned __int64 value, unsigned size, bool simpleTag = false, const char *simplename=nullptr);
+    virtual void flushXML(StringBuffer &current, bool isClosing)
+    {
+        FlushingStringBuffer::flushXML(current, isClosing, (extend) ? "," : nullptr);
+    }
 };
 
 inline const char *getFormatName(TextMarkupFormat fmt)

@@ -288,7 +288,7 @@ const char * getOperatorIRText(node_operator op)
     EXPAND_CASE(no,critical);
     EXPAND_CASE(no,likely);
     EXPAND_CASE(no,unlikely);
-    EXPAND_CASE(no,unused32);
+    EXPAND_CASE(no,inline);
     EXPAND_CASE(no,unused33);
     EXPAND_CASE(no,unused34);
     EXPAND_CASE(no,unused35);
@@ -1422,6 +1422,11 @@ protected:
         case type_any:
             line.append(irText);
             return;
+        case type_packedint:
+            if (!info.isSigned)
+                line.append("u");
+            line.append(irText);
+            return;
         case type_int:
         case type_swapint:
             {
@@ -1439,17 +1444,21 @@ protected:
                 line.append(info.length);
             return;
         case type_decimal:
-        case type_packedint:
         case type_bitfield:
         case type_enumerated:
             return;
         case type_string:
         case type_unicode:
-        case type_utf8:
         case type_varstring:
             line.append(irText);
             if (info.length != UNKNOWN_LENGTH)
                 line.append(info.length);
+            line.append("(").append(info.locale).append(")");
+            return;
+        case type_utf8:
+            line.append(irText);
+            if (info.length != UNKNOWN_LENGTH)
+                line.append("_").append(info.length);
             line.append("(").append(info.locale).append(")");
             return;
         }
@@ -1516,6 +1525,7 @@ protected:
             break;
         case type_int:
         case type_swapint:
+        case type_packedint:
             {
                 if (true)//info.isSigned)
                     line.append((__int64)info.intValue);
@@ -1529,7 +1539,6 @@ protected:
                 break;
             }
         case type_decimal:
-        case type_packedint:
         case type_string:
         case type_bitfield:
         case type_enumerated:
@@ -1901,6 +1910,7 @@ id_t ExpressionIRPlayer::doProcessType(ITypeInfo * type)
         case type_dictionary:
         case type_function:
         case type_pointer:
+        case type_array:
             {
                 CompoundTypeBuilderInfo info;
                 info.baseType = processType(type->queryChildType());
@@ -1912,7 +1922,6 @@ id_t ExpressionIRPlayer::doProcessType(ITypeInfo * type)
         case type_ifblock:
         case type_alias:
         case type_blob:
-        case type_array:
             throwUnexpected();
             break;
         case type_class:
@@ -2058,13 +2067,13 @@ id_t ExpressionIRPlayer::doProcessConstant(IHqlExpression * expr)
         break;
     case type_int:
     case type_swapint:
+    case type_packedint:
         info.intValue = value->getIntValue();
         break;
     case type_real:
         info.realValue = value->getRealValue();
         break;
     case type_decimal:
-    case type_packedint:
     case type_string:
     case type_bitfield:
     case type_enumerated:

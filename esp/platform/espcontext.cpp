@@ -78,6 +78,8 @@ private:
     unsigned    m_exceptionTime;
     bool        m_hasException;
     int         m_exceptionCode;
+    StringAttr  authenticationMethod;
+    AuthType    domainAuthType;
 
     ESPSerializationFormat respSerializationFormat;
 
@@ -123,7 +125,13 @@ public:
     virtual bool checkMinVer(double minVer) {  return m_clientVer<0 || m_clientVer >= minVer; }
     virtual bool checkMaxVer(double maxVer) {  return m_clientVer<0 || m_clientVer <= maxVer; }
     virtual bool checkMinMaxVer(double minVer, double maxVer) {  return m_clientVer<0 || m_clientVer>= minVer || m_clientVer <= maxVer; }
-    virtual bool checkOptional(const char* option) { return m_queryparams.get() && m_queryparams->hasProp(option); }
+    virtual bool checkOptional(const char* option)
+    {
+        if (option && *option == '!')
+            return !m_queryparams.get() || !m_queryparams->hasProp(option+1);
+        else
+            return m_queryparams.get() && m_queryparams->hasProp(option);
+    }
     virtual bool isMethodAllowed(double version, const char* optional, const char* security, double maxver, double minver);
 
     virtual IMapInfo& queryMapInfo() 
@@ -163,7 +171,24 @@ public:
     {
         return m_password.get();
     }
-
+    virtual void setSessionToken(const MemoryBuffer & token)
+    {
+        if (m_user)
+            m_user->credentials().setSessionToken(&token);
+    }
+    virtual const MemoryBuffer * querySessionToken()
+    {
+        return m_user ? &m_user->credentials().getSessionToken() : nullptr;
+    }
+    virtual void setSignature(const MemoryBuffer & signature)
+    {
+        if (m_user)
+            m_user->credentials().setSignature(&signature);
+    }
+    virtual const MemoryBuffer * querySignature()
+    {
+        return m_user ? &m_user->credentials().getSignature() : nullptr;
+    }
     virtual void setRealm(const char* realm)
     {
         m_realm.set(realm);
@@ -485,6 +510,19 @@ public:
         m_txSummary->clear();
         m_txSummary.clear();
     }
+
+    virtual void setAuthenticationMethod(const char* method)
+    {
+        authenticationMethod.set(method);
+    }
+
+    virtual const char * getAuthenticationMethod()
+    {
+        return authenticationMethod.get();
+    }
+
+    virtual void setDomainAuthType(AuthType type) { domainAuthType = type; }
+    virtual AuthType getDomainAuthType(){ return domainAuthType; }
 
     virtual ESPSerializationFormat getResponseFormat(){return respSerializationFormat;}
     virtual void setResponseFormat(ESPSerializationFormat fmt){respSerializationFormat = fmt;}

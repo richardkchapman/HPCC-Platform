@@ -18,15 +18,21 @@
 '''
 
 import logging
+import os
+import sys
+import inspect
 
 from ...common.shell import Shell
 from ...common.error import Error
-from ...util.util import queryWuid
+from ...util.util import queryWuid, getConfig
+
+import xml.etree.ElementTree as ET
 
 class ECLcmd(Shell):
     def __init__(self):
         self.defaults = []
         self.cmd = 'ecl'
+        self.config = getConfig()
 
     def __ECLcmd(self):
         return self.command(self.cmd, *self.defaults)
@@ -38,6 +44,9 @@ class ECLcmd(Shell):
         args.append('-fpickBestEngine=false')
         args.append('--target=' + cluster)
         args.append('--cluster=' + cluster)
+        args.append('--port=' + self.config.espSocket)
+        if self.config.useSsl.lower() == 'true':
+            args.append('--ssl')
         
         retryCount = int(kwargs.pop('retryCount',  1))
         args.append('--wait='+str(retryCount * eclfile.getTimeout() * 1000))  # ms
@@ -107,6 +116,21 @@ class ECLcmd(Shell):
                 if "aborted" in i:
                     state = "aborted"
                 if cnt > 4:
+                    if i.startswith('<Warning>'):
+                        # Remove absolute path from filename to 
+                        # enable to compare it with same part of keyfile
+                        xml = ET.fromstring(i)
+                        try:
+                            path = xml.find('.//Filename').text
+                            logging.debug("%3d. path:'%s'", eclfile.getTaskId(),  path )
+                            filename = os.path.basename(path)
+                            xml.find('.//Filename').text = filename
+                        except:
+                            logging.debug("%3d. Unexpected error: %s (line: %s) ", eclfile.getTaskId(), str(sys.exc_info()[0]), str(inspect.stack()[0][2]))
+                        finally:
+                            i = ET.tostring(xml)
+                        logging.debug("%3d. ret:'%s'", eclfile.getTaskId(),  i )
+                        pass
                     result += i + "\n"
                 cnt += 1
             data = '\n'.join(line for line in

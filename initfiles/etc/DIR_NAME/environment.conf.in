@@ -28,11 +28,16 @@ mpStart=7101
 mpEnd=7500
 mpSoMaxConn=128
 mpTraceLevel=0
-#enable SSL for dafilesrv remote file access
-#dfsUseSSL=false
+# enable SSL for dafilesrv remote file access (SSLNone/false | SSLOnly/true | SSLFirst | UnsecureFirst)
+#dfsUseSSL=SSLNone
+# note: if passphrase specified it must be encrypted
+#dfsSSLPassPhrase=
 #dfsSSLCertFile=/certfilepath/certfile
 #dfsSSLPrivateKeyFile=/keyfilepath/keyfile
+
 jvmoptions=-XX:-UsePerfData
+#Options to enable remote debugging of Java service or application
+#jvmoptions=-XX:-UsePerfData -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=2000
 #JNI_PATH=/absolute/path/to/alternative/libjvm.so
 
 # Although HPCC platform includes plugins for both Python2 and Python3, only one may be safely enabled at a time

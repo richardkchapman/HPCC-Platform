@@ -25,9 +25,7 @@
 #include "rtlfield.hpp"
 #include "rtlds_imp.hpp"
 
-namespace thorfile {
 #include "eclhelper_base.hpp"
-}
 #include "thorcommon.ipp"
 
 void setExpiryTime(IPropertyTree & properties, unsigned expireDays)
@@ -36,7 +34,7 @@ void setExpiryTime(IPropertyTree & properties, unsigned expireDays)
 }
 
 
-class DiskWorkUnitReadArg : public thorfile::CThorDiskReadArg
+class DiskWorkUnitReadArg : public CThorDiskReadArg
 {
 public:
     DiskWorkUnitReadArg(const char * _filename, IHThorWorkunitReadArg * _wuRead) : filename(_filename), wuRead(_wuRead)

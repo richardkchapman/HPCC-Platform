@@ -287,6 +287,7 @@ cycle_t nanosec_to_cycle(__int64 ns)
     return (__int64)((double)ns / cycleToNanoScale);
 }
 
+#if !(defined(INLINE_GET_CYCLES_NOW) && defined(HAS_GOOD_CYCLE_COUNTER))
 cycle_t jlib_decl get_cycles_now()
 {
     if (useRDTSC)
@@ -295,6 +296,7 @@ cycle_t jlib_decl get_cycles_now()
     QueryPerformanceCounter(&temp);
     return temp.QuadPart;
 }
+#endif
 
 double getCycleToNanoScale()
 {
@@ -474,20 +476,16 @@ MTimeSection::~MTimeSection()
 class TimeSectionInfo : public MappingBase 
 {
 public:
-    TimeSectionInfo(const char * _scope, const char *_description, __int64 _cycles) : scope(_scope), description(_description), totalcycles(_cycles), maxcycles(_cycles), count(1) {};
-    TimeSectionInfo(const char * _scope, const char *_description, __int64 _cycles, __int64 _maxcycles, unsigned _count)
-    : scope(_scope), description(_description), totalcycles(_cycles), maxcycles(_maxcycles), count(_count) {};
-    TimeSectionInfo(MemoryBuffer &mb)
-    {
-        mb.read(scope).read(description).read(totalcycles).read(maxcycles).read(count);
-    }
-    void serialize(MemoryBuffer &mb)
-    {
-        mb.read(scope).read(description).append(totalcycles).append(maxcycles).append(count);
-    }
+    TimeSectionInfo(const char * _scope, __int64 _cycles) : scope(_scope), totalcycles(_cycles), maxcycles(_cycles), count(1) {};
+    TimeSectionInfo(const char * _scope, __int64 _cycles, __int64 _maxcycles, unsigned _count)
+    : scope(_scope), totalcycles(_cycles), maxcycles(_maxcycles), count(_count) {};
     virtual const void * getKey() const { return scope.get(); }
+
+    __int64 getTime() const { return cycle_to_nanosec(totalcycles); }
+    __int64 getMaxTime() const { return cycle_to_nanosec(maxcycles); }
+    unsigned getCount() const { return count; }
+
     StringAttr  scope;
-    StringAttr  description;
     __int64 totalcycles;
     __int64 maxcycles;
     unsigned count;
@@ -514,17 +512,6 @@ public:
     {
         sections = new StringMapOf<TimeSectionInfo>(true);
     }
-    DefaultTimeReporter(MemoryBuffer &mb)
-    {
-        sections = new StringMapOf<TimeSectionInfo>(true);
-        unsigned ns;
-        mb.read(ns);
-        while (ns--)
-        {
-            TimeSectionInfo &newinfo = * new TimeSectionInfo(mb);
-            sections->replaceOwn(newinfo);
-        }
-    }
     ~DefaultTimeReporter() 
     {
 //      printTimings();                     // Must explicitly call printTimings - no automatic print (too late here!)
@@ -537,7 +524,7 @@ public:
         for(iter.first(); iter.isValid(); iter.next())
         {
             TimeSectionInfo &ts = (TimeSectionInfo &)iter.query();
-            cb.report(ts.scope, ts.description, cycle_to_nanosec(ts.totalcycles), cycle_to_nanosec(ts.maxcycles), ts.count);
+            cb.report(ts.scope, ts.getTime(), ts.getMaxTime(), ts.count);
         }
     }
     virtual void addTiming(const char * scope, cycle_t cycles)
@@ -552,42 +539,9 @@ public:
         }
         else
         {
-            TimeSectionInfo &newinfo = * new TimeSectionInfo(scope, NULL, cycles);
+            TimeSectionInfo &newinfo = * new TimeSectionInfo(scope, cycles);
             sections->replaceOwn(newinfo);
         }
-    }
-    virtual unsigned numSections()
-    {
-        CriticalBlock b(c);
-        return sections->count();
-    }
-    virtual StatisticKind getTimerType(unsigned idx __attribute__((unused)))
-    {
-        return StTimeElapsed;
-    }
-    virtual StatisticScopeType getScopeType(unsigned idx __attribute__((unused)))
-    {
-        return SSTsection;
-    }
-    virtual __int64 getTime(unsigned idx)
-    {
-        CriticalBlock b(c);
-        return cycle_to_nanosec(findSection(idx).totalcycles);
-    }
-    virtual __int64 getMaxTime(unsigned idx)
-    {
-        CriticalBlock b(c);
-        return cycle_to_nanosec(findSection(idx).maxcycles);
-    }
-    virtual unsigned getCount(unsigned idx)
-    {
-        CriticalBlock b(c);
-        return findSection(idx).count;
-    }
-    virtual StringBuffer &getScope(unsigned idx, StringBuffer &s)
-    {
-        CriticalBlock b(c);
-        return s.append(findSection(idx).scope);
     }
     virtual void reset()
     {
@@ -598,19 +552,25 @@ public:
     virtual StringBuffer &getTimings(StringBuffer &str)
     {
         CriticalBlock b(c);
+        HashIterator iter(*sections);
+        for(iter.first(); iter.isValid(); iter.next())
+        {
+            TimeSectionInfo &ts = (TimeSectionInfo &)iter.query();
+            str.append("Timing: ").append(ts.scope)
+                    .append(" total=")
+                    .append(ts.getTime()/1000000)
+                    .append("ms max=")
+                    .append(ts.getMaxTime()/1000)
+                    .append("us count=")
+                    .append(ts.getCount())
+                    .append(" ave=")
+                    .append((ts.getTime()/1000)/ts.getCount())
+                    .append("us\n");
+        }
         if (numSections())
         {
             for (unsigned i = 0; i < numSections(); i++)
             {
-                getScope(i, str.append("Timing: ")).append(" total=")
-                                         .append(getTime(i)/1000000)
-                                         .append("ms max=")
-                                         .append(getMaxTime(i)/1000)
-                                         .append("us count=")
-                                         .append(getCount(i))
-                                         .append(" ave=")
-                                         .append((getTime(i)/1000)/getCount(i))
-                                         .append("us\n");
             }
         }
         return str;
@@ -630,7 +590,7 @@ public:
         TimeSectionInfo *info = sections->find(scope);
         if (!info)
         {
-            info = new TimeSectionInfo(scope, NULL, totalcycles, maxcycles, count);
+            info = new TimeSectionInfo(scope, totalcycles, maxcycles, count);
             sections->replaceOwn(*info);
         }
         else
@@ -655,16 +615,10 @@ public:
         CriticalBlock b(c);
         other.mergeInto(*this);
     }
-    virtual void serialize(MemoryBuffer &mb)
+protected:
+    unsigned numSections()
     {
-        CriticalBlock b(c);
-        mb.append(numSections());
-        HashIterator iter(*sections);
-        for(iter.first(); iter.isValid(); iter.next())
-        {
-            TimeSectionInfo &ts = (TimeSectionInfo &) iter.query();
-            ts.serialize(mb);
-        }
+        return sections->count();
     }
 };
 
@@ -676,7 +630,6 @@ ITimeReporter * queryActiveTimer()
 
 
 ITimeReporter *createStdTimeReporter() { return new DefaultTimeReporter(); }
-ITimeReporter *createStdTimeReporter(MemoryBuffer &mb) { return new DefaultTimeReporter(mb); }
 
 cycle_t oneSecInCycles;
 MODULE_INIT(INIT_PRIORITY_JDEBUG1)
@@ -1049,35 +1002,60 @@ memsize_t getVMInfo(const char *type)
 
 void getCpuInfo(unsigned &numCPUs, unsigned &CPUSpeed)
 {
-    int cpufd = open("/proc/cpuinfo",O_RDONLY);
-    if (cpufd==-1)
+    numCPUs = 1;
+    CPUSpeed = 0;
+#ifdef __APPLE__
+# if defined(_SC_NPROCESSORS_CONF)
+    int ncpus = sysconf(_SC_NPROCESSORS_CONF);
+    if (ncpus > 0)
+        numCPUs = ncpus;
+# endif
+#else // linux
+    // NOTE: Could have perhaps used sysconf(_SC_NPROCESSORS_CONF) for numCPUs
+
+    FILE *cpufp = fopen("/proc/cpuinfo", "r");
+    if (cpufp == NULL)
         return;
-    MemoryAttr ma;
-    char *buf = (char *)ma.allocate(0x10000);
-    size32_t l=0;
-    for (;;) {
-        size32_t rd = read(cpufd, buf+l, 0x10000-1-l);
-        if ((int)rd<=0) 
-            break;
-        l += rd;
-    }
-    buf[l] = 0;
-    const char *bufptr = buf;
+
     char * tail;
-    numCPUs = CPUSpeed = 0;
     // MORE: It is a shame that the info in this file (/proc/cpuinfo) are formatted (ie tabs .. etc)
     const char *cpuNumTag = "processor\t:";
     const char *cpuSpeedTag = "cpu MHz\t\t:";
-    while (bufptr) {
-        if (*bufptr =='\n') 
-            bufptr++;
+
+    // NOTE: This provides current cpu freq, not max
+
+    numCPUs = 0;
+    char line[1001];
+    const char *bufptr;
+    while ((bufptr = fgets(line, 1000, cpufp)) != NULL)
+    {
         if (strncmp(cpuNumTag, bufptr, strlen(cpuNumTag))==0) 
             numCPUs++;
         else if (strncmp(cpuSpeedTag, bufptr, strlen(cpuSpeedTag))==0) 
             CPUSpeed = (unsigned)strtol(bufptr+strlen(cpuSpeedTag), &tail, 10);
-        bufptr = strchr(bufptr, '\n');
     }
-    close(cpufd);
+
+    fclose(cpufp);
+    if (numCPUs < 1)
+        numCPUs = 1;
+
+    // max cpu freq (KHz) may be in:
+    // /sys/devices/system/cpu/cpu[0-X]/cpufreq/cpuinfo_max_freq
+
+    cpufp = fopen("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", "r");
+    if (cpufp != NULL)
+    {
+        unsigned CPUSpeedMax = 0;
+        int srtn = fscanf(cpufp, "%u", &CPUSpeedMax);
+        if (srtn == 1)
+        {
+            CPUSpeedMax /= 1000;
+            if (CPUSpeedMax > CPUSpeed)
+                CPUSpeed = CPUSpeedMax;
+        }
+        fclose(cpufp);
+    }
+#endif
 }
 
 static unsigned evalAffinityCpus()
@@ -2264,6 +2242,7 @@ public:
     {
         inErrorsCol = -1;
         prevErrors = 0;
+        firstCall = true;
     }
     bool reportSnmpInfo()
     {
@@ -2300,7 +2279,13 @@ public:
                     {
                         ok = true;
                         unsigned errors = strtoul(cols.item(inErrorsCol), NULL, 10);
-                        if (errors > prevErrors)
+                        if (firstCall)
+                        {
+                            firstCall = false;
+                            if (errors)
+                                LOG(MCoperatorWarning, unknownJob, "UDP Initial InError total: %u", errors);
+                        }
+                        else if (errors > prevErrors)
                             LOG(MCoperatorError, unknownJob, "UDP InErrors: %u (total %u)", errors-prevErrors, errors);
                         prevErrors = errors;
                     }
@@ -2316,6 +2301,7 @@ private:
     StringArray columnNames;
     int inErrorsCol;
     unsigned prevErrors;
+    bool firstCall;
 };
 
 static class CMemoryUsageReporter: public Thread
@@ -2585,6 +2571,8 @@ public:
         if(!mode) return;
         unsigned memused=0;
         unsigned memtot=0;
+        str.appendf("LPT=%u ", queryNumLocalTrees());
+        str.appendf("APT=%u ", queryNumAtomTrees());
         if(mode & PerfMonProcMem)
         {
             if (!outofhandles)
@@ -2785,7 +2773,7 @@ void getHardwareInfo(HardwareInfo &hdwInfo, const char *primDiskPath, const char
 
     MEMORYSTATUS memstatus;
     GlobalMemoryStatus(&memstatus);
-    hdwInfo.totalMemory = memstatus.dwTotalPhys / (1024*1024); // in MB
+    hdwInfo.totalMemory = (unsigned)(memstatus.dwTotalPhys / (1024*1024)); // in MB
 
     ULARGE_INTEGER diskAvailStruct;
     ULARGE_INTEGER diskTotalStruct;
@@ -2903,7 +2891,7 @@ public:
             }
         }
         else if (file&&fgets (ln, sizeof(ln), file)) {
-            unsigned i = strlen(ln);
+            size_t i = strlen(ln);
             while (i&&((ln[i-1]==10)||(ln[i-1]==13)))
                 i--;
             ln[i] = 0;
@@ -3221,7 +3209,7 @@ static int MemoryLeakReportHook(int nRptType,char *szMsg,int  *retVal)
             // this works  better in VS 2008 libraries (which fault in fopen)
             int handle = _open(_logFile, O_RDWR | O_CREAT, _S_IREAD | _S_IWRITE);
             _lseek(handle,0,SEEK_END);
-            _write(handle,szMsg,strlen(szMsg));
+            _write(handle,szMsg,(unsigned)strlen(szMsg));
             _close(handle);
 #else
             FILE *handle = fopen(_logFile, "a");

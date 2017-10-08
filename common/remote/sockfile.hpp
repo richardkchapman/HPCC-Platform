@@ -53,16 +53,20 @@ enum ThrottleClass
 
 interface IRemoteFileServer : extends IInterface
 {
-    virtual void run(SocketEndpoint &listenep, bool useSSL = false) = 0;
+    virtual void run(DAFSConnectCfg connectMethod, SocketEndpoint &listenep, unsigned sslPort=0) = 0;
     virtual void stop() = 0;
     virtual unsigned idleTime() = 0; // in ms
     virtual void setThrottle(ThrottleClass throttleClass, unsigned limit, unsigned delayMs=DEFAULT_STDCMD_THROTTLEDELAYMS, unsigned cpuThreshold=DEFAULT_STDCMD_THROTTLECPULIMIT, unsigned queueLimit=DEFAULT_STDCMD_THROTTLEQUEUELIMIT) = 0;
     virtual StringBuffer &getStats(StringBuffer &stats, bool reset) = 0;
 };
 
-#define FILESRV_VERSION 19 // don't forget VERSTRING in sockfile.cpp
+#define FILESRV_VERSION 21 // don't forget VERSTRING in sockfile.cpp
 
-extern REMOTE_API IFile * createRemoteFile(SocketEndpoint &ep,const char * _filename); // takes ownershop of socket
+interface IKeyManager;
+interface IDelayedFile;
+extern REMOTE_API IFile * createRemoteFile(SocketEndpoint &ep,const char * _filename);
+extern REMOTE_API IKeyManager *createKeyManager(const char *filename, unsigned keySize, unsigned crc, IDelayedFile *delayedFile, bool allowRemote, bool forceRemote);
+extern REMOTE_API IKeyManager * createRemoteKeyManager(const char *filename, unsigned keySize, unsigned crc, IDelayedFile *delayedFile);
 extern REMOTE_API unsigned getRemoteVersion(ISocket * _socket, StringBuffer &ver);
 extern REMOTE_API unsigned stopRemoteServer(ISocket * _socket);
 extern REMOTE_API const char *remoteServerVersionString();
@@ -70,12 +74,12 @@ extern REMOTE_API IRemoteFileServer * createRemoteFileServer(unsigned maxThreads
 extern REMOTE_API int setDafsTrace(ISocket * socket,byte flags);
 extern REMOTE_API int setDafsThrottleLimit(ISocket * socket, ThrottleClass throttleClass, unsigned throttleLimit, unsigned throttleDelayMs, unsigned throttleCPULimit, unsigned queueLimit, StringBuffer *errMsg=NULL);
 extern REMOTE_API bool enableDafsAuthentication(bool on);
-extern int remoteExec(ISocket * socket, const char *cmdline, const char *workdir,bool sync,
-                size32_t insize, void *inbuf, MemoryBuffer *outbuf);
 extern void remoteExtractBlobElements(const SocketEndpoint &ep, const char * prefix, const char * filename, ExtractedBlobArray & extracted);
 extern int getDafsInfo(ISocket * socket, unsigned level, StringBuffer &retstr);
 extern void setDafsEndpointPort(SocketEndpoint &ep);
 extern void setDafsLocalMountRedirect(const IpAddress &ip,const char *dir,const char *mountdir);
+extern REMOTE_API ISocket *connectDafs(SocketEndpoint &ep, unsigned timeoutms); // NOTE: might alter ep.port if configured for multiple ports ...
+extern REMOTE_API ISocket *checkSocketSecure(ISocket *socket);
 
 // client only
 extern void clientSetDaliServixSocketCaching(bool set);

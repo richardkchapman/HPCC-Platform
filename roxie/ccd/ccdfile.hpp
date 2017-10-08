@@ -21,6 +21,7 @@
 #include "eclhelper.hpp"
 #include "ccddali.hpp"
 #include "dautils.hpp"
+#include "layouttrans.hpp"
 
 enum RoxieFileStatus { FileSizeMismatch, FileDateMismatch, FileCRCMismatch, FileIsValid, FileNotFound };
 enum RoxieFileType { ROXIE_KEY, ROXIE_FILE, ROXIE_PATCH, ROXIE_BASEINDEX };
@@ -47,7 +48,7 @@ interface ILazyFileIO : extends IFileIO
     virtual void close() = 0;
     virtual void setCopying(bool copying) = 0;
     virtual bool isCopying() const = 0;
-    virtual IMemoryMappedFile *queryMappedFile() = 0;
+    virtual IMemoryMappedFile *getMappedFile() = 0;
 
     virtual void setCache(const IRoxieFileCache *) = 0;
     virtual void removeCache(const IRoxieFileCache *) = 0;
@@ -91,7 +92,7 @@ interface IResolvedFile : extends ISimpleSuperFileEnquiry
     virtual void serializePartial(MemoryBuffer &mb, unsigned channel, bool localInfoOnly) const = 0;
 
     virtual IFileIOArray *getIFileIOArray(bool isOpt, unsigned channel) const = 0;
-    virtual IKeyArray *getKeyArray(IDefRecordMeta *activityMeta, TranslatorArray *translators, bool isOpt, unsigned channel, bool allowFieldTranslation) const = 0;
+    virtual IKeyArray *getKeyArray(IDefRecordMeta *activityMeta, TranslatorArray *translators, bool isOpt, unsigned channel, IRecordLayoutTranslator::Mode allowFieldTranslation) const = 0;
     virtual IFilePartMap *getFileMap() const = 0;
     virtual unsigned getNumParts() const = 0;
     virtual IInMemoryIndexManager *getIndexManager(bool isOpt, unsigned channel, IFileIOArray *files, IRecordSize *recs, bool preload, int numKeys) const = 0;

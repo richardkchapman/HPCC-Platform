@@ -89,6 +89,7 @@ define([
         templateString: template,
         baseClass: "DFUQueryWidget",
         i18n: nlsHPCC,
+        pathSepCharG: "/",
 
         postCreate: function (args) {
             this.inherited(arguments);
@@ -106,7 +107,8 @@ define([
             this.addToSuperfileGrid = registry.byId(this.id + "AddToSuperfileGrid");
             this.desprayForm = registry.byId(this.id + "DesprayForm");
             this.desprayTargetSelect = registry.byId(this.id + "DesprayTargetSelect");
-            this.desprayTooltiopDialog = registry.byId(this.id + "DesprayTooltipDialog");
+            this.desprayIPSelect = registry.byId(this.id + "DesprayTargetIPAddress");
+            this.desprayTooltipDialog = registry.byId(this.id + "DesprayTooltipDialog");
             this.addToSuperfileTargetName = registry.byId(this.id + "AddToSuperfileTargetName")
             this.createNewSuperRadio = registry.byId(this.id + "CreateNewSuperRadio");
             this.addToSuperfileTargetAppendRadio = registry.byId(this.id + "AddToSuperfileTargetAppend");
@@ -115,23 +117,48 @@ define([
             this.downListForm = registry.byId(this.id + "DownListForm");
             this.fileName = registry.byId(this.id + "FileName");
             var context = this;
-            var origOnOpen = this.desprayTooltiopDialog.onOpen;
-            this.desprayTooltiopDialog.onOpen = function () {
+            var origOnOpen = this.desprayTooltipDialog.onOpen;
+            this.desprayTooltipDialog.onOpen = function () {
+                var targetRow;
                 if (!context.desprayTargetSelect.initalized) {
                     context.desprayTargetSelect.init({
                         DropZones: true,
                         callback: function (value, item) {
-                            registry.byId(context.id + "DesprayTargetIPAddress").set("value", item.machine.Netaddress);
-                            if (context.desprayTargetPath) {
-                                context.desprayTargetPath.reset();
-                                context.desprayTargetPath._dropZoneTarget = item;
-                                context.desprayTargetPath.defaultValue = context.desprayTargetPath.get("value");
-                                context.desprayTargetPath.loadDropZoneFolders();
+                             if (context.desprayIPSelect) {
+                                context.desprayIPSelect.defaultValue = context.desprayIPSelect.get("value");
+                                context.desprayIPSelect.loadDropZoneMachines(value);
+                                targetRow = item;
                             }
                         }
                     });
                 }
-                origOnOpen.apply(context.desprayTooltiopDialog, arguments);
+                origOnOpen.apply(context.desprayTooltipDialog, arguments);
+
+                if (!context.desprayIPSelect.initalized) {
+                    var pathSepChar;
+                    context.desprayIPSelect.init({
+                        DropZoneMachines: true,
+                        callback: function (value, row) {
+                            var path = targetRow.machine.Directory.indexOf("\\");
+                            targetRow.machine.Name = value
+                            targetRow.machine.Netaddress = value
+                            if (context.desprayTargetPath) {
+                                context.desprayTargetPath._dropZoneTarget = targetRow;
+                                if (path > -1) {
+                                    context.desprayTargetPath.defaultValue = "\\"
+                                    pathSepChar = "\\"
+                                    context.pathSepCharG = "\\"
+                                } else {
+                                    context.desprayTargetPath.defaultValue = "/"
+                                    pathSepChar = "/";
+                                    context.pathSepCharG = "/"
+                                }
+                                context.desprayTargetPath.loadDropZoneFolders(pathSepChar);
+                            }
+                        }
+                    });
+                }
+                origOnOpen.apply(context.desprayTooltipDialog, arguments);
             }
             this.desprayTargetPath = registry.byId(this.id + "DesprayTargetPath");
             this.desprayGrid = registry.byId(this.id + "DesprayGrid");
@@ -200,7 +227,7 @@ define([
             var list = this.arrayToList(selection, "Name");
             if (confirm(this.i18n.DeleteSelectedFiles + "\n" + list)) {
                 var context = this;
-                WsDfu.DFUArrayAction(selection, this.i18n.Delete).then(function (response) {
+                WsDfu.DFUArrayAction(selection, "Delete").then(function (response) {
                     context.refreshGrid(true);
                 });
             }
@@ -290,8 +317,8 @@ define([
                 arrayUtil.forEach(this.desprayGrid.store.data, function (item, idx) {
                     var request = domForm.toObject(context.id + "DesprayForm");
                     request.destPath = context.desprayTargetPath.getDropZoneFolder();
-                    if (!context.endsWith(request.destPath, "/")) {
-                        request.destPath += "/";
+                    if (!context.endsWith(request.destPath, context.pathSepCharG)) {
+                        request.destPath += context.pathSepCharG;
                     }
                     request.destPath += item.targetName;
                     item.despray({
@@ -333,10 +360,24 @@ define([
         //  Implementation  ---
         getFilter: function () {
             var retVal = this.filter.toObject();
-            lang.mixin(retVal, {
-                StartDate: this.getISOString("FromDate", "FromTime"),
-                EndDate: this.getISOString("ToDate", "ToTime")
-            });
+            if (retVal.StartDate && retVal.FromTime) {
+                lang.mixin(retVal, {
+                    StartDate: this.getISOString("FromDate", "FromTime")
+                });
+            } else if (retVal.StartDate && !retVal.FromTime) {
+                lang.mixin(retVal, {
+                    StartDate: registry.byId(this.id + "FromDate").attr("value").toISOString().replace(/T.*Z/, '') + "T00:00:00Z"
+                });
+            }
+            if (retVal.EndDate && retVal.ToTime) {
+                lang.mixin(retVal, {
+                    EndDate: this.getISOString("ToDate", "ToTime")
+                });
+            } else if (retVal.EndDate && !retVal.ToTime) {
+                lang.mixin(retVal, {
+                    EndDate: registry.byId(this.id + "ToDate").attr("value").toISOString().replace(/T.*Z/, '') + "T23:59:59Z"
+                });
+            }
             return retVal;
         },
 

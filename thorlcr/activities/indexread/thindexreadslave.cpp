@@ -19,6 +19,7 @@
 #include "jfile.hpp"
 #include "jtime.hpp"
 #include "jsort.hpp"
+#include "sockfile.hpp"
 
 #include "rtlkey.hpp"
 #include "jhtree.hpp"
@@ -48,6 +49,7 @@ protected:
     Owned<IOutputRowDeserializer> deserializer;
     Owned<IOutputRowSerializer> serializer;
     bool localKey = false;
+    size32_t seekGEOffset = 0;
     __int64 lastSeeks = 0, lastScans = 0;
     UInt64Array _statsArr;
     SpinLock statLock;  // MORE: Can this be avoided by passing in the delta?
@@ -99,7 +101,7 @@ protected:
     } callback;
 
     virtual bool keyed() { return false; }
-    void setManager(IKeyManager *manager)
+    virtual void setManager(IKeyManager *manager)
     {
         clearManager();
         currentManager = manager;
@@ -129,17 +131,6 @@ protected:
         if (sz)
             return row.finalizeRowClear(sz);
         return NULL;
-    }
-    IKeyIndex *openKeyPart(IPartDescriptor &partDesc)
-    {
-        RemoteFilename rfn;
-        partDesc.getFilename(0, rfn);
-        StringBuffer filePath;
-        rfn.getPath(filePath);
-        unsigned crc=0;
-        partDesc.getCrc(crc);
-        Owned<IDelayedFile> lfile = queryThor().queryFileCache().lookup(*this, logicalFilename, partDesc);
-        return createKeyIndex(filePath.str(), crc, *lfile, false, false);
     }
     const void *nextKey()
     {
@@ -174,7 +165,7 @@ public:
         : CSlaveActivity(container)
     {
         helper = (IHThorIndexReadBaseArg *)container->queryHelper();
-        limitTransformExtra = static_cast<IHThorSourceLimitTransformExtra *>(helper->selectInterface(TAIsourcelimittransformextra_1));
+        limitTransformExtra = nullptr;
         fixedDiskRecordSize = helper->queryDiskRecordSize()->querySerializedDiskMeta()->getFixedSize(); // 0 if variable and unused
         reInit = 0 != (helper->getFlags() & (TIRvarfilename|TIRdynamicfilename));
     }
@@ -238,13 +229,35 @@ public:
         _statsArr.append(0);
         statsArr = _statsArr.getArray();
         lastSeeks = lastScans = 0;
-        keyIndexSet.setown(createKeyIndexSet());
         ForEachItemIn(p, partDescs)
         {
-            Owned<IKeyIndex> keyIndex = openKeyPart(partDescs.item(p));
-            Owned<IKeyManager> klManager = createKeyManager(keyIndex, fixedDiskRecordSize, NULL);
+            IPartDescriptor &part = partDescs.item(p);
+            RemoteFilename rfn;
+            part.getFilename(0, rfn);
+            StringBuffer filePath;
+            rfn.getPath(filePath);
+
+            Owned<IDelayedFile> lfile = queryThor().queryFileCache().lookup(*this, logicalFilename, part);
+            Owned<IKeyManager> klManager;
+
+            unsigned crc=0;
+            part.getCrc(crc);
+
+            if ((localKey && partDescs.ordinality()>1) || seekGEOffset) // for now at least, no remote key support if stepping or merging
+            {
+                Owned<IKeyIndex> keyIndex = createKeyIndex(filePath, crc, *lfile, false, false);
+                klManager.setown(createLocalKeyManager(keyIndex, fixedDiskRecordSize, nullptr));
+                if (!keyIndexSet)
+                    keyIndexSet.setown(createKeyIndexSet());
+                keyIndexSet->addIndex(keyIndex.getClear());
+            }
+            else
+            {
+                bool allowRemote = getOptBool("remoteKeyFilteringEnabled");
+                bool forceRemote = allowRemote ? getOptBool("forceDafilesrv") : false; // can only force remote, if forceDafilesrv and remoteKeyFilteringEnabled are enabled.
+                klManager.setown(createKeyManager(filePath, fixedDiskRecordSize, crc, lfile, allowRemote, forceRemote));
+            }
             keyManagers.append(*klManager.getClear());
-            keyIndexSet->addIndex(keyIndex.getClear());
         }
     }
     // IThorDataLink
@@ -296,7 +309,6 @@ class CIndexReadSlaveActivity : public CIndexReadSlaveBase
     IHThorSteppedSourceExtra *steppedExtra;
     CSteppingMeta steppingMeta;
     UnsignedArray seekSizes;
-    size32_t seekGEOffset = 0;
 
     const void *getNextRow()
     {
@@ -323,6 +335,12 @@ class CIndexReadSlaveActivity : public CIndexReadSlaveBase
             }
         }
         return nullptr;
+    }
+    virtual void setManager(IKeyManager *manager) override
+    {
+        PARENT::setManager(manager);
+        if (stopAfter && !helper->transformMayFilter())
+            manager->setChooseNLimit(stopAfter);
     }
     const void *nextKeyGE(const void *seek, unsigned numFields)
     {
@@ -440,9 +458,10 @@ public:
     CIndexReadSlaveActivity(CGraphElementBase *_container) : CIndexReadSlaveBase(_container)
     {
         helper = (IHThorIndexReadArg *)queryContainer().queryHelper();
+        limitTransformExtra = helper;
         rawMeta = helper->queryRawSteppingMeta();
         projectedMeta = helper->queryProjectedSteppingMeta();
-        steppedExtra = static_cast<IHThorSteppedSourceExtra *>(helper->selectInterface(TAIsteppedsourceextra_1));
+        steppedExtra = helper->querySteppingExtra();
         optimizeSteppedPostFilter = (helper->getFlags() & TIRunfilteredtransform) != 0;
         steppingEnabled = 0 != container.queryJob().getWorkUnitValueInt("steppingEnabled", 0);
         if (rawMeta)
@@ -485,7 +504,7 @@ public:
             else
                 steppingMeta.init(rawMeta, hasPostFilter);
         }
-        if ((seekGEOffset || localKey))
+        if (keyIndexSet)
             keyMergerManager.setown(createKeyMerger(keyIndexSet, fixedDiskRecordSize, seekGEOffset, NULL));
     }
 
@@ -493,9 +512,10 @@ public:
     virtual void start() override
     {
         ActivityTimer s(totalCycles, timeActivities);
+        stopAfter = (rowcount_t)helper->getChooseNLimit();
+
         PARENT::start();
 
-        stopAfter = (rowcount_t)helper->getChooseNLimit();
         needTransform = helper->needTransform();
         helperKeyedLimit = (rowcount_t)helper->getKeyedLimit();
         rowLimit = (rowcount_t)helper->getRowLimit(); // MORE - if no filtering going on could keyspan to get count
@@ -645,7 +665,8 @@ class CIndexGroupAggregateSlaveActivity : public CIndexReadSlaveBase, implements
 
     IHThorIndexGroupAggregateArg *helper;
     bool gathered, merging;
-    Owned<RowAggregator> localAggTable;
+    Owned<IAggregateTable> localAggTable;
+    Owned<IRowStream> aggregateStream;
     memsize_t maxMem;
     Owned<IHashDistributor> distributor;
     bool done = false;
@@ -676,8 +697,8 @@ public:
     {
         ActivityTimer s(totalCycles, timeActivities);
         PARENT::start();
-        localAggTable.setown(new RowAggregator(*helper, *helper));
-        localAggTable->start(queryRowAllocator());
+        localAggTable.setown(createRowAggregator(*this, *helper, *helper));
+        localAggTable->init(queryRowAllocator());
         gathered = false;
         done = false;
     }
@@ -708,10 +729,12 @@ public:
                 ActPrintLog("INDEXGROUPAGGREGATE: Local aggregate table contains %d entries", localAggTable->elementCount());
                 if (!container.queryLocal() && container.queryJob().querySlaves()>1)
                 {
+                    Owned<IRowStream> localAggStream = localAggTable->getRowStream(true);
                     BooleanOnOff tf(merging);
-                    bool ordered = 0 != (TDRorderedmerge & helper->getFlags());
-                    localAggTable.setown(mergeLocalAggs(distributor, *this, *helper, *helper, localAggTable, mpTag, ordered));
+                    aggregateStream.setown(mergeLocalAggs(distributor, *this, *helper, *helper, localAggStream, mpTag));
                 }
+                else
+                    aggregateStream.setown(localAggTable->getRowStream(false));
             }
             catch (IException *e)
             {
@@ -720,11 +743,11 @@ public:
                 throw checkAndCreateOOMContextException(this, e, "aggregating using hash table", localAggTable->elementCount(), helper->queryDiskRecordSize(), NULL);
             }
         }
-        Owned<AggregateRowBuilder> next = localAggTable->nextResult();
+        const void *next = aggregateStream->nextRow();
         if (next)
         {
             dataLinkIncrement();
-            return next->finalizeRowClear();
+            return next;
         }
         done = true;
         return NULL;
@@ -759,6 +782,12 @@ public:
         helper = static_cast <IHThorIndexCountArg *> (container.queryHelper());
         appendOutputLinked(this);
     }
+    virtual void setManager(IKeyManager *manager) override
+    {
+        PARENT::setManager(manager);
+        if (choosenLimit && !helper->hasFilter())
+            manager->setChooseNLimit(choosenLimit);
+    }
 
 // IThorDataLink
     virtual void getMetaInfo(ThorDataLinkMetaInfo &info) override
@@ -771,8 +800,8 @@ public:
     virtual void start() override
     {
         ActivityTimer s(totalCycles, timeActivities);
-        PARENT::start();
         choosenLimit = (rowcount_t)helper->getChooseNLimit();
+        PARENT::start();
         if (!helper->canMatchAny())
         {
             totalCountKnown = true;
@@ -893,6 +922,7 @@ public:
     CIndexNormalizeSlaveActivity(CGraphElementBase *_container) : CIndexReadSlaveBase(_container)
     {
         helper = (IHThorIndexNormalizeArg *)container.queryHelper();
+        limitTransformExtra = helper;
         appendOutputLinked(this);
     }
 
@@ -921,12 +951,12 @@ public:
     virtual void start() override
     {
         ActivityTimer s(totalCycles, timeActivities);
+        stopAfter = (rowcount_t)helper->getChooseNLimit();
         PARENT::start();
         keyedLimit = (rowcount_t)helper->getKeyedLimit();
         rowLimit = (rowcount_t)helper->getRowLimit();
         if (helper->getFlags() & TIRlimitskips)
             rowLimit = RCMAX;
-        stopAfter = (rowcount_t)helper->getChooseNLimit();
         expanding = false;
         keyedProcessed = 0;
         keyedLimitCount = RCMAX;

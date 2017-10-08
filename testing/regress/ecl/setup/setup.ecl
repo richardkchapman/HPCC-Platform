@@ -87,7 +87,7 @@ SEQUENTIAL(
              output(GROUP(SORT(DG_ParentRecs, DG_FirstName),DG_Firstname),,Files.DG_FileOut+'GROUPED',__GROUPED__,overwrite),
              output(DG_ParentRecs(EvensFilter),,Files.DG_FileOut+'FLAT_EVENS',overwrite)),
     PARALLEL(buildindex(Files.DG_NormalIndexFile,overwrite),
-             buildindex(Files.DG_NormalIndexFileEvens,overwrite),
+             buildindex(Files.DG_NormalIndexFileEvens,overwrite,SET('_nodeSize', 512)),
              buildindex(Files.DG_TransIndexFile,overwrite),
              buildindex(Files.DG_TransIndexFileEvens,overwrite),
              buildindex(Files.DG_KeyedIndexFile,overwrite))
@@ -103,6 +103,7 @@ Files.DG_VarOutRec Proj1(Files.DG_OutRec L) := TRANSFORM
   SELF.ExtraField := IF(self.DG_Prange<=10,
                         trim(self.DG_lastname[1..self.DG_Prange]+self.DG_firstname[1..self.DG_Prange],all),
                         trim(self.DG_lastname[1..self.DG_Prange-10]+self.DG_firstname[1..self.DG_Prange-10],all));
+  SELF := [];
 END;
 DG_VarOutRecs := PROJECT(DG_ParentRecs,Proj1(LEFT));
 
@@ -119,7 +120,7 @@ LocalFiles := $.Files(createMultiPart, TRUE);
 IF (createMultiPart,
     PARALLEL(
         buildindex(LocalFiles.DG_NormalIndexFile,overwrite,NOROOT),
-        buildindex(LocalFiles.DG_NormalIndexFileEvens,overwrite,NOROOT),
+        buildindex(LocalFiles.DG_NormalIndexFileEvens,overwrite,NOROOT,SET('_nodeSize', 512)),
         buildindex(LocalFiles.DG_TransIndexFile,overwrite,NOROOT),
         buildindex(LocalFiles.DG_TransIndexFileEvens,overwrite,NOROOT),
         buildindex(LocalFiles.DG_NormalVarIndex, overwrite,NOROOT);

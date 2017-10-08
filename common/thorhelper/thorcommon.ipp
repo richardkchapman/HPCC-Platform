@@ -405,7 +405,10 @@ public:
     {
         return original->queryChildMeta(i);
     }
-
+    virtual const RtlRecord &queryRecordAccessor(bool expand) const
+    {
+        UNIMPLEMENTED;  // If needed we could implement a version of RtlRecord that added/subtracted offset as needed
+    }
 protected:
     size32_t offset;
     IOutputMetaData *original;
@@ -540,6 +543,7 @@ public:
     {
         return original->queryChildMeta(i);
     }
+    virtual const RtlRecord &queryRecordAccessor(bool expand) const override { return original->queryRecordAccessor(expand); }
 
 protected:
     size32_t offset;
@@ -830,11 +834,11 @@ protected:
 class ChildRowLinkerWalker : implements IIndirectMemberVisitor
 {
 public:
-    virtual void visitRowset(size32_t count, byte * * rows)
+    virtual void visitRowset(size32_t count, const byte * * rows) override
     {
         rtlLinkRowset(rows);
     }
-    virtual void visitRow(const byte * row)
+    virtual void visitRow(const byte * row) override
     {
         rtlLinkRow(row);
     }

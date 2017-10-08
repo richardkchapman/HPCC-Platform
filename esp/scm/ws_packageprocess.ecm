@@ -51,6 +51,31 @@ ESPresponse [exceptions_inline] AddPackageResponse
     ESParray<string, File> FilesNotFound;
 };
 
+ESPrequest CopyPackageMapRequest
+{
+    string SourcePath;
+    string RemoteUserName;
+    [password] string RemotePassword;
+    string Target;
+    string Process;
+    string PMID;
+    boolean Activate;
+    string DaliIp;
+    bool GlobalScope(0);
+    string SourceProcess;
+    bool PreloadAllPackages(false);
+    bool ReplacePackageMap(false);
+    bool UpdateSuperFiles(false); //usually wouldn't be needed, packagemap referencing superfiles?
+    bool UpdateCloneFrom(false); //explicitly wan't to change where roxie will grab from
+    bool AppendCluster(true); //file exists on other local cluster, add new one, make optional in case of locking issues, but should be made to work
+};
+
+ESPresponse [exceptions_inline] CopyPackageMapResponse
+{
+    ESPstruct BasePackageStatus status;
+    ESParray<string, File> FilesNotFound;
+};
+
 ESPrequest DeletePackageRequest
 {
     string Target;
@@ -288,23 +313,24 @@ ESPresponse [exceptions_inline] GetPartFromPackageMapResponse
     string Content;
 };
 
-ESPservice [auth_feature("NONE"), version("1.02"), exceptions_inline("./smc_xslt/exceptions.xslt")] WsPackageProcess
+ESPservice [auth_feature("NONE"), version("1.03"), exceptions_inline("./smc_xslt/exceptions.xslt")] WsPackageProcess
 {
     ESPmethod Echo(EchoRequest, EchoResponse);
-    ESPmethod AddPackage(AddPackageRequest, AddPackageResponse);
-    ESPmethod DeletePackage(DeletePackageRequest, DeletePackageResponse);
-    ESPmethod ActivatePackage(ActivatePackageRequest, ActivatePackageResponse);
-    ESPmethod DeActivatePackage(DeActivatePackageRequest, DeActivatePackageResponse);
-    ESPmethod ListPackage(ListPackageRequest, ListPackageResponse);
-    ESPmethod ListPackages(ListPackagesRequest, ListPackagesResponse);
-    ESPmethod GetPackage(GetPackageRequest, GetPackageResponse);
-    ESPmethod GetPackageMapById(GetPackageMapByIdRequest, GetPackageMapByIdResponse);
-    ESPmethod ValidatePackage(ValidatePackageRequest, ValidatePackageResponse);
-    ESPmethod GetQueryFileMapping(GetQueryFileMappingRequest, GetQueryFileMappingResponse);
-    ESPmethod GetPackageMapSelectOptions(GetPackageMapSelectOptionsRequest, GetPackageMapSelectOptionsResponse);
-    ESPmethod AddPartToPackageMap(AddPartToPackageMapRequest, AddPartToPackageMapResponse);
-    ESPmethod RemovePartFromPackageMap(RemovePartFromPackageMapRequest, RemovePartFromPackageMapResponse);
-    ESPmethod GetPartFromPackageMap(GetPartFromPackageMapRequest, GetPartFromPackageMapResponse);
+    ESPmethod [auth_feature("PackageMapAccess:WRITE")] AddPackage(AddPackageRequest, AddPackageResponse);
+    ESPmethod [auth_feature("PackageMapAccess:WRITE")] CopyPackageMap(CopyPackageMapRequest, CopyPackageMapResponse);
+    ESPmethod [auth_feature("PackageMapAccess:FULL")] DeletePackage(DeletePackageRequest, DeletePackageResponse);
+    ESPmethod [auth_feature("PackageMapAccess:WRITE")] ActivatePackage(ActivatePackageRequest, ActivatePackageResponse);
+    ESPmethod [auth_feature("PackageMapAccess:WRITE")] DeActivatePackage(DeActivatePackageRequest, DeActivatePackageResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] ListPackage(ListPackageRequest, ListPackageResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] ListPackages(ListPackagesRequest, ListPackagesResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] GetPackage(GetPackageRequest, GetPackageResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] GetPackageMapById(GetPackageMapByIdRequest, GetPackageMapByIdResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] ValidatePackage(ValidatePackageRequest, ValidatePackageResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] GetQueryFileMapping(GetQueryFileMappingRequest, GetQueryFileMappingResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] GetPackageMapSelectOptions(GetPackageMapSelectOptionsRequest, GetPackageMapSelectOptionsResponse);
+    ESPmethod [auth_feature("PackageMapAccess:WRITE")] AddPartToPackageMap(AddPartToPackageMapRequest, AddPartToPackageMapResponse);
+    ESPmethod [auth_feature("PackageMapAccess:WRITE")] RemovePartFromPackageMap(RemovePartFromPackageMapRequest, RemovePartFromPackageMapResponse);
+    ESPmethod [auth_feature("PackageMapAccess:READ")] GetPartFromPackageMap(GetPartFromPackageMapRequest, GetPartFromPackageMapResponse);
 };
 
 SCMexportdef(WsPackageProcess);

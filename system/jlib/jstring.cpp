@@ -1316,6 +1316,12 @@ StringAttr& StringAttr::operator = (StringAttr && from)
     return *this;
 }
 
+StringAttr& StringAttr::operator = (const StringAttr & from)
+{
+    set(from.str());
+    return *this;
+}
+
 void StringAttr::set(const char * _text)
 {
     char * oldtext = text;
@@ -2163,10 +2169,13 @@ inline StringBuffer &encodeJSONChar(StringBuffer &s, const char *&ch, unsigned &
         case '\0':
             s.append("\\u0000");
             break;
+        case '\x7f':
+            s.append("\\u007f");
+            break;
         default:
             if (next >= ' ' && next < 128)
                 s.append(next);
-            else if (next < ' ' && next > 0)
+            else if (next < ' ')
                 s.append("\\u00").appendhex(next, true);
             else //json is always supposed to be utf8 (or other unicode formats)
             {
@@ -2452,6 +2461,18 @@ bool endsWithIgnoreCase(const char* src, const char* dst)
     if (dstLen<=srcLen)
         return memicmp(dst, src+srcLen-dstLen, dstLen)==0;
     return false;
+}
+
+unsigned matchString(const char * search, const char * const * strings)
+{
+    for (unsigned i=0;;i++)
+    {
+        const char * cur = strings[i];
+        if (!cur)
+            return UINT_MAX;
+        if (streq(search, cur))
+            return i;
+    }
 }
 
 char *j_strtok_r(char *str, const char *delim, char **saveptr)

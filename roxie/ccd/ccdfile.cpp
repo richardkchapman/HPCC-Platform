@@ -37,6 +37,10 @@
 #ifdef __linux__
 #include <sys/mman.h>
 #endif
+#if defined (__linux__)
+#include <sys/syscall.h>
+#include "ioprio.h"
+#endif
 
 atomic_t numFilesOpen[2];
 
@@ -186,11 +190,10 @@ public:
     {
         try
         {
-            if (current.get()!=&failure)
-            {
-                atomic_dec(&numFilesOpen[remote]);
-                mergeStats(fileStats, current);
-            }
+            if (current.get()==&failure)
+                return;
+            atomic_dec(&numFilesOpen[remote]);
+            mergeStats(fileStats, current);
             current.set(&failure); 
         }
         catch (IException *E) 
@@ -208,6 +211,14 @@ public:
     {
         CriticalBlock b(crit);
         _checkOpen();
+    }
+
+    IFileIO *getCheckOpen(unsigned &activeIdx)
+    {
+        CriticalBlock b(crit);
+        _checkOpen();
+        activeIdx = currentIdx;
+        return LINK(current);
     }
 
     void _checkOpen()
@@ -308,13 +319,14 @@ public:
 
     virtual size32_t read(offset_t pos, size32_t len, void * data) 
     {
-        CriticalBlock b(crit);
+        unsigned activeIdx;
+        Owned<IFileIO> active = getCheckOpen(activeIdx);
         unsigned tries = 0;
         for (;;)
         {
             try
             {
-                size32_t ret = current->read(pos, len, data);
+                size32_t ret = active->read(pos, len, data);
                 lastAccess = msTick();
                 return ret;
 
@@ -327,37 +339,47 @@ public:
             {
                 EXCLOG(MCoperatorError, E, "Read error");
                 E->Release();
-                DBGLOG("Failed to read length %d offset %" I64F "x file %s", len, pos, sources.item(currentIdx).queryFilename());
-                currentIdx++;
-                setFailure();
+                DBGLOG("Failed to read length %d offset %" I64F "x file %s", len, pos, sources.item(activeIdx).queryFilename());
+                {
+                    CriticalBlock b(crit);
+                    if (currentIdx == activeIdx)
+                    {
+                        currentIdx = activeIdx+1;
+                        setFailure();
+                    }
+                }
             }
-            _checkOpen();
+            active.setown(getCheckOpen(activeIdx));
             tries++;
             if (tries == MAX_READ_RETRIES)
-                throw MakeStringException(ROXIE_FILE_ERROR, "Failed to read length %d offset %" I64F "x file %s after %d attempts", len, pos, sources.item(currentIdx).queryFilename(), tries);
+                throw MakeStringException(ROXIE_FILE_ERROR, "Failed to read length %d offset %" I64F "x file %s after %d attempts", len, pos, sources.item(activeIdx).queryFilename(), tries);
         }
     }
 
     virtual void flush()
     {
-        CriticalBlock b(crit);
-        if (current.get() != &failure)
-            current->flush();
+        Linked<IFileIO> active;
+        {
+            CriticalBlock b(crit);
+            active.set(current);
+        }
+        if (active.get() != &failure)
+            active->flush();
     }
 
     virtual offset_t size() 
     { 
-        CriticalBlock b(crit);
-        _checkOpen();
+        unsigned activeIdx;
+        Owned<IFileIO> active = getCheckOpen(activeIdx);
         lastAccess = msTick();
-        return current->size();
+        return active->size();
     }
 
     virtual unsigned __int64 getStatistic(StatisticKind kind)
     {
-        CriticalBlock b(crit);
-        unsigned __int64 openValue = current->getStatistic(kind);
-        return openValue + fileStats.getStatisticValue(kind);
+        unsigned __int64 v = fileStats.getStatisticValue(kind);
+        CriticalBlock b(crit); // don't bother with linking current and performing getStatistic outside of crit, because getStatistic is very quick
+        return v + current->getStatistic(kind);
     }
 
     virtual size32_t write(offset_t pos, size32_t len, const void * data) { throwUnexpected(); }
@@ -367,22 +389,22 @@ public:
     virtual const char *queryFilename() { return logical->queryFilename(); }
     virtual bool isAlive() const { return CInterface::isAlive(); }
 
-    virtual IMemoryMappedFile *queryMappedFile()
+    virtual IMemoryMappedFile *getMappedFile() override
     {
         CriticalBlock b(crit);
         if (mmapped)
-            return mmapped;
+            return mmapped.getLink();
         if (!remote)
         {
             mmapped.setown(logical->openMemoryMapped());
-            return mmapped;
+            return mmapped.getLink();
         }
-        return NULL;
+        return nullptr;
     }
 
-    virtual IFileIO *queryFileIO()
+    virtual IFileIO *getFileIO() override
     {
-        return this;
+        return LINK(this);
     }
 
 
@@ -942,8 +964,21 @@ public:
     int runBackgroundCopy()
     {
         bctStarted.signal();
+#if defined(__linux__) && defined(SYS_ioprio_set)
+        if (backgroundCopyClass)
+            syscall(SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, IOPRIO_PRIO_VALUE(backgroundCopyClass, backgroundCopyPrio));
+#endif
         if (traceLevel)
+        {
+#if defined(__linux__) && defined(SYS_ioprio_get)
+            int ioprio = syscall(SYS_ioprio_get, IOPRIO_WHO_PROCESS, 0);
+            int ioclass = IOPRIO_PRIO_CLASS(ioprio);
+            ioprio = IOPRIO_PRIO_DATA(ioprio);
+            DBGLOG("Background copy thread %p starting, io priority class %d, priority %d", this, ioclass, ioprio);
+#else
             DBGLOG("Background copy thread %p starting", this);
+#endif
+        }
         try
         {
             int fileCopiedCount = 0;
@@ -1133,25 +1168,33 @@ public:
                 if ((dfsSize != (offset_t) -1 && dfsSize != f->getSize()) ||
                     (!dfsDate.isNull() && !dfsDate.equals(*f->queryDateTime(), false)))
                 {
-                    StringBuffer modifiedDt;
-                    if (!dfsDate.isNull())
-                        dfsDate.getString(modifiedDt);
-                    StringBuffer fileDt;
-                    f->queryDateTime()->getString(fileDt);
-                    if (fileErrorList.find(lfn) == 0)
+                    releaseSlaveDynamicFileCache();  // Slave dynamic file cache or...
+                    if (fileType == ROXIE_KEY)       // ...jhtree cache can keep files active and thus prevent us from loading a new version
+                        clearKeyStoreCacheEntry(f);  // Will release iff that is the only link
+                    f.clear(); // Note - needs to be done before calling getValue() again, hence the need to make it separate from the f.set below
+                    f.set(files.getValue(localLocation));
+                    if (f)  // May have been cleared above...
                     {
-                        switch (fileType)
+                        StringBuffer modifiedDt;
+                        if (!dfsDate.isNull())
+                            dfsDate.getString(modifiedDt);
+                        StringBuffer fileDt;
+                        f->queryDateTime()->getString(fileDt);
+                        if (fileErrorList.find(lfn) == 0)
                         {
-                            case ROXIE_KEY:
-                                fileErrorList.setValue(lfn, "Key");
-                                break;
+                            switch (fileType)
+                            {
+                                case ROXIE_KEY:
+                                    fileErrorList.setValue(lfn, "Key");
+                                    break;
 
-                            case ROXIE_FILE:
-                                fileErrorList.setValue(lfn, "File");
-                                break;
+                                case ROXIE_FILE:
+                                    fileErrorList.setValue(lfn, "File");
+                                    break;
+                            }
                         }
+                        throw MakeStringException(ROXIE_MISMATCH, "Different version of %s already loaded: sizes = %" I64F "d %" I64F "d  Date = %s  %s", lfn, dfsSize, f->getSize(), modifiedDt.str(), fileDt.str());
                     }
-                    throw MakeStringException(ROXIE_MISMATCH, "Different version of %s already loaded: sizes = %" I64F "d %" I64F "d  Date = %s  %s", lfn, dfsSize, f->getSize(), modifiedDt.str(), fileDt.str());
                 }
                 else
                     return f.getClear();
@@ -1721,6 +1764,7 @@ protected:
 
 public:
     IMPLEMENT_IINTERFACE;
+
     CResolvedFile(const char *_lfn, const char *_physicalName, IDistributedFile *_dFile, RoxieFileType _fileType, IRoxieDaliHelper* _daliHelper, bool isDynamic, bool cacheIt, bool writeAccess, bool _isSuperFile)
     : daliHelper(_daliHelper), lfn(_lfn), physicalName(_physicalName), dFile(_dFile), fileType(_fileType), isSuper(_isSuperFile)
     {
@@ -1750,7 +1794,7 @@ public:
                     addFile(sub.queryLogicalName(), fDesc.getClear(), remoteFDesc.getClear());
                 }
                 // We have to clone the properties since we don't want to keep the superfile locked
-                properties.setown(createPTreeFromIPT(&dFile->queryAttributes()));
+                properties.setown(createPTreeFromIPT(&dFile->queryAttributes(), ipt_lowmem));
                 if (!isDynamic && !lockSuperFiles)
                 {
                     notifier.setown(daliHelper->getSuperFileSubscription(lfn, this));
@@ -1962,7 +2006,7 @@ public:
         }
         return f.getClear();
     }
-    virtual IKeyArray *getKeyArray(IDefRecordMeta *activityMeta, TranslatorArray *translators, bool isOpt, unsigned channel, bool allowFieldTranslation) const
+    virtual IKeyArray *getKeyArray(IDefRecordMeta *activityMeta, TranslatorArray *translators, bool isOpt, unsigned channel, IRecordLayoutTranslator::Mode allowFieldTranslation) const override
     {
         unsigned maxParts = 0;
         ForEachItemIn(subFile, subFiles)
@@ -1977,12 +2021,12 @@ public:
                     maxParts = numParts;
             }
 
-            IDefRecordMeta *thisDiskMeta = diskMeta.item(subFile);
             if (translators)
             {
+                IDefRecordMeta *thisDiskMeta = diskMeta.isItem(subFile) ? diskMeta.item(subFile) : nullptr;
                 if (fdesc && thisDiskMeta && activityMeta && !thisDiskMeta->equals(activityMeta))
-                    if (allowFieldTranslation)
-                        translators->append(createRecordLayoutTranslator(lfn, thisDiskMeta, activityMeta));
+                    if (allowFieldTranslation != IRecordLayoutTranslator::NoTranslation)
+                        translators->append(createRecordLayoutTranslator(lfn, thisDiskMeta, activityMeta, allowFieldTranslation));
                     else
                     {
                         DBGLOG("Key layout mismatch: %s", lfn.get());
@@ -2160,7 +2204,7 @@ public:
         assertex(file->exists());
         offset_t size = file->size();
         Owned<IFileDescriptor> fdesc = createFileDescriptor();
-        Owned<IPropertyTree> pp = createPTree("Part");
+        Owned<IPropertyTree> pp = createPTree("Part", ipt_lowmem);
         pp->setPropInt64("@size",size);
         pp->setPropBool("@local", true);
         fdesc->setPart(0, queryMyNode(), localFileName, pp);
@@ -2327,7 +2371,7 @@ public:
                 bool propertiesPresent;
                 serverData.read(propertiesPresent);
                 if (propertiesPresent)
-                    properties.setown(createPTree(serverData));
+                    properties.setown(createPTree(serverData, ipt_lowmem));
             }
             else
                 throw MakeStringException(ROXIE_CALLBACK_ERROR, "Failed to get response from server for dynamic file callback");
@@ -2378,7 +2422,7 @@ public:
     IMPLEMENT_IINTERFACE;
     CSlaveDynamicFileCache(unsigned _limit) : tableSize(_limit) {}
 
-    virtual IResolvedFile *lookupDynamicFile(const IRoxieContextLogger &logctx, const char *lfn, CDateTime &cacheDate, unsigned checksum, RoxiePacketHeader *header, bool isOpt, bool isLocal)
+    virtual IResolvedFile *lookupDynamicFile(const IRoxieContextLogger &logctx, const char *lfn, CDateTime &cacheDate, unsigned checksum, RoxiePacketHeader *header, bool isOpt, bool isLocal) override
     {
         if (logctx.queryTraceLevel() > 5)
         {
@@ -2422,6 +2466,12 @@ public:
         files.add(*ret.getLink(), 0);
         return ret.getClear();
     }
+
+    virtual void releaseAll() override
+    {
+        CriticalBlock b(crit);
+        files.kill();
+    }
 };
 
 static CriticalSection slaveDynamicFileCacheCrit;
@@ -2441,7 +2491,8 @@ extern ISlaveDynamicFileCache *querySlaveDynamicFileCache()
 extern void releaseSlaveDynamicFileCache()
 {
     CriticalBlock b(slaveDynamicFileCacheCrit);
-    slaveDynamicFileCache.clear();
+    if (slaveDynamicFileCache)
+        slaveDynamicFileCache->releaseAll();
 }
 
 

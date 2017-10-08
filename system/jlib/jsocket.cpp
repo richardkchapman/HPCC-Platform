@@ -361,6 +361,7 @@ protected:
     T_SOCKET        sock;
     char*           hostname;   // host address
     unsigned short  hostport;   // host port
+    unsigned short  localPort;
     SOCKETMODE      sockmode;
     IpAddress       targetip;
     SocketEndpoint  returnep;   // set by set_return_addr
@@ -409,6 +410,7 @@ public:
     int         peer_name(char *name,size32_t namemax);
     SocketEndpoint &getPeerEndpoint(SocketEndpoint &ep);
     IpAddress & getPeerAddress(IpAddress &addr);
+    SocketEndpoint &getEndpoint(SocketEndpoint &ep) const override;
     void        set_return_addr(int port,const char *name);  // sets returnep
     void        cancel_accept();
     size32_t    get_max_send_size();
@@ -674,6 +676,11 @@ typedef union {
 #define INET6_ADDRSTRLEN 65
 #endif
 
+extern jlib_decl void throwJSocketException(int jsockErr)
+{
+    THROWJSOCKEXCEPTION2(jsockErr);
+}
+
 inline void LogErr(unsigned err,unsigned ref,const char *info,unsigned lineno,const char *tracename)
 {
     if (err)
@@ -888,6 +895,8 @@ int CSocket::post_connect ()
         nagling = true;
         set_nagle(false);
         state = ss_open;
+        SocketEndpoint ep;
+        localPort = getEndpoint(ep).port;
     }
     else if ((err!=JSE_TIMEDOUT)&&(err!=JSE_CONNREFUSED)) // handled by caller
         LOGERR2(err,1,"post_connect");
@@ -1059,21 +1068,9 @@ void CSocket::set_keep_alive(bool set)
 
 int CSocket::name(char *retname,size32_t namemax)
 {
-    if (!retname)
-        namemax = 0;
-    if (namemax)
-        retname[0] = 0;
-    if (state != ss_open) {
-        THROWJSOCKEXCEPTION(JSOCKERR_not_opened);
-    }
-    DEFINE_SOCKADDR(u);
-    socklen_t ul = sizeof(u);
-    if (::getsockname(sock,&u.sa, &ul)<0) {
-        THROWJSOCKEXCEPTION(ERRNO());
-    }
     SocketEndpoint ep;
-    getSockAddrEndpoint(u,ul,ep);
-    if (namemax>=1)
+    getEndpoint(ep);
+    if (retname && namemax)
     {
         StringBuffer s;
         ep.getIpText(s);
@@ -1158,6 +1155,19 @@ void CSocket::set_return_addr(int port,const char *retname)
 }
 
 
+SocketEndpoint &CSocket::getEndpoint(SocketEndpoint &ep) const
+{
+    if (state != ss_open) {
+        THROWJSOCKEXCEPTION(JSOCKERR_not_opened);
+    }
+    DEFINE_SOCKADDR(u);
+    socklen_t ul = sizeof(u);
+    if (::getsockname(sock,&u.sa, &ul)<0) {
+        THROWJSOCKEXCEPTION(ERRNO());
+    }
+    getSockAddrEndpoint(u,ul,ep);
+    return ep;
+}
 
 void CSocket::cancel_accept()
 {
@@ -1464,10 +1474,15 @@ void CSocket::setTraceName(const char * prefix, const char * name)
 #ifdef _TRACE
     StringBuffer peer;
     peer.append(prefix);
+    if (state == ss_open)
+        peer.append(":").append(localPort).append(" -> ");
     peer.append(name?name:"(NULL)");
+    peer.append(":").append(hostport);
+    if (sock != INVALID_SOCKET)
+        peer.append(" (").append(sock).append(")");
 
     free(tracename);
-    tracename = strdup(peer);
+    tracename = peer.detach();
 #endif
 }
 
@@ -1525,12 +1540,8 @@ void CSocket::logPollError(unsigned revents, const char *rwstr)
 {
     if (revents & POLLERR)
     {
-        char lname[256];
-        int lport = name(lname, sizeof(lname));
-        char rname[256];
-        int rport = peer_name(rname, sizeof(rname));
         StringBuffer errStr;
-        errStr.appendf("%s POLLERR %u l: %s:%d r: %s:%d", rwstr, sock, lname, lport, rname, rport);
+        errStr.appendf("%s POLLERR %u l:%d r:%s:%d", rwstr, sock, localPort, (hostname?hostname:"NULL"), hostport);
         int serror = 0;
         socklen_t serrlen = sizeof(serror);
         int srtn = getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&serror, &serrlen);
@@ -2593,11 +2604,7 @@ void CSocket::set_ttl(unsigned _ttl)
 
 void CSocket::logConnectionInfo(unsigned timeoutms, unsigned conn_mstime)
 {
-    char lname[256];
-    int lport = name(lname, sizeof(lname));
-    char rname[256];
-    int rport = peer_name(rname, sizeof(rname));
-    PROGLOG("SOCKTRACE: connect(%u) - time:%u ms fd:%d l:%s:%d r:%s:%d", timeoutms, conn_mstime, sock, lname, lport, rname, rport);
+    PROGLOG("SOCKTRACE: connect(%u) - time:%u ms fd:%d l:%d r:%s:%d", timeoutms, conn_mstime, sock, localPort, (hostname?hostname:"NULL"), hostport);
     // PrintStackReport();
 }
 
@@ -2608,15 +2615,25 @@ bool CSocket::isSecure() const
 
 CSocket::~CSocket()
 {
-  if (owned) 
-    close();
-  free(hostname);
-  hostname = NULL;
+    if (owned)
+    {
+        try
+        {
+            close();
+        }
+        catch (IException *e)
+        {
+            EXCLOG(e,"~CSocket close()");
+            e->Release();
+        }
+    }
+    free(hostname);
+    hostname = NULL;
 #ifdef _TRACE
-  free(tracename);
-  tracename = NULL;
+    free(tracename);
+    tracename = NULL;
 #endif
-  delete mcastreq;
+    delete mcastreq;
 }
 
 CSocket::CSocket(const SocketEndpoint &ep,SOCKETMODE smode,const char *name)
@@ -2628,6 +2645,7 @@ CSocket::CSocket(const SocketEndpoint &ep,SOCKETMODE smode,const char *name)
 #endif
     nagling = true; // until turned off
     hostport = ep.port;
+    localPort = 0;
     hostname = NULL;
     mcastreq = NULL;
 #ifdef _TRACE
@@ -2657,7 +2675,7 @@ CSocket::CSocket(const SocketEndpoint &ep,SOCKETMODE smode,const char *name)
         SocketEndpoint self;
         self.setLocalHost(0);
         self.getUrlStr(hostname);
-        setTraceName("S>", hostname);
+        setTraceName("S>", hostname.str());
     }
 #endif
 }
@@ -2672,9 +2690,7 @@ CSocket::CSocket(T_SOCKET new_sock,SOCKETMODE smode,bool _owned)
     sock = new_sock;
     if (new_sock!=INVALID_SOCKET)
         STATS.activesockets++;
-    hostname = NULL;
     mcastreq = NULL;
-    hostport = 0;
 #ifdef _TRACE
     tracename = NULL;
 #endif
@@ -2686,9 +2702,12 @@ CSocket::CSocket(T_SOCKET new_sock,SOCKETMODE smode,bool _owned)
     accept_cancel_state = accept_not_cancelled;
     set_nagle(false);
     //set_linger(DEFAULT_LINGER_TIME); -- experiment with removing this as closesocket should still endevour to send outstanding data
-#ifdef _TRACE
     char peer[256];
-    peer_name(peer,sizeof(peer));
+    hostport = peer_name(peer,sizeof(peer));
+    hostname = strdup(peer);
+    SocketEndpoint ep;
+    localPort = getEndpoint(ep).port;
+#ifdef _TRACE
     setTraceName("A!", peer);
 #endif
 }
@@ -3062,7 +3081,7 @@ static bool lookupHostAddress(const char *name,unsigned *netaddr)
     // if IP4only or using MS V6 can only resolve IPv4 using 
     static bool recursioncheck = false; // needed to stop error message recursing
     unsigned retry=10;
-#if defined(__linux__) || defined(getaddrinfo)
+#if defined(__linux__) || defined (__APPLE__) ||defined(getaddrinfo)
     if (IP4only) {
 #else
     {
@@ -3107,7 +3126,7 @@ static bool lookupHostAddress(const char *name,unsigned *netaddr)
         }
         return false;
     }
-#if defined(__linux__) || defined(getaddrinfo)
+#if defined(__linux__) || defined (__APPLE__) || defined(getaddrinfo)
     struct addrinfo hints;
     memset(&hints,0,sizeof(hints));
     struct addrinfo  *addrInfo = NULL;
@@ -4044,11 +4063,16 @@ class CSocketSelectThread: public CSocketBaseThread
             T_SOCKET sock = popfds(s);
             if (!sock)
                 break;
-            if (sock!=dummysock) {
-                SelectItem si = findhash(sock); // nb copies
-                if (!si.del) {
-                    si.mode = mode;
-                    tonotify.append(si);
+            if (sock!=dummysock)
+            {
+                SelectItem &si = findhash(sock);
+                if (!si.del)
+                {
+                    tonotify.append(si); // nb copies
+                    SelectItem &itm = tonotify.element(tonotify.length()-1);
+                    itm.nfy->Link();
+                    itm.sock->Link();
+                    itm.mode = mode;
                 }
             }
         }   
@@ -4079,10 +4103,11 @@ public:
     {
         closedummy();
         ForEachItemIn(i,items) {
+            // Release/dtors should not throw but leaving try/catch here until all paths checked
             try {
                 SelectItem &si = items.element(i);
-                si.sock->Release();
                 si.nfy->Release();
+                si.sock->Release();
             }
             catch (IException *e) {
                 EXCLOG(e,"~CSocketSelectThread");
@@ -4103,11 +4128,12 @@ public:
         for (unsigned i=0;i<n;) {
             SelectItem &si = items.element(i);
             if (si.del) {
-                si.nfy->Release();
+                // Release/dtors should not throw but leaving try/catch here until all paths checked
                 try {
 #ifdef SOCKTRACE
                     PROGLOG("CSocketSelectThread::updateItems release %d",si.handle);
 #endif
+                    si.nfy->Release();
                     si.sock->Release();
                 }
                 catch (IException *e) {
@@ -4280,7 +4306,8 @@ public:
 
     int run()
     {
-        try {
+        try
+        {
             T_FD_SET rdfds;
             T_FD_SET wrfds;
             T_FD_SET exfds;
@@ -4296,14 +4323,16 @@ public:
             unsigned totnum = 0;
             unsigned total = 0;
 
-
-            while (!terminating) {
+            while (!terminating)
+            {
                 selecttimeout.tv_sec = SELECT_TIMEOUT_SECS;         // linux modifies so initialize inside loop
                 selecttimeout.tv_usec = 0;
-                if (selectvarschange) {
+                if (selectvarschange)
+                {
                     updateSelectVars(rdfds,wrfds,exfds,isrd,iswr,isex,ni,maxsockid);
                 }
-                if (ni==0) {
+                if (ni==0)
+                {
                     validateerrcount = 0;
                     tickwait++;
                     if(!selectvarschange&&!terminating) 
@@ -4321,11 +4350,14 @@ public:
                 int n = ::select(maxsockid,(fd_set *)rsp,(fd_set *)wsp,(fd_set *)esp,&selecttimeout); // first parameter needed for posix
                 if (terminating)
                     break;
-                if (n < 0) {
+                if (n < 0)
+                {
                     CriticalBlock block(sect);
                     int err = ERRNO();
-                    if (err != JSE_INTR) {
-                        if (dummysockopen) {
+                    if (err != JSE_INTR)
+                    {
+                        if (dummysockopen)
+                        {
                             LOGERR(err,12,"CSocketSelectThread select error"); // should cache error ?
                             validateselecterror = err;
 #ifndef _USE_PIPE_FOR_SELECT_TRIGGER
@@ -4337,14 +4369,15 @@ public:
                     }
                     n = 0;
                 }
-                else if (n>0) { 
+                else if (n>0)
+                {
                     validateerrcount = 0;
                     numto = 0;
                     lastnumto = 0;
                     total += n;
                     totnum++;
                     SelectItemArray tonotify;
-                    { 
+                    {
                         CriticalBlock block(sect);
 #ifdef _WIN32
                         if (isrd) 
@@ -4361,32 +4394,40 @@ public:
                         bool w = iswr;
                         bool e = isex;
 #ifdef _USE_PIPE_FOR_SELECT_TRIGGER
-                        if (r&&dummysockopen&&findfds(rs,dummysock[0],r)) {
+                        if (r&&dummysockopen&&findfds(rs,dummysock[0],r))
+                        {
                             resettrigger();
                             --n;
                         }           
 #endif
-                        for (i=0;(n>0)&&(i<ni);i++) {
-                            if (r&&findfds(rs,si->handle,r)) {
-                                if (!si->del) {
-                                    tonotify.append(*si);
-                                    tonotify.element(tonotify.length()-1).mode = SELECTMODE_READ;
-                                }
+                        for (i=0;(n>0)&&(i<ni);i++)
+                        {
+                            unsigned addMode = 0;
+                            if (r&&findfds(rs,si->handle,r))
+                            {
+                                if (!si->del)
+                                    addMode = SELECTMODE_READ;
                                 --n;
                             }
-                            if (w&&findfds(ws,si->handle,w)) {
-                                if (!si->del) {
-                                    tonotify.append(*si);
-                                    tonotify.element(tonotify.length()-1).mode = SELECTMODE_WRITE;
-                                }
+                            if (w&&findfds(ws,si->handle,w))
+                            {
+                                if (!si->del)
+                                    addMode = SELECTMODE_WRITE;
                                 --n;
                             }
-                            if (e&&findfds(es,si->handle,e)) {
-                                if (!si->del) {
-                                    tonotify.append(*si);
-                                    tonotify.element(tonotify.length()-1).mode = SELECTMODE_EXCEPT;
-                                }
+                            if (e&&findfds(es,si->handle,e))
+                            {
+                                if (!si->del)
+                                    addMode = SELECTMODE_EXCEPT;
                                 --n;
+                            }
+                            if (addMode)
+                            {
+                                tonotify.append(*si);
+                                SelectItem &itm = tonotify.element(tonotify.length()-1);
+                                itm.nfy->Link();
+                                itm.sock->Link();
+                                itm.mode = addMode;
                             }
                             si++;
                             if (si==sie)
@@ -4394,26 +4435,44 @@ public:
                         }
 #endif
                     }
-                    ForEachItemIn(j,tonotify) {
+                    ForEachItemIn(j,tonotify)
+                    {
                         const SelectItem &si = tonotify.item(j);
-                        try {
+                        try
+                        {
                             si.nfy->notifySelected(si.sock,si.mode); // ignore return
                         }
-                        catch (IException *e) { // should be acted upon by notifySelected
+                        catch (IException *e)
+                        {   // should be acted upon by notifySelected
+                            // could also not throw until after handling all events ...
                             EXCLOG(e,"CSocketSelectThread notifySelected");
                             throw ;
                         }
+                        // Release/dtors should not throw but leaving try/catch here until all paths checked
+                        try
+                        {
+                            si.nfy->Release();
+                            si.sock->Release();
+                        }
+                        catch (IException *e)
+                        {
+                            EXCLOG(e,"CSocketSelectThread nfy/sock Release");
+                            e->Release();
+                        }
                     }
                 }
-                else  {
+                else
+                {
                     validateerrcount = 0;
-                    if ((++numto>=lastnumto*2)) {
+                    if ((++numto>=lastnumto*2))
+                    {
                         lastnumto = numto;
                         if (selecttrace&&(numto>4))
                             PROGLOG("%s: Select Idle(%d), %d,%d,%0.2f",selecttrace,numto,totnum,total,totnum?((double)total/(double)totnum):0.0);
                     }   
 /*
-                    if (numto&&(numto%100)) {
+                    if (numto&&(numto%100))
+                    {
                         CriticalBlock block(sect);
                         if (!selectvarschange) 
                             selectvarschange = checkSocks();
@@ -4422,18 +4481,20 @@ public:
                 }
                 if (++offset>=ni)
                     offset = 0;
-
             }
         }
-        catch (IException *e) {
+        catch (IException *e)
+        {
             EXCLOG(e,"CSocketSelectThread");
             termexcept.setown(e);
         }
         CriticalBlock block(sect);
-        try {
+        try
+        {
             updateItems();
         }
-        catch (IException *e) {
+        catch (IException *e)
+        {
             EXCLOG(e,"CSocketSelectThread(2)");
             if (!termexcept)
                 termexcept.setown(e);
@@ -4557,6 +4618,11 @@ class CSocketEpollThread: public CSocketBaseThread
         if (!dummysockopen)
         {
             sidummy = new SelectItem;
+            sidummy->sock = nullptr;
+            sidummy->nfy = nullptr;
+            sidummy->del = true;  // so its not added to tonotify ...
+            sidummy->add_epoll = false;
+            sidummy->mode = 0;
 #ifdef _USE_PIPE_FOR_SELECT_TRIGGER
             if(pipe(dummysock))
             {
@@ -4664,20 +4730,20 @@ public:
         closedummy();
         ForEachItemIn(i,items)
         {
+            SelectItem *si = items.element(i);
+            epoll_op(epfd, EPOLL_CTL_DEL, si, 0);
+            // Release/dtors should not throw but leaving try/catch here until all paths checked
             try
             {
-                SelectItem *si = items.element(i);
-                epoll_op(epfd, EPOLL_CTL_DEL, si, 0);
                 si->nfy->Release();
                 si->sock->Release();
-                delete si;
-                si = nullptr;
             }
             catch (IException *e)
             {
                 EXCLOG(e,"~CSocketEpollThread");
                 e->Release();
             }
+            delete si;
         }
         if (epfd >= 0)
         {
@@ -4701,12 +4767,14 @@ public:
             SelectItem *si = items.element(i);
             if (si->del)
             {
-                si->nfy->Release();
+                epoll_op(epfd, EPOLL_CTL_DEL, si, 0);
+                // Release/dtors should not throw but leaving try/catch here until all paths checked
                 try
                 {
 #ifdef SOCKTRACE
                     PROGLOG("CSocketEpollThread::updateItems release %d",si->handle);
 #endif
+                    si->nfy->Release();
                     si->sock->Release();
                 }
                 catch (IException *e)
@@ -4726,10 +4794,9 @@ public:
                 if (si->add_epoll)
                 {
                     si->add_epoll = false;
-                    int ep_mode;
                     if (si->mode != 0)
                     {
-                        ep_mode = 0;
+                        unsigned int ep_mode = 0;
                         if (si->mode & SELECTMODE_READ)
                             ep_mode |= EPOLLIN;
                         if (si->mode & SELECTMODE_WRITE)
@@ -4793,6 +4860,12 @@ public:
 
     bool add(ISocket *sock,unsigned mode,ISocketSelectNotify *nfy)
     {
+        if ( !sock || !nfy )
+        {
+            WARNLOG("EPOLL: adding fd but sock or nfy is NULL");
+            dbgassertex(false);
+            return false;
+        }
         // maybe check once to prevent 1st delay? TBD
         CriticalBlock block(sect);
         ForEachItemIn(i,items)
@@ -4916,7 +4989,7 @@ public:
                             if (epsi)
                                 tfd = epsi->handle;
 # ifdef EPOLLTRACE
-                            DBGLOG("EPOLL: epevents[%d].data.fd = %d, emask = %d", j, tfd, epevents[j].events);
+                            DBGLOG("EPOLL: epevents[%d].data.fd = %d, emask = %u", j, tfd, epevents[j].events);
 # endif
                             if (tfd >= 0)
                             {
@@ -4929,25 +5002,35 @@ public:
 # endif
                                 if (!epsi->del)
                                 {
-                                    unsigned int ep_mode = 0;
-                                    if (epevents[j].events & (EPOLLIN | EPOLLHUP | EPOLLERR))
-                                        ep_mode |= SELECTMODE_READ;
-                                    if (epevents[j].events & EPOLLOUT)
-                                        ep_mode |= SELECTMODE_WRITE;
-                                    if (epevents[j].events & EPOLLPRI)
-                                        ep_mode |= SELECTMODE_EXCEPT;
-                                    if (ep_mode != 0)
+                                    if (!epsi->sock || !epsi->nfy)
                                     {
-                                        tonotify.append(*epsi);
+                                        WARNLOG("EPOLL: epevents[%d].data.fd = %d, emask = %u, del = false but sock or nfy is NULL", j, tfd, epevents[j].events);
+                                    }
+                                    else
+                                    {
+                                        unsigned int ep_mode = 0;
+                                        if (epevents[j].events & (EPOLLIN | EPOLLHUP | EPOLLERR))
+                                            ep_mode |= SELECTMODE_READ;
+                                        if (epevents[j].events & EPOLLOUT)
+                                            ep_mode |= SELECTMODE_WRITE;
+                                        if (epevents[j].events & EPOLLPRI)
+                                            ep_mode |= SELECTMODE_EXCEPT;
+                                        if (ep_mode != 0)
+                                        {
+                                            tonotify.append(*epsi);
+                                            SelectItem &itm = tonotify.element(tonotify.length()-1);
+                                            itm.nfy->Link();
+                                            itm.sock->Link();
 #ifdef _TRACELINKCLOSED
-                                        // temporary, to help diagnose spurious socket closes (hpcc-15043)
-                                        // currently no implementation of notifySelected() uses the mode
-                                        // argument so we can pass in the epoll events mask and log that
-                                        // if there is no data and the socket gets closed
-                                        tonotify.element(tonotify.length()-1).mode = epevents[j].events;
+                                            // temporary, to help diagnose spurious socket closes (hpcc-15043)
+                                            // currently no implementation of notifySelected() uses the mode
+                                            // argument so we can pass in the epoll events mask and log that
+                                            // if there is no data and the socket gets closed
+                                            itm.mode = epevents[j].events;
 #else
-                                        tonotify.element(tonotify.length()-1).mode = ep_mode;
+                                            itm.mode = ep_mode;
 #endif
+                                        }
                                     }
                                 }
                             }
@@ -4961,9 +5044,21 @@ public:
                             si.nfy->notifySelected(si.sock,si.mode); // ignore return
                         }
                         catch (IException *e)
-                        { // should be acted upon by notifySelected
+                        {   // should be acted upon by notifySelected
+                            // could also not throw until after handling all events ...
                             EXCLOG(e,"CSocketEpollThread notifySelected");
                             throw ;
+                        }
+                        // Release/dtors should not throw but leaving try/catch here until all paths checked
+                        try
+                        {
+                            si.nfy->Release();
+                            si.sock->Release();
+                        }
+                        catch (IException *e)
+                        {
+                            EXCLOG(e,"CSocketEpollThread nfy/sock Release");
+                            e->Release();
                         }
                     }
                 }

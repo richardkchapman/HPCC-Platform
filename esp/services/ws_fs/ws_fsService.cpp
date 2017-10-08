@@ -130,9 +130,6 @@ void CFileSprayEx::init(IPropertyTree *cfg, const char *process, const char *ser
     xpath.clear().appendf("Software/EspProcess[@name=\"%s\"]/EspService[@name=\"%s\"]/MonitorQueueLabel", process, service);
     cfg->getProp(xpath.str(), m_MonitorQueueLabel);
 
-    xpath.clear().appendf("Software/EspProcess[@name=\"%s\"]/EspService[@name=\"%s\"]/RootFolder", process, service);
-    cfg->getProp(xpath.str(), m_RootFolder);
-
     directories.set(cfg->queryPropTree("Software/Directories"));
 
     StringBuffer prop;
@@ -140,9 +137,6 @@ void CFileSprayEx::init(IPropertyTree *cfg, const char *process, const char *ser
     PrintLog(prop.str());
     prop.clear();
     prop.appendf("monitorQueueLabel=%s", m_MonitorQueueLabel.str());
-    PrintLog(prop.str());
-    prop.clear();
-    prop.appendf("rootFolder=%s", m_RootFolder.str());
     PrintLog(prop.str());
 
     if (!daliClientActive())
@@ -2721,7 +2715,7 @@ bool CFileSprayEx::onFileList(IEspContext &context, IEspFileListRequest &req, IE
         if (!isEmptyString(fileNameMask))
         {
             const char* ext = pathExtension(sPath.str());
-            if (!strieq(ext, "cfg") && !strieq(ext, "log"))
+            if (ext && !strieq(ext, "cfg") && !strieq(ext, "log"))
                 throw MakeStringException(ECLWATCH_ACCESS_TO_FILE_DENIED, "Only cfg or log file allowed.");
         }
 

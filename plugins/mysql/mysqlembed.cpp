@@ -427,7 +427,7 @@ public:
         ForEachItemInRev(idx, globalCachedConnections)
         {
             MySQLConnection &cached = globalCachedConnections.item(idx);
-            if (now - cached.created > maxAge)
+            if (!maxAge || (now - cached.created > maxAge))
             {
                 cached.globalCached = false;  // Make sure we don't re-add it!
                 globalCachedConnections.remove(idx);
@@ -488,6 +488,7 @@ MODULE_EXIT()
         connectionCloserThread->join();
         connectionCloserThread->Release();
     }
+    MySQLConnection::retireCache(0);
 }
 
 
@@ -1474,7 +1475,7 @@ public:
             typeError("row", NULL);  // Check that a single row was returned
         return ret;
     }
-    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, byte *val)
+    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, const byte *val) override
     {
         MySQLRecordBinder binder(metaVal.queryTypeInfo(), stmtInfo->queryInputBindings(), nextParam);
         binder.processRow(val);

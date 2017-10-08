@@ -31,6 +31,7 @@
 #include "roxiedebug.ipp"
 #include "eclrtl.hpp"
 #include "workunit.hpp"
+#include "layouttrans.hpp"
 
 #ifdef CCD_EXPORTS
 #define CCD_API DECL_EXPORT
@@ -396,6 +397,9 @@ extern bool preloadOnceData;
 extern bool reloadRetriesFailed;
 extern bool selfTestMode;
 
+extern int backgroundCopyClass;
+extern int backgroundCopyPrio;
+
 extern unsigned roxiePort;     // If listening on multiple, this is the first. Used for lock cascading
 
 extern unsigned udpMulticastBufferSize;
@@ -417,7 +421,7 @@ struct PartNoType
 extern unsigned statsExpiryTime;
 extern time_t startupTime;
 extern unsigned miscDebugTraceLevel;
-extern bool fieldTranslationEnabled;
+extern IRecordLayoutTranslator::Mode fieldTranslationEnabled;
 
 extern unsigned defaultParallelJoinPreload;
 extern unsigned defaultConcatPreload;
@@ -554,6 +558,7 @@ class ContextLogger : implements IRoxieContextLogger, public CInterface
 {
 protected:
     mutable CriticalSection crit;
+    mutable CriticalSection statsCrit;
     unsigned start;
     unsigned ctxTraceLevel;
     mutable CRuntimeStatisticCollection stats;
@@ -644,6 +649,7 @@ public:
 
     StringBuffer &getStats(StringBuffer &s) const
     {
+        CriticalBlock block(statsCrit);
         return stats.toStr(s);
     }
 
@@ -661,11 +667,12 @@ public:
     {
         if (aborted)
             throw MakeStringException(ROXIE_ABORT_ERROR, "Roxie server requested abort for running activity");
-        stats.addStatistic(kind, value);
+        stats.addStatisticAtomic(kind, value);
     }
 
     virtual void mergeStats(const CRuntimeStatisticCollection &from) const
     {
+        CriticalBlock block(statsCrit);
         stats.merge(from);
     }
     virtual void gatherStats(CRuntimeStatisticCollection & merged) const override

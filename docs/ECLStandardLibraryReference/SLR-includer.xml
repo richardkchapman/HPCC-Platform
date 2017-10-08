@@ -40,15 +40,15 @@
       <para></para>
     </legalnotice>
 
-    <xi:include href="common/Version.xml" xpointer="FooterInfo"
+    <xi:include href="common/Version.xml" xpointer="xpointer(//*[@id='FooterInfo'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
-    <xi:include href="common/Version.xml" xpointer="DateVer"
+    <xi:include href="common/Version.xml" xpointer="xpointer(//*[@id='DateVer'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <corpname>HPCC Systems<superscript>®</superscript></corpname>
 
-    <xi:include href="common/Version.xml" xpointer="Copyright"
+    <xi:include href="common/Version.xml" xpointer="xpointer(//*[@id='Copyright'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <mediaobject role="logo">
@@ -249,12 +249,18 @@
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/CountWords.xml"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
+    <xi:include href="ECLStandardLibraryReference/SLR-Mods/DecodeBase64.xml"
+                xmlns:xi="http://www.w3.org/2001/XInclude" />
+
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/EditDistance.xml"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/EditDistanceWithinRadius.xml"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
-
+    
+    <xi:include href="ECLStandardLibraryReference/SLR-Mods/EncodeBase64.xml"
+                xmlns:xi="http://www.w3.org/2001/XInclude" />
+    
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/EndsWith.xml"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
@@ -271,6 +277,9 @@
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/Extract.xml"
+                xmlns:xi="http://www.w3.org/2001/XInclude" />
+
+    <xi:include href="ECLStandardLibraryReference/SLR-Mods/ExtractMultiple.xml"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/Filter.xml"
@@ -292,6 +301,9 @@
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/FindReplace.xml"
+                xmlns:xi="http://www.w3.org/2001/XInclude" />
+
+    <xi:include href="ECLStandardLibraryReference/SLR-Mods/FindWord.xml"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="ECLStandardLibraryReference/SLR-Mods/FromHexPairs.xml"
@@ -593,4 +605,7 @@
   </chapter>
   <xi:include href="ECLStandardLibraryReference/SLR-Mods/BLAS.xml"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
+  <xi:include href="ECLStandardLibraryReference/SLR-Mods/Math.xml"
+                xmlns:xi="http://www.w3.org/2001/XInclude" />
+
 </book>

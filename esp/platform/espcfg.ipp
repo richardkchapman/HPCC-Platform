@@ -30,6 +30,8 @@
 #include "environment.hpp"
 #include <dalienv.hpp>
 
+#include "bindutil.hpp"
+
 //STL
 #include <list>
 #include <map>
@@ -39,6 +41,7 @@ using namespace std;
 //ESP
 #include "esp.hpp"
 #include "espplugin.hpp"
+#include "espcache.hpp"
 
 struct binding_cfg
 {
@@ -166,6 +169,9 @@ public:
 
     const SocketEndpoint &getLocalEndpoint(){return m_address;}
 
+    void ensureESPSessionInTree(IPropertyTree* sessionRoot, const char* procName);
+    void ensureSDSSessionDomains();
+
     void loadProtocols();
     void loadServices();
     void loadBindings();
@@ -175,9 +181,13 @@ public:
         DBGLOG("loadServices");
         loadServices();
         loadProtocols();
-        loadBindings();      
+        loadBindings();
+
+        if (m_cfg->getPropBool("@ensureESPCache", false) && !checkESPCache())
+            throw MakeStringException(-1, "Failed in checking ESP cache service using %s", m_cfg->queryProp("@espCacheInitString"));
     }
 
+    bool checkESPCache();
     IEspPlugin* getPlugin(const char* name);
 
     void loadBuiltIns();

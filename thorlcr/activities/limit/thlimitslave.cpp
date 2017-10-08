@@ -29,25 +29,15 @@ class CLimitSlaveActivityBase : public CSlaveActivity
 
 protected:
     rowcount_t rowLimit;
-    bool eos, eogNext, stopped, resultSent, anyThisGroup;
+    bool eos, eogNext, resultSent, anyThisGroup;
     IHThorLimitArg *helper;
-
-    void stopInput(rowcount_t c)
-    {
-        if (!stopped)
-        {
-            stopped = true;
-            sendResult(c);
-            PARENT::stopInput(0);
-        }
-    }
 
 public:
     CLimitSlaveActivityBase(CGraphElementBase *_container) : CSlaveActivity(_container)
     {
         helper = (IHThorLimitArg *)queryHelper();
         resultSent = true; // unless started suppress result send
-        eos = stopped = anyThisGroup = eogNext = false;
+        eos = anyThisGroup = eogNext = false;
         rowLimit = RCMAX;
         if (container.queryLocal())
             setRequireInitData(false);
@@ -63,7 +53,7 @@ public:
         ActivityTimer s(totalCycles, timeActivities);
         PARENT::start();
         resultSent = container.queryLocal(); // i.e. local, so don't send result to master
-        eos = stopped = anyThisGroup = eogNext = false;
+        eos = anyThisGroup = eogNext = false;
         rowLimit = (rowcount_t)helper->getRowLimit();
     }
     void sendResult(rowcount_t r)
@@ -76,7 +66,8 @@ public:
     }
     virtual void stop() override
     {
-        stopInput(getDataLinkCount());
+        if (hasStarted() && !inputStopped)
+            sendResult(getDataLinkCount());
         PARENT::stop();
     }
     virtual bool isGrouped() const override { return queryInput(0)->isGrouped(); }
@@ -174,7 +165,6 @@ class CSkipLimitSlaveActivity : public CLimitSlaveActivityBase
     UnsignedArray sizeArray;
     size32_t ptrIndex;
     bool limitChecked, eof, rowTransform;
-    IHThorLimitTransformExtra *helperex;
     Owned<IRowWriterMultiReader> buf;
     Owned<IRowStream> reader;
 
@@ -212,7 +202,8 @@ class CSkipLimitSlaveActivity : public CLimitSlaveActivityBase
             //throw MakeActivityException(this, 0, "SkipLimit(%" ACTPF "d) exceeded activity buffering limit", container.queryId());
         }
         buf->flush();
-        stopInput(count);
+        sendResult(count);
+        stopInput(0);
         rowcount_t total = container.queryLocal() ? count : getResult();
         if (total > rowLimit)
         {
@@ -233,9 +224,6 @@ public:
         ptrIndex = 0;
         limitChecked = eof = false;
         rowTransform = _rowTransform;
-        helperex = NULL;
-        if (rowTransform)
-            helperex = static_cast<IHThorLimitTransformExtra *>(queryHelper()->selectInterface(TAIlimittransformextra_1));
     }
     void abort()
     {
@@ -246,7 +234,7 @@ public:
     virtual void start() override
     {
         CLimitSlaveActivityBase::start();
-        buf.setown(createOverflowableBuffer(*this, this, true));
+        buf.setown(createOverflowableBuffer(*this, this, ers_eogonly));
     }
     CATCH_NEXTROW()
     {
@@ -259,12 +247,12 @@ public:
             if (!gather())
             {
                 eof = true;
-                if (rowTransform&&helperex && firstNode())
+                if (rowTransform && firstNode())
                 {
                     try
                     {
                         RtlDynamicRowBuilder ret(queryRowAllocator());
-                        size32_t sizeGot = helperex->transformOnLimitExceeded(ret);
+                        size32_t sizeGot = helper->transformOnLimitExceeded(ret);
                         if (sizeGot)
                         {
                             dataLinkIncrement();

@@ -65,29 +65,26 @@ bool trimXPathToParentSDSElement(const char *element, const char * xpath, String
     return false;
 }
 
-IPropertyTree * fetchESDLDefinitionFromDaliById(const char *id)
+void fetchESDLDefinitionFromDaliById(const char *id, StringBuffer & exsdl)
 {
     if (!id || !*id)
         throw MakeStringException(-1, "Unable to fetch ESDL Service definition information, service id is not available");
 
-    DBGLOG("ESDL Binding: Fetching ESDL Definition from Dali: %s ", id);
+    //There shouldn't be multiple entries here, but if so, we'll use the first one
+    VStringBuffer xpath("%s[@id='%s'][1]", ESDL_DEF_ENTRY, id);
+
+    ESPLOG(LogNormal, "ESDL Binding: Fetching ESDL Definition from Dali: %s ", id);
 
     Owned<IRemoteConnection> conn = querySDS().connect(ESDL_DEFS_ROOT_PATH, myProcessSession(), RTM_LOCK_READ, SDS_LOCK_TIMEOUT_DESDL);
     if (!conn)
        throw MakeStringException(-1, "Unable to connect to ESDL Service definition information in dali '%s'", ESDL_DEFS_ROOT_PATH);
 
-    conn->close(false); //release lock right away
-
     IPropertyTree * esdlDefinitions = conn->queryRoot();
-    if (!esdlDefinitions)
-       throw MakeStringException(-1, "Unable to open ESDL Service definition information in dali '%s'", ESDL_DEFS_ROOT_PATH);
 
-    //There shouldn't be multiple entries here, but if so, we'll use the first one
-    VStringBuffer xpath("%s[@id='%s'][1]", ESDL_DEF_ENTRY, id);
-    return LINK(esdlDefinitions->getPropTree(xpath));
+    toXML(esdlDefinitions->queryPropTree(xpath), exsdl);
 }
 
-IPropertyTree * fetchESDLDefinitionFromDali(const char *esdlServiceName, unsigned targetVersion)
+void fetchESDLDefinitionFromDali(const char *esdlServiceName, unsigned targetVersion, StringBuffer & exsdl)
 {
     if (!esdlServiceName || !*esdlServiceName)
         throw MakeStringException(-1, "Unable to fetch ESDL Service definition information, service name is not available");
@@ -99,44 +96,41 @@ IPropertyTree * fetchESDLDefinitionFromDali(const char *esdlServiceName, unsigne
     StringBuffer id(esdlServiceName);
     id.toLowerCase().append(".").append(targetVersion);
 
-    return fetchESDLDefinitionFromDaliById(id);
+    return fetchESDLDefinitionFromDaliById(id, exsdl);
 }
 
 IPropertyTree * fetchESDLBindingFromDali(const char *process, const char *bindingName)
 {
-    Owned<IRemoteConnection> conn;
     try
     {
-        conn.set(querySDS().connect(ESDL_BINDINGS_ROOT_PATH, myProcessSession(), RTM_LOCK_READ, SDS_LOCK_TIMEOUT_DESDL));
-        if (!conn)
-        {
-            DBGLOG("Unable to connect to ESDL Service binding information in dali %s", ESDL_BINDINGS_ROOT_PATH);
-            return NULL;
-        }
-
-        conn->close(false); //release lock right away
-
-        DBGLOG("ESDL Binding: Fetching ESDL Binding from Dali %s[@EspProcess='%s'][@EspBinding='%s'][1]", ESDL_BINDING_ENTRY, process, bindingName);
-
-        IPropertyTree *esdlBindings = conn->queryRoot();
-        if (!esdlBindings)
-        {
-            DBGLOG("Unable to open ESDL Service binding information in dali %s", ESDL_BINDINGS_ROOT_PATH);
-            return NULL;
-        }
-
         //There shouldn't be multiple entries here, but if so, we'll use the first one
         VStringBuffer xpath("%s[@id='%s.%s'][1]", ESDL_BINDING_ENTRY, process, bindingName);
 
-        return esdlBindings->getPropTree(xpath);
+        Owned<IRemoteConnection> conn = querySDS().connect(ESDL_BINDINGS_ROOT_PATH, myProcessSession(), RTM_LOCK_READ, SDS_LOCK_TIMEOUT_DESDL);
+        if (!conn)
+        {
+            ESPLOG(LogMin, "Unable to connect to ESDL Service binding information in dali %s", ESDL_BINDINGS_ROOT_PATH);
+            return nullptr;
+        }
+
+        ESPLOG(LogNormal, "ESDL Binding: Fetching ESDL Binding from Dali %s[@EspProcess='%s'][@EspBinding='%s'][1]", ESDL_BINDING_ENTRY, process, bindingName);
+
+        if (conn->queryRoot()->hasProp(xpath))
+            return createPTreeFromIPT(conn->queryRoot()->queryPropTree(xpath));
+        else
+            return nullptr;
+    }
+    catch (IException *E)
+    {
+        VStringBuffer message("ESDL Binding: Error fetching ESDL Binding %s[@EspProcess='%s'][@EspBinding='%s'][1] from Dali.", ESDL_BINDING_ENTRY, process, bindingName);
+        EXCLOG(E, message);
+        E->Release();
     }
     catch(...)
     {
-        DBGLOG("ESDL Binding: Unknown error encountered while fetching ESDL Binding from Dali %s[@EspProcess='%s'][@EspBinding='%s'][1]", ESDL_BINDING_ENTRY, process, bindingName);
-        if (conn)
-            conn->close(false); //release lock right away
-
+        ESPLOG(LogMin, "ESDL Binding: Unknown error encountered while fetching ESDL Binding from Dali %s[@EspProcess='%s'][@EspBinding='%s'][1]", ESDL_BINDING_ENTRY, process, bindingName);
     }
+
     return NULL;
 }
 
@@ -172,7 +166,7 @@ IPropertyTree * fetchESDLBinding(const char *process, const char *bindingName, c
         return fetchESDLBindingFromStateFile(process, bindingName, stateFileName);
     }
 
-    return esdlBinding.getLink();
+    return esdlBinding.getClear();
 }
 
 void saveState(const char * esdlDefinition, IPropertyTree * esdlBinding, const char * stateFileFullPath)
@@ -222,9 +216,11 @@ bool loadDefinitions(const char * espServiceName, IEsdlDefinition * esdl, IPrope
         try
         {
             const char * id = esdlDefinitionConfig->queryProp("@id");
-            Owned<IPropertyTree> esdlDefintion = fetchESDLDefinitionFromDaliById(id);
-            if (!esdlDefintion)
+            StringBuffer esdlXML;
+            fetchESDLDefinitionFromDaliById(id, esdlXML);
+            if (!esdlXML.length())
             {
+                Owned<IPropertyTree> esdlDefintion;
                 DBGLOG("ESDL Binding: Could not load ESDL definition: '%s' from Dali, attempting to load from local state store", id);
                 Owned<IPTree> pt = createPTreeFromXMLFile(stateFileName);
 
@@ -235,10 +231,8 @@ bool loadDefinitions(const char * espServiceName, IEsdlDefinition * esdl, IPrope
                     throw MakeStringException(-1, "Could not load ESDL definition: '%s' assigned to esp service name '%s'", id, espServiceName);
 
                 stateRestored = true;
+                toXML(esdlDefintion, esdlXML);
             }
-
-            StringBuffer esdlXML;
-            toXML(esdlDefintion, esdlXML,0,0);
 
 #ifdef _DEBUG
             DBGLOG("\nESDL Definition to be loaded:\n%s", esdlXML.str());
@@ -528,6 +522,24 @@ void EsdlServiceImpl::handleServiceRequest(IEspContext &context,
 {
     const char *mthName = mthdef.queryName();
     context.addTraceSummaryValue(LogMin, "method", mthName);
+
+    MapStringTo<SecAccessFlags>&  methaccessmap = const_cast<MapStringTo<SecAccessFlags>&>(mthdef.queryAccessMap());
+    if (methaccessmap.ordinality() > 0)
+    {
+        if (!context.validateFeaturesAccess(methaccessmap, false))
+        {
+            StringBuffer features;
+            HashIterator iter(methaccessmap);
+            int index = 0;
+            ForEach(iter)
+            {
+                IMapping &cur = iter.query();
+                const char * key = (const char *)cur.getKey();
+                features.appendf("%s%s:%s", (index++ == 0 ? "" : ", "), key, getSecAccessFlagName(*methaccessmap.getValue(key)));
+            }
+            throw MakeStringException(-1, "%s::%s access denied - Required features: %s.", srvdef.queryName(), mthName, features.str());
+        }
+    }
 
     StringBuffer trxid;
     if (!m_bGenerateLocalTrxId)
@@ -1282,12 +1294,18 @@ void EsdlBindingImpl::addService(const char * name,
 
 void EsdlBindingImpl::initEsdlServiceInfo(IEsdlDefService &srvdef)
 {
-    const char *verstr = srvdef.queryProp("default_client_version");
+    const char *verstr = srvdef.queryProp("version");
+    if(verstr && *verstr)
+        m_defaultSvcVersion.set(verstr);
+
+    verstr = srvdef.queryProp("default_client_version");
     if (verstr && *verstr)
     {
         if (atof(verstr) > atof(m_defaultSvcVersion.str()))
             m_defaultSvcVersion.set(verstr);
     }
+
+    m_staticNamespace.set(srvdef.queryStaticNamespace());
 
     //superclass binding sets up wsdladdress
     //setWsdlAddress(bndcfg->queryProp("@wsdlServiceAddress"));
@@ -1386,6 +1404,7 @@ int EsdlBindingImpl::onGetInstantQuery(IEspContext &context,
 
                     StringBuffer ns, schemaLocation;
                     generateNamespace(context, request, srvdef->queryName(), mthdef->queryName(), ns);
+
                     getSchemaLocation(context, request, schemaLocation);
                     m_pESDLService->handleServiceRequest(context, *srvdef, *mthdef, tgtcfg, tgtctx, ns.str(), schemaLocation.str(), req_pt.get(), out, logdata, 0);
 
@@ -1692,6 +1711,9 @@ int EsdlBindingImpl::HandleSoapRequest(CHttpRequest* request,
 
 StringBuffer & EsdlBindingImpl::generateNamespace(IEspContext &context, CHttpRequest* request, const char *serv, const char * method, StringBuffer & ns)
 {
+    if (!m_staticNamespace.isEmpty())
+        return ns.set(m_staticNamespace);
+
     if (m_pESDLService->m_serviceNameSpaceBase.length()>0)
     {
         ns.appendf("%s%c%s", m_pESDLService->m_serviceNameSpaceBase.str(), m_pESDLService->m_usesURLNameSpace ? '/' : ':', serv);
@@ -1782,6 +1804,8 @@ int EsdlBindingImpl::onGet(CHttpRequest* request, CHttpResponse* response)
         IEspContext *context = request->queryContext();
         IProperties *parms = request->queryParameters();
 
+        parms->setProp("include_jsonreqs_", "1");
+
         const char *thepath = request->queryPath();
 
         StringBuffer root;
@@ -1823,7 +1847,7 @@ int EsdlBindingImpl::onGet(CHttpRequest* request, CHttpResponse* response)
         me->append(*MakeStringExceptionDirect(-1, "Unknown Exception"));
     }
 
-    response->handleExceptions(getXslProcessor(), me, "DynamicESDL", "", StringBuffer(getCFD()).append("./smc_xslt/exceptions.xslt").str());
+    response->handleExceptions(getXslProcessor(), me, "DynamicESDL", "", StringBuffer(getCFD()).append("./smc_xslt/exceptions.xslt").str(), false);
     return 0;
 }
 
@@ -2076,6 +2100,7 @@ int EsdlBindingImpl::onGetXForm(IEspContext &context,
 
         xform->setParameter("includeRoxieTest", "1");
         xform->setParameter("includeJsonTest", "1");
+        xform->setParameter("includeJsonReqSample", "1");
 
         // set the prop noDefaultValue param
         IProperties* props = context.queryRequestParameters();
@@ -2103,6 +2128,10 @@ int EsdlBindingImpl::onGetXForm(IEspContext &context,
                 break;
             }
         }
+        const char* authMethod = context.getAuthenticationMethod();
+        if (authMethod && !strieq(authMethod, "none") && ((context.getDomainAuthType() == AuthPerSessionOnly) || (context.getDomainAuthType() == AuthTypeMixed)))
+            xform->setParameter("showLogout", "1");
+
         xform->transform(page);
         response->setContentType("text/html");
         response->setContent(page.str());
@@ -2183,11 +2212,6 @@ void EsdlBindingImpl::handleJSONPost(CHttpRequest *request, CHttpResponse *respo
 
     try
     {
-        //RODRIGO... is there any feature level check to be done here?
-        //maybe a dynamic feature level string based on servicename?
-        //if (!ctx->validateFeatureAccess("WSECL_ACCESS", SecAccess_Full, false))
-        //    throw MakeStringException(-1, "WsEcl access permission denied.");
-
         const char * methodName = request->queryServiceMethod();
         const char * serviceName = request->queryServiceName();
 
@@ -2470,34 +2494,6 @@ void EsdlBindingImpl::splitURLList(const char* urlList, StringBuffer& protocol,S
     options.append(finger-lastDelimiter, lastDelimiter);
 }
 
-bool EsdlBindingImpl::getRoxieConfig(StringBuffer & queryName, StringBuffer & url, StringBuffer & username, StringBuffer & password,const char *method)
-{
-    try
-    {
-        StringBuffer xpath;
-        xpath.appendf("ESDL/Methods/Method[@name='%s']", method);
-
-        IPropertyTree *srvinfo =  m_pESDLService->m_pServiceConfig->queryPropTree(xpath.str());
-
-        if (srvinfo)
-        {
-            url.clear().append(srvinfo->queryProp("@url"));
-            queryName.clear().append(srvinfo->queryProp("@queryname"));
-        }
-
-        if (url.length() <= 0 || queryName.length() <= 0)
-        {
-            WARNLOG(-1, "ROXIETEST: Creating ROXIE request: url or query name not found!");
-            return false;
-        }
-    }
-    catch(...)
-    {
-        return false;
-    }
-
-    return true;
-}
 void EsdlBindingImpl::getRequestContent(IEspContext &context, StringBuffer & req, CHttpRequest* request, const char * servicename, const char * methodname, const char *ns, unsigned flags)
 {
     if ( m_pESDLService)
@@ -2756,11 +2752,6 @@ int EsdlBindingImpl::onGetRespSampleXml(IEspContext &ctx, CHttpRequest* request,
     return onGetSampleXml(false, ctx, request, response, serv, method);
 }
 
-int EsdlBindingImpl::onGetRespSampleJson(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method)
-{
-    return 0;
-}
-
 int EsdlBindingImpl::onGetSampleXml(bool isRequest, IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method)
 {
     StringBuffer schema;
@@ -2898,34 +2889,31 @@ void EsdlBindingImpl::CESDLBindingSubscription::notify(SubscriptionId id, const 
 
     StringBuffer bindingName;
     StringBuffer processName;
-    Owned<IRemoteConnection> conn = querySDS().connect(parentElementXPath.str(), myProcessSession(), RTM_LOCK_READ, SDS_LOCK_TIMEOUT_DESDL);
-    if (!conn)
     {
-        //Can't find this path, is this a delete?
-        if (flags == SDSNotify_Deleted)
+        Owned<IRemoteConnection> conn = querySDS().connect(parentElementXPath.str(), myProcessSession(), RTM_LOCK_READ, SDS_LOCK_TIMEOUT_DESDL);
+        if (!conn)
         {
-            bindingName.set(thisBinding->m_bindingName);
-            processName.set(thisBinding->m_processName);
+            //Can't find this path, is this a delete?
+            if (flags == SDSNotify_Deleted)
+            {
+                bindingName.set(thisBinding->m_bindingName);
+                processName.set(thisBinding->m_processName);
+            }
+            else
+                return;
         }
         else
-            return;
-    }
-    else
-    {
+        {
+            IPropertyTree * bindingSubscription = conn->queryRoot();
 
-        IPropertyTree * bindingSubscription = conn->queryRoot();
-        if (!bindingSubscription)
-            return;
+            bindingName = bindingSubscription->queryProp("@espbinding");
+            if (bindingName.length() == 0)
+                return;
 
-        conn->close(false); //release lock right away
-
-        bindingName = bindingSubscription->queryProp("@espbinding");
-        if (bindingName.length() == 0)
-            return;
-
-        processName = bindingSubscription->queryProp("@espprocess");
-        if (processName.length() == 0)
-            return;
+            processName = bindingSubscription->queryProp("@espprocess");
+            if (processName.length() == 0)
+                return;
+        }
     }
 
     DBGLOG("Requesting reload of %s.%s binding...", processName.str(), bindingName.str() );
@@ -2956,8 +2944,6 @@ void EsdlBindingImpl::CESDLDefinitionSubscription::notify(SubscriptionId id, con
         return;
 
     IPropertyTree * definitionSubscription = conn->queryRoot();
-    if (!definitionSubscription)
-        return;
 
     const char * definitionId = definitionSubscription->queryProp("@id");
     if (!definitionId || !*definitionId)

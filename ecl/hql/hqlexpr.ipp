@@ -470,7 +470,7 @@ private:
     bool delayedRead;
     bool implicitlySigned;
     LinkedHqlExpr gpgSignature;
-
+    enum { unchecked, unknown, dirty, clean } dirtyState = unchecked;
 public:
     CFileContents(IFile * _file, ISourcePath * _sourcePath, bool _isSigned, IHqlExpression * _gpgSignature);
     CFileContents(const char *query, ISourcePath * _sourcePath, bool _isSigned, IHqlExpression * _gpgSignature);
@@ -497,6 +497,54 @@ public:
     {
         return gpgSignature.get();
     }
+    virtual bool isDirty() override
+    {
+        if (dirtyState==unchecked)
+        {
+            dirtyState = unknown;
+            if (sourcePath)
+            {
+                Owned<IPipeProcess> pipe = createPipeProcess();
+                VStringBuffer statusCmd("git status --porcelain -z -- %s", sourcePath->queryStr());
+                if (!pipe->run("git", statusCmd, ".", false, true, false, 0, false))
+                {
+                    WARNLOG("Failed to run git status for %s", sourcePath->queryStr());
+                }
+                else
+                {
+                    try
+                    {
+                        unsigned retcode = pipe->wait();
+                        StringBuffer buf;
+                        Owned<ISimpleReadStream> pipeReader = pipe->getOutputStream();
+                        const size32_t chunkSize = 128;
+                        for (;;)
+                        {
+                            size32_t sizeRead = pipeReader->read(chunkSize, buf.reserve(chunkSize));
+                            if (sizeRead < chunkSize)
+                            {
+                                buf.setLength(buf.length() - (chunkSize - sizeRead));
+                                break;
+                            }
+                        }
+                        if (retcode)
+                            WARNLOG("Failed to run git status for %s: returned %d (%s)", sourcePath->queryStr(), retcode, buf.str());
+                        else if (buf.length())
+                            dirtyState = dirty;
+                        else
+                            dirtyState = clean;
+                    }
+                    catch (IException *e)
+                    {
+                        EXCLOG(e, "Exception running git status");
+                        e->Release();
+                    }
+                }
+            }
+        }
+        return dirtyState==dirty;
+    }
+    virtual timestamp_type getTimeStamp();
 private:
     bool preloadFromFile();
     void ensureLoaded();
@@ -1667,10 +1715,10 @@ public:
     virtual type_t getTypeCode() const { return type_record; }
     virtual size32_t getSize();
     virtual unsigned getAlignment();
-    virtual unsigned getPrecision() { assertex(!"tbd"); return 0; }
+    virtual unsigned getPrecision() { return 0; }
     virtual unsigned getBitSize()  { return 0; }
-    virtual unsigned getStringLen() { assertex(!"tbd"); return 0; }
-    virtual unsigned getDigits() { assertex(!"tbd"); return 0; }
+    virtual unsigned getStringLen() { return 0; }
+    virtual unsigned getDigits() { return 0; }
     virtual bool assignableFrom(ITypeInfo * source);
     virtual IValue * castFrom(bool isSignedValue, __int64 value) { return NULL; }
     virtual IValue * castFrom(double value)  { return NULL; }

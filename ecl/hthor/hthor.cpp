@@ -236,8 +236,8 @@ void CHThorActivityBase::updateProgressForOther(IStatisticGatherer &progress, un
 {
     StatsEdgeScope scope(progress, otherActivity, whichOutput);
     progress.addStatistic(StNumRowsProcessed, numProcessed);
-    progress.addStatistic(StNumStarted, 1);  // wrong for an activity in a subquery
-    progress.addStatistic(StNumStopped, 1);
+    progress.addStatistic(StNumStarts, 1);  // wrong for an activity in a subquery
+    progress.addStatistic(StNumStops, 1);
     progress.addStatistic(StNumSlaves, 1);  // MORE: A bit pointless for an hthor graph
 }
 
@@ -3106,8 +3106,6 @@ const void * CHThorSkipCatchActivity::nextRow()
 
 CHThorOnFailLimitActivity::CHThorOnFailLimitActivity(IAgentContext &_agent, unsigned _activityId, unsigned _subgraphId, IHThorLimitArg &_arg, ThorActivityKind _kind) : CHThorSkipLimitActivity(_agent, _activityId, _subgraphId, _arg, _kind)
 {
-    transformExtra = static_cast<IHThorLimitTransformExtra *>(helper.selectInterface(TAIlimittransformextra_1));
-    assertex(transformExtra);
 }
 
 void CHThorOnFailLimitActivity::onLimitExceeded() 
@@ -3115,7 +3113,7 @@ void CHThorOnFailLimitActivity::onLimitExceeded()
     buffer->clear(); 
 
     RtlDynamicRowBuilder rowBuilder(rowAllocator);
-    size32_t newSize = transformExtra->transformOnLimitExceeded(rowBuilder);
+    size32_t newSize = helper.transformOnLimitExceeded(rowBuilder);
     if (newSize)
         buffer->insert(rowBuilder.finalizeRowClear(newSize));
 }
@@ -3266,7 +3264,6 @@ const void * CHThorAggregateActivity::nextRow()
 {
     if (eof)
         return NULL;
-    unsigned count = 0;
     const void * next = input->nextRow();
     if (!next && input->isGrouped())
     {
@@ -3300,7 +3297,7 @@ const void * CHThorAggregateActivity::nextRow()
     if (!input->isGrouped())        // either read all, or aborted early
         eof = true;
     
-    count++;
+    processed++;
     size32_t finalSize = outputMeta.getRecordSize(rowBuilder.getSelf());
     return rowBuilder.finalizeRowClear(finalSize);
 }
@@ -3855,15 +3852,9 @@ const void *CHThorGroupSortActivity::nextRow()
 
 void CHThorGroupSortActivity::createSorter()
 {
-    IHThorAlgorithm * algo = static_cast<IHThorAlgorithm *>(helper.selectInterface(TAIalgorithm_1));
-    if(!algo)
-    {
-        sorter.setown(new CHeapSorter(helper.queryCompare(), queryRowManager(), InitialSortElements, CommitStep));
-        return;
-    }
-    unsigned flags = algo->getAlgorithmFlags();
+    unsigned flags = helper.getAlgorithmFlags();
     sorterIsConst = ((flags & TAFconstant) != 0);
-    OwnedRoxieString algoname(algo->getAlgorithm());
+    OwnedRoxieString algoname(helper.getAlgorithm());
     if(!algoname)
     {
         if((flags & TAFunstable) != 0)
@@ -4655,12 +4646,12 @@ void CHThorJoinActivity::fillRight()
         matchedRight.append(false);
 }
 
-const void * CHThorJoinActivity::joinRecords(const void * curLeft, const void * curRight, unsigned counter)
+const void * CHThorJoinActivity::joinRecords(const void * curLeft, const void * curRight, unsigned counter, unsigned flags)
 {
     try
     {
         outBuilder.ensureRow();
-        size32_t thisSize = helper.transform(outBuilder, curLeft, curRight, counter);
+        size32_t thisSize = helper.transform(outBuilder, curLeft, curRight, counter, flags);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -4672,14 +4663,16 @@ const void * CHThorJoinActivity::joinRecords(const void * curLeft, const void * 
     }
 }
 
-const void * CHThorJoinActivity::groupDenormalizeRecords(const void * curLeft, ConstPointerArray & rows)
+const void * CHThorJoinActivity::groupDenormalizeRecords(const void * curLeft, ConstPointerArray & rows, unsigned flags)
 {
     try
     {
         outBuilder.ensureRow();
         unsigned numRows = rows.ordinality();
         const void * rhs = numRows ? rows.item(0) : defaultRight.get();
-        memsize_t thisSize = helper.transform(outBuilder, curLeft, rhs, numRows, (const void * *)rows.getArray());
+        if (numRows>0)
+            flags |= JTFmatchedright;
+        memsize_t thisSize = helper.transform(outBuilder, curLeft, rhs, numRows, (const void * *)rows.getArray(), flags);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -4696,7 +4689,7 @@ const void * CHThorJoinActivity::joinException(const void * curLeft, IException 
     try
     {
         outBuilder.ensureRow();
-        size32_t thisSize = helper.onFailTransform(outBuilder, curLeft, defaultRight, except);
+        size32_t thisSize = helper.onFailTransform(outBuilder, curLeft, defaultRight, except, JTFmatchedleft);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -4811,7 +4804,7 @@ const void *CHThorJoinActivity::nextRow()
                             if (!matchedRight.item(rightIndex))
                             {
                                 const void * rhs = right.item(rightIndex++);
-                                const void * ret = joinRecords(defaultLeft, rhs, 0);
+                                const void * ret = joinRecords(defaultLeft, rhs, 0, JTFmatchedright);
                                 if (ret)
                                 {
                                     processed++;
@@ -4837,7 +4830,7 @@ const void *CHThorJoinActivity::nextRow()
                                 try
                                 {
                                     RtlDynamicRowBuilder rowBuilder(rowAllocator);
-                                    size32_t thisSize = helper.transform(rowBuilder, newLeft, rhs, ++leftCount);
+                                    size32_t thisSize = helper.transform(rowBuilder, newLeft, rhs, ++leftCount, JTFmatchedright);
                                     if (thisSize)
                                     {
                                         rowSize = thisSize;
@@ -4871,7 +4864,7 @@ const void *CHThorJoinActivity::nextRow()
                         state = JSfillright;
                         if (filteredRight.ordinality())
                         {
-                            const void * ret = groupDenormalizeRecords(defaultLeft, filteredRight);
+                            const void * ret = groupDenormalizeRecords(defaultLeft, filteredRight, 0);
                             filteredRight.kill();
 
                             if (ret)
@@ -4897,14 +4890,14 @@ const void *CHThorJoinActivity::nextRow()
                 switch (kind)
                 {
                 case TAKjoin:
-                    ret = joinRecords(left, defaultRight, 0);
+                    ret = joinRecords(left, defaultRight, 0, JTFmatchedleft);
                     break;
                 case TAKdenormalize:
                     ret = left.getClear();
                     break;
                 case TAKdenormalizegroup:
                     filteredRight.kill();
-                    ret = groupDenormalizeRecords(left, filteredRight);
+                    ret = groupDenormalizeRecords(left, filteredRight, JTFmatchedleft);
                     break;
                 default:
                     throwUnexpected();
@@ -4936,7 +4929,7 @@ const void *CHThorJoinActivity::nextRow()
                                 matchedLeft = true;
                                 if (!exclude)
                                 {
-                                    const void *ret = joinRecords(left, rhs, ++joinCounter);
+                                    const void *ret = joinRecords(left, rhs, ++joinCounter, JTFmatchedleft|JTFmatchedright);
                                     if (ret)
                                     {
                                         processed++;
@@ -4966,7 +4959,7 @@ const void *CHThorJoinActivity::nextRow()
                                     try
                                     {
                                         RtlDynamicRowBuilder rowBuilder(rowAllocator);
-                                        unsigned thisSize = helper.transform(rowBuilder, newLeft, rhs, ++leftCount);
+                                        unsigned thisSize = helper.transform(rowBuilder, newLeft, rhs, ++leftCount, JTFmatchedleft|JTFmatchedright);
                                         if (thisSize)
                                         {
                                             rowSize = thisSize;
@@ -5010,7 +5003,7 @@ const void *CHThorJoinActivity::nextRow()
 
                         if (!exclude && filteredRight.ordinality())
                         {
-                            const void * ret = groupDenormalizeRecords(left, filteredRight);
+                            const void * ret = groupDenormalizeRecords(left, filteredRight, JTFmatchedleft);
                             filteredRight.kill();
 
                             if (ret)
@@ -5230,7 +5223,7 @@ const void * CHThorSelfJoinActivity::nextRow()
                 const void * rhs = group.item(rightIndex++);
                 if(helper.match(lhs, rhs))
                 {
-                    const void * ret = joinRecords(lhs, rhs, ++joinCounter, NULL);
+                    const void * ret = joinRecords(lhs, rhs, ++joinCounter, JTFmatchedleft|JTFmatchedright, NULL);
                     if(ret)
                     {
                         processed++;
@@ -5252,7 +5245,7 @@ const void * CHThorSelfJoinActivity::nextRow()
         if(failingOuterAtmost)
             while(group.isItem(leftIndex))
             {
-                const void * ret = joinRecords(group.item(leftIndex++), defaultRight, 0, NULL);
+                const void * ret = joinRecords(group.item(leftIndex++), defaultRight, 0, JTFmatchedleft, NULL);
                 if(ret)
                 {
                     processed++;
@@ -5263,7 +5256,7 @@ const void * CHThorSelfJoinActivity::nextRow()
         {
             if(leftOuterJoin && !matchedLeft && !failingLimit)
             {
-                const void * ret = joinRecords(group.item(leftIndex), defaultRight, 0, NULL);
+                const void * ret = joinRecords(group.item(leftIndex), defaultRight, 0, JTFmatchedleft, NULL);
                 if(ret)
                 {
                     matchedLeft = true;
@@ -5284,7 +5277,7 @@ const void * CHThorSelfJoinActivity::nextRow()
                 OwnedConstRoxieRow lhs(groupedInput->nextRow());  // dualCache never active here
                 while(lhs)
                 {
-                    const void * ret = joinRecords(lhs, defaultRight, 0, failingLimit);
+                    const void * ret = joinRecords(lhs, defaultRight, 0, JTFmatchedleft, failingLimit);
                     if(ret)
                     {
                         processed++;
@@ -5298,7 +5291,7 @@ const void * CHThorSelfJoinActivity::nextRow()
                 while(group.isItem(rightOuterIndex))
                     if(!matchedRight.item(rightOuterIndex++))
                     {
-                        const void * ret = joinRecords(defaultLeft, group.item(rightOuterIndex-1), 0, NULL);
+                        const void * ret = joinRecords(defaultLeft, group.item(rightOuterIndex-1), 0, JTFmatchedright, NULL);
                         if(ret)
                         {
                             processed++;
@@ -5313,7 +5306,7 @@ const void * CHThorSelfJoinActivity::nextRow()
         if(failingLimit)
         {
             leftIndex++;
-            const void * ret = joinRecords(lhs, defaultRight, 0, failingLimit);
+            const void * ret = joinRecords(lhs, defaultRight, 0, JTFmatchedleft, failingLimit);
             if(ret)
             {
                 processed++;
@@ -5329,7 +5322,7 @@ const void * CHThorSelfJoinActivity::nextRow()
                 matchedRight.replace(true, rightIndex-1);
                 if(!exclude)
                 {
-                    const void * ret = joinRecords(lhs, rhs, ++joinCounter, NULL);
+                    const void * ret = joinRecords(lhs, rhs, ++joinCounter, JTFmatchedleft|JTFmatchedright, NULL);
                     if(ret)
                     {
                         processed++;
@@ -5343,12 +5336,12 @@ const void * CHThorSelfJoinActivity::nextRow()
     return NULL;
 }
 
-const void * CHThorSelfJoinActivity::joinRecords(const void * curLeft, const void * curRight, unsigned counter, IException * except)
+const void * CHThorSelfJoinActivity::joinRecords(const void * curLeft, const void * curRight, unsigned counter, unsigned flags, IException * except)
 {
     outBuilder.ensureRow();
     try
     {
-            size32_t thisSize = (except ? helper.onFailTransform(outBuilder, curLeft, curRight, except) : helper.transform(outBuilder, curLeft, curRight, counter));
+            size32_t thisSize = (except ? helper.onFailTransform(outBuilder, curLeft, curRight, except, flags) : helper.transform(outBuilder, curLeft, curRight, counter, flags));
             if(thisSize){
                 return outBuilder.finalizeRowClear(thisSize);   
             }
@@ -5543,12 +5536,12 @@ void CHThorLookupJoinActivity::setInput(unsigned index, IHThorInput * _input)
 }
 
 //following are all copied from CHThorJoinActivity - should common up.
-const void * CHThorLookupJoinActivity::joinRecords(const void * left, const void * right, unsigned counter)
+const void * CHThorLookupJoinActivity::joinRecords(const void * left, const void * right, unsigned counter, unsigned flags)
 {
     try
     {
         outBuilder.ensureRow();
-        size32_t thisSize = helper.transform(outBuilder, left, right, counter);
+        size32_t thisSize = helper.transform(outBuilder, left, right, counter, flags);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -5565,7 +5558,7 @@ const void * CHThorLookupJoinActivity::joinException(const void * left, IExcepti
     try
     {
         outBuilder.ensureRow();
-        memsize_t thisSize = helper.onFailTransform(outBuilder, left, defaultRight, except);
+        memsize_t thisSize = helper.onFailTransform(outBuilder, left, defaultRight, except, JTFmatchedleft);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -5577,14 +5570,16 @@ const void * CHThorLookupJoinActivity::joinException(const void * left, IExcepti
     }
 }
 
-const void * CHThorLookupJoinActivity::groupDenormalizeRecords(const void * left, ConstPointerArray & rows)
+const void * CHThorLookupJoinActivity::groupDenormalizeRecords(const void * left, ConstPointerArray & rows, unsigned flags)
 {
     try
     {
         outBuilder.ensureRow();
         unsigned numRows = rows.ordinality();
         const void * right = numRows ? rows.item(0) : defaultRight.get();
-        memsize_t thisSize = helper.transform(outBuilder, left, right, numRows, (const void * *)rows.getArray());
+        if (numRows>0)
+            flags |= JTFmatchedright;
+        memsize_t thisSize = helper.transform(outBuilder, left, right, numRows, (const void * *)rows.getArray(), flags);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -5660,7 +5655,7 @@ const void * CHThorLookupJoinActivity::nextRowJoin()
                     gotMatch = true;
                     if(exclude)
                         break;
-                    ret = joinRecords(left, right, ++joinCounter);
+                    ret = joinRecords(left, right, ++joinCounter, JTFmatchedleft|JTFmatchedright);
                     if(ret)
                     {
                         processed++;
@@ -5672,7 +5667,7 @@ const void * CHThorLookupJoinActivity::nextRowJoin()
             }
             if(leftOuterJoin && !gotMatch)
             {
-                ret = joinRecords(left, defaultRight, 0);
+                ret = joinRecords(left, defaultRight, 0, JTFmatchedleft);
                 gotMatch = true;
             }
         }
@@ -5732,7 +5727,7 @@ const void * CHThorLookupJoinActivity::nextRowDenormalize()
                     try
                     {
                         RtlDynamicRowBuilder rowBuilder(rowAllocator);
-                        unsigned thisSize = helper.transform(rowBuilder, newLeft, right, ++leftCount);
+                        unsigned thisSize = helper.transform(rowBuilder, newLeft, right, ++leftCount, JTFmatchedleft|JTFmatchedright);
                         if (thisSize)
                         {
                             rowSize = thisSize;
@@ -5773,7 +5768,7 @@ const void * CHThorLookupJoinActivity::nextRowDenormalize()
             }
 
             if((filteredRight.ordinality() > 0) || (leftOuterJoin && !gotMatch))
-                ret = groupDenormalizeRecords(left, filteredRight);
+                ret = groupDenormalizeRecords(left, filteredRight, JTFmatchedleft);
             filteredRight.kill();
         }
         left.clear();
@@ -5920,12 +5915,12 @@ void CHThorAllJoinActivity::loadRight()
     rightOrdinality = rightset.ordinality();
 }
 
-const void * CHThorAllJoinActivity::joinRecords(const void * left, const void * right, unsigned counter)
+const void * CHThorAllJoinActivity::joinRecords(const void * left, const void * right, unsigned counter, unsigned flags)
 {
     try
     {
         outBuilder.ensureRow();
-        memsize_t thisSize = helper.transform(outBuilder, left, right, counter);
+        memsize_t thisSize = helper.transform(outBuilder, left, right, counter, flags);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -5937,14 +5932,16 @@ const void * CHThorAllJoinActivity::joinRecords(const void * left, const void * 
     }
 }
 
-const void * CHThorAllJoinActivity::groupDenormalizeRecords(const void * curLeft, ConstPointerArray & rows)
+const void * CHThorAllJoinActivity::groupDenormalizeRecords(const void * curLeft, ConstPointerArray & rows, unsigned flags)
 {
     try
     {
         outBuilder.ensureRow();
         unsigned numRows = rows.ordinality();
         const void * right = numRows ? rows.item(0) : defaultRight.get();
-        memsize_t thisSize = helper.transform(outBuilder, curLeft, right, numRows, (const void * *)rows.getArray());
+        if (numRows>0)
+            flags |= JTFmatchedright;
+        memsize_t thisSize = helper.transform(outBuilder, curLeft, right, numRows, (const void * *)rows.getArray(), flags);
         if(thisSize)
             return outBuilder.finalizeRowClear(thisSize);
         else
@@ -5999,14 +5996,14 @@ const void * CHThorAllJoinActivity::nextRow()
                 switch(kind)
                 {
                 case TAKalljoin:
-                    ret = joinRecords(left, defaultRight, 0);
+                    ret = joinRecords(left, defaultRight, 0, JTFmatchedleft);
                     break;
                 case TAKalldenormalize:
                     ret = left.getClear();
                     break;
                 case TAKalldenormalizegroup:
                     filteredRight.kill();
-                    ret = groupDenormalizeRecords(left, filteredRight);
+                    ret = groupDenormalizeRecords(left, filteredRight, JTFmatchedleft);
                     break;
                 default:
                     throwUnexpected();
@@ -6059,7 +6056,7 @@ const void * CHThorAllJoinActivity::nextRow()
                     matchedLeft = true;
                     matchedRight.replace(true, rightIndex);
                     if(!exclude)
-                        ret = joinRecords(left, right, ++joinCounter);
+                        ret = joinRecords(left, right, ++joinCounter, JTFmatchedleft|JTFmatchedright);
                 }
                 rightIndex++;
                 if(ret)
@@ -6088,7 +6085,7 @@ const void * CHThorAllJoinActivity::nextRow()
                             try
                             {
                                 RtlDynamicRowBuilder rowBuilder(rowAllocator);
-                                unsigned thisSize = helper.transform(rowBuilder, newLeft, right, ++leftCount);
+                                unsigned thisSize = helper.transform(rowBuilder, newLeft, right, ++leftCount, JTFmatchedleft|JTFmatchedright);
                                 if(thisSize)
                                 {
                                     rowSize = thisSize;
@@ -6127,7 +6124,7 @@ const void * CHThorAllJoinActivity::nextRow()
             }
             if(!exclude && filteredRight.ordinality())
             {
-                const void * ret = groupDenormalizeRecords(left, filteredRight);
+                const void * ret = groupDenormalizeRecords(left, filteredRight, JTFmatchedleft);
                 filteredRight.kill();
                 if(ret)
                 {
@@ -8366,7 +8363,7 @@ void CHThorDiskReadBaseActivity::open()
 //=====================================================================================================
 
 CHThorBinaryDiskReadBase::CHThorBinaryDiskReadBase(IAgentContext &_agent, unsigned _activityId, unsigned _subgraphId, IHThorDiskReadBaseArg &_arg, IHThorCompoundBaseArg & _segHelper, ThorActivityKind _kind)
-: CHThorDiskReadBaseActivity(_agent, _activityId, _subgraphId, _arg, _kind), segHelper(_segHelper), prefetchBuffer(NULL)
+: CHThorDiskReadBaseActivity(_agent, _activityId, _subgraphId, _arg, _kind), segHelper(_segHelper), prefetchBuffer(NULL), recInfo(outputMeta.queryOriginal()->queryRecordAccessor(true)),rowInfo(recInfo)
 {
 }
 
@@ -8380,7 +8377,11 @@ void CHThorBinaryDiskReadBase::append(IKeySegmentMonitor *segment)
     if (segment->isWild())
         segment->Release();
     else
+    {
         segMonitors.append(*segment);
+        if (segment->numFieldsRequired() > numFieldsRequired)
+            numFieldsRequired = segment->numFieldsRequired();
+    }
 }
 
 void CHThorBinaryDiskReadBase::setMergeBarrier(unsigned barrierOffset)
@@ -8407,6 +8408,7 @@ void CHThorBinaryDiskReadBase::ready()
     if (!diskMeta)
         diskMeta.set(outputMeta);
     segMonitors.kill();
+    numFieldsRequired = 0;
     segHelper.createSegmentMonitors(this);
     prefetcher.setown(diskMeta->createDiskPrefetcher(agent.queryCodeContext(), activityId));
     deserializer.setown(diskMeta->createDiskDeserializer(agent.queryCodeContext(), activityId));
@@ -8992,28 +8994,9 @@ const void *CHThorCsvReadActivity::nextRow()
         checkOpenNext();
         if (eofseen)
             break;
-        if (!inputstream->eos())
+        size32_t thisLineLength = csvSplitter.splitLine(inputstream, maxRowSize);
+        if (thisLineLength)
         {
-            size32_t rowSize = 4096; // MORE - make configurable
-            size32_t thisLineLength;
-            for (;;)
-            {
-                size32_t avail;
-                const void *peek = inputstream->peek(rowSize, avail);
-                thisLineLength = csvSplitter.splitLine(avail, (const byte *)peek);
-                if (thisLineLength < rowSize || avail < rowSize)
-                    break;
-                if (rowSize == maxRowSize)
-                {
-                    OwnedRoxieString fileName(helper.getFileName());
-                    throw MakeStringException(99, "File %s contained a line of length greater than %d bytes.", fileName.get(), rowSize);
-                }
-                if (rowSize >= maxRowSize/2)
-                    rowSize = maxRowSize;
-                else
-                    rowSize += rowSize;
-            }
-
             RtlDynamicRowBuilder rowBuilder(rowAllocator);
             unsigned thisSize;
             try
@@ -9281,10 +9264,10 @@ void CHThorDictionaryResultWriteActivity::execute()
     }
     IHThorGraphResult * result = graph->createResult(helper.querySequence(), LINK(rowAllocator));
     size32_t dictSize = builder.getcount();
-    byte ** dictRows = builder.queryrows();
+    const byte ** dictRows = builder.queryrows();
     for (size32_t row = 0; row < dictSize; row++)
     {
-        byte *thisRow = dictRows[row];
+        const byte *thisRow = dictRows[row];
         if (thisRow)
             LinkRoxieRow(thisRow);
         result->addRowOwn(thisRow);
@@ -9594,6 +9577,7 @@ public:
     virtual IOutputRowDeserializer * createInternalDeserializer(ICodeContext * ctx, unsigned activityId) { return NULL; }
     virtual void walkIndirectMembers(const byte * self, IIndirectMemberVisitor & visitor) {}
     virtual IOutputMetaData * queryChildMeta(unsigned i) { return NULL; }
+    virtual const RtlRecord &queryRecordAccessor(bool expand) const { throwUnexpected(); } // could provide a static implementation if needed
 };
 
 //=====================================================================================================

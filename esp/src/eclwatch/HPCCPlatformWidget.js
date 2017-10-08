@@ -26,6 +26,7 @@ define([
     "dojo/dom-geometry",
     "dojo/cookie",
     "dojo/topic",
+    "dojo/request/xhr",
 
     "dijit/registry",
     "dijit/Tooltip",
@@ -64,7 +65,7 @@ define([
     "hpcc/TableContainer",
     "hpcc/InfoGridWidget"
 
-], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domClass, domForm, domStyle, domGeo, cookie, topic,
+], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domClass, domForm, domStyle, domGeo, cookie, topic, xhr,
                 registry, Tooltip,
                 UpgradeBar, ColorPicker,
                 _TabContainerWidget, ESPRequest, ESPActivity, WsAccount, WsAccess, WsSMC, WsTopology, GraphWidget, DelayLoadWidget, WsMachine,
@@ -294,7 +295,11 @@ define([
         },
 
         _onOpenResources: function (evt) {
-            this._openNewTab("http://hpccsystems.com/download");
+            this._openNewTab("https://hpccsystems.com/download");
+        },
+
+        _onOpenDocuments: function (evt) {
+            this._openNewTab("https://hpccsystems.com/training/documentation");
         },
 
         _onOpenJira: function (evt) {
@@ -310,7 +315,7 @@ define([
         },
 
         _onOpenReleaseNotes: function (evt) {
-            this._openNewTab("http://hpccsystems.com/download/free-community-edition-known-limitations#" + this.build.version);
+            this._openNewTab("https://hpccsystems.com/download/release-notes");
         },
 
         _onOpenTransitionGuide: function(evt) {
@@ -415,7 +420,18 @@ define([
         _onAboutClose: function (evt) {
             this.aboutDialog.hide();
         },
-
+		
+        _onLogout: function (evt) {
+            xhr("esp/logout", {
+                method: "post"
+            }).then(function(data){
+                if (data){
+                    document.cookie = "ESPSessionID" + location.port + " = '' "; "expires=Thu, 01 Jan 1970 00:00:00 GMT"; // or -1
+                    window.location.reload();
+                }
+            });
+        },
+        
         _onMonitoring: function (evt) {
             this.stackContainer.selectChild(this.operationsPage);
             this.operationsPage.ensureWidget().then(function (operationsPage) {

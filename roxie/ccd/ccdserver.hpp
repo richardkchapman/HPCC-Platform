@@ -191,7 +191,7 @@ interface IRoxieServerActivity : extends IActivityBase
     virtual void mergeStats(MemoryBuffer &stats) = 0;
     virtual ISectionTimer * registerTimer(unsigned activityId, const char * name) = 0;
     virtual IEngineRowAllocator * createRowAllocator(IOutputMetaData * metadata) = 0;
-    virtual void updateFactoryStatistics() = 0;
+    virtual void updateFactoryStatistics() const = 0;
 };
 
 interface IRoxieServerActivityFactory : extends IActivityFactory
@@ -209,7 +209,6 @@ interface IRoxieServerActivityFactory : extends IActivityFactory
     virtual IntArray &queryDependencyControlIds() = 0;
     virtual StringArray &queryDependencyEdgeIds() = 0;
     virtual ThorActivityKind getKind() const = 0;
-    virtual IOutputMetaData *queryOutputMeta() const = 0;
     virtual IHThorArg &getHelper() const = 0;
     virtual IRoxieServerActivity *createFunction(IHThorArg &helper, IProbeManager *_probeManager) const = 0;
     virtual void noteProcessed(unsigned idx, unsigned processed) const = 0;
@@ -229,7 +228,7 @@ interface IRoxieServerActivityFactory : extends IActivityFactory
 };
 interface IGraphResult : public IInterface
 {
-    virtual void getLinkedResult(unsigned & countResult, byte * * & result) = 0;
+    virtual void getLinkedResult(unsigned & countResult, const byte * * & result) = 0;
     virtual IEngineRowStream * createIterator() = 0;
     virtual const void * getLinkedRowResult() = 0;
 };
@@ -267,6 +266,7 @@ interface IRoxieServerChildGraph : public IInterface
     virtual CGraphIterationInfo * selectGraphLoopOutput() = 0;
     virtual void gatherIterationUsage(IRoxieServerLoopResultProcessor & processor) = 0;
     virtual void associateIterationOutputs(IRoxieServerLoopResultProcessor & processor) = 0;
+    virtual void updateFactoryStatistics() const = 0;
 };
 
 interface IQueryFactory;

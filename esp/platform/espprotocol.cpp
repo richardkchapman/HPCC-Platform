@@ -153,14 +153,16 @@ const StringBuffer &CEspApplicationPort::getTitleBarHtml(IEspContext& ctx, bool 
 {
     if (xslp)
     {
-        StringBuffer titleBarXml;
+        VStringBuffer titleBarXml("<EspHeader><BuildVersion>%s</BuildVersion><ConfigAccess>%d</ConfigAccess>", build_ver, viewConfig);
+
+        const char* authMethod = ctx.getAuthenticationMethod();
+        if (authMethod && !strieq(authMethod, "none") && (ctx.getDomainAuthType() != AuthPerRequestOnly))
+            titleBarXml.append("<LogOut>1</LogOut>");
+
         const char* user = ctx.queryUserId();
-                if (!user || !*user)
-            titleBarXml.appendf("<EspHeader><BuildVersion>%s</BuildVersion><ConfigAccess>%d</ConfigAccess>"
-                "<LoginId>&lt;nobody&gt;</LoginId><NoUser>1</NoUser></EspHeader>", build_ver, viewConfig);
-                else
-            titleBarXml.appendf("<EspHeader><BuildVersion>%s</BuildVersion><ConfigAccess>%d</ConfigAccess>"
-                "<LoginId>%s</LoginId></EspHeader>", build_ver, viewConfig, user);
+        if (user && *user)
+            titleBarXml.appendf("<LoginId>%s</LoginId>", user);
+        titleBarXml.append("</EspHeader>");
 
         if (rawXml)
         {
@@ -492,6 +494,8 @@ void CEspBinding::getNavigationData(IEspContext &context, IPropertyTree & data)
         if (params.length())
             params.setCharAt(0,'&'); //the entire params string will follow the initial param: "?form"
 
+        folder->addPropBool("@isDynamicBinding", isDynamicBinding());
+
         MethodInfoArray methods;
         wsdl->getQualifiedNames(context, methods);
         ForEachItemIn(idx, methods)
@@ -530,7 +534,7 @@ void CEspApplicationPort::onUpdatePasswordInput(IEspContext &context, StringBuff
     return;
 }
 
-void CEspApplicationPort::onUpdatePassword(IEspContext &context, IHttpMessage* request, StringBuffer& html)
+unsigned CEspApplicationPort::onUpdatePassword(IEspContext &context, IHttpMessage* request, StringBuffer& html)
 {
     StringBuffer xml, message;
     unsigned returnCode = updatePassword(context, request, message);
@@ -545,7 +549,7 @@ void CEspApplicationPort::onUpdatePassword(IEspContext &context, IHttpMessage* r
     xform->loadXslFromFile(StringBuffer(getCFD()).append("./xslt/passwordupdate.xsl").str());
     xform->setXmlSource(xml.str(), xml.length()+1);
     xform->transform( html);
-    return;
+    return returnCode;
 }
 
 unsigned CEspApplicationPort::updatePassword(IEspContext &context, IHttpMessage* request, StringBuffer& message)
@@ -561,13 +565,6 @@ unsigned CEspApplicationPort::updatePassword(IEspContext &context, IHttpMessage*
     if(!user)
     {
         message.append("Can't find user in esp context. Please check if the user was properly logged in.");
-        return 2;
-    }
-
-    const char* oldpass1 = context.queryPassword();
-    if (!oldpass1)
-    {
-        message.append("Existing password missing from request.");
         return 2;
     }
 
@@ -588,11 +585,6 @@ unsigned CEspApplicationPort::updatePassword(IEspContext &context, IHttpMessage*
         message.append("Incorrect username has been received.");
         return 1;
     }
-    if(!oldpass || !streq(oldpass, oldpass1))
-    {
-        message.append("Old password doesn't match credentials in use.");
-        return 1;
-    }
     if(!streq(newpass1, newpass2))
     {
         message.append("Password re-entry doesn't match.");
@@ -607,6 +599,9 @@ unsigned CEspApplicationPort::updatePassword(IEspContext &context, IHttpMessage*
     bool returnFlag = false;
     try
     {
+        ISecCredentials& cred = user->credentials();
+        if (isEmptyString(cred.getPassword()))
+            cred.setPassword(oldpass);
         returnFlag = secmgr->updateUserPassword(*user, newpass1, oldpass);//provide the entered current password, not the cached one
     }
     catch(IException* e)

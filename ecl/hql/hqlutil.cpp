@@ -17,6 +17,7 @@
 #include "jliball.hpp"
 #include "hql.hpp"
 #include "eclrtl.hpp"
+#include "rtldynfield.hpp"
 
 #include "platform.h"
 #include "jlib.hpp"
@@ -2253,6 +2254,53 @@ unsigned getFlatFieldCount(IHqlExpression * expr)
     }
 }
 
+//This function gathers information about the number of fields etc. in a record.
+//MORE: Should this calculate numFields, numExpandedFields, numDatasetFields all in a single function and
+//then cache it as a property of a no_record?   Only if it becomes a significant bottleneck.
+void gatherRecordStats(HqlRecordStats & stats, IHqlExpression * expr)
+{
+    switch (expr->getOperator())
+    {
+    case no_record:
+        {
+            ForEachChild(i, expr)
+                gatherRecordStats(stats, expr->queryChild(i));
+            break;
+        }
+    case no_ifblock:
+        return gatherRecordStats(stats, expr->queryChild(1));
+    case no_field:
+        {
+            ITypeInfo * type = expr->queryType();
+            switch (type->getTypeCode())
+            {
+            case type_table:
+            case type_groupedtable:
+                stats.fields++;
+                stats.unknownSizeFields++;
+                break;
+            case type_dictionary:
+                stats.fields++;
+                stats.unknownSizeFields++;
+                break;
+            case type_row:
+                gatherRecordStats(stats, expr->queryRecord());
+                break;
+            default:
+                stats.fields++;
+                //HPCC-17606 add: if (type->getSize() == UNKNOWN_LENGTH) stats.unknownSizeFields++;
+                break;
+            }
+            break;
+        }
+    case no_attr:
+    case no_attr_link:
+    case no_attr_expr:
+        break;
+    default:
+        UNIMPLEMENTED;
+    }
+}
 
 unsigned getVarSizeFieldCount(IHqlExpression * expr, bool expandRows)
 {
@@ -3174,6 +3222,61 @@ unsigned countTotalFields(IHqlExpression * record, bool includeVirtual)
         }
     }
     return count;
+}
+
+static unsigned getFieldNumberFromRecord(IHqlExpression * record, IHqlExpression * field, bool & matched)
+{
+    matched = false;
+
+    unsigned fieldNum = 0;
+    ForEachChild(i, record)
+    {
+        IHqlExpression * cur = record->queryChild(i);
+        switch (cur->getOperator())
+        {
+        case no_field:
+            if (cur == field)
+            {
+                matched = true;
+                return fieldNum;
+            }
+            if (cur->isDatarow())
+                fieldNum += countTotalFields(cur->queryRecord(), false);
+            else
+                fieldNum++;
+            break;
+        case no_ifblock:
+            fieldNum += getFieldNumberFromRecord(cur->queryChild(1), field, matched);
+            if (matched)
+                return fieldNum;
+            break;
+        case no_record:
+            fieldNum += getFieldNumberFromRecord(cur, field, matched);
+            if (matched)
+                return fieldNum;
+            break;
+        }
+    }
+    return fieldNum;
+}
+
+unsigned getFieldNumber(IHqlExpression * ds, IHqlExpression * selector)
+{
+    assertex(selector->getOperator() == no_select);
+
+    IHqlExpression * parent = selector->queryChild(0);
+    IHqlExpression * field = selector->queryChild(1);
+    unsigned fieldNum = 0;
+    if (parent != ds)
+    {
+        assertex(parent->isDatarow());
+        fieldNum = getFieldNumber(ds, parent);
+    }
+
+    bool matched;
+    fieldNum += getFieldNumberFromRecord(parent->queryRecord(), field, matched);
+    assertex(matched);
+    return fieldNum;
 }
 
 bool transformContainsSkip(IHqlExpression * transform)
@@ -4258,6 +4361,19 @@ bool castPreservesValueAndOrder(IHqlExpression * expr)
     IHqlExpression * uncast = expr->queryChild(0);
     ITypeInfo * castType = expr->queryType();
     ITypeInfo * uncastType = uncast->queryType();
+    if (!preservesValue(castType, uncastType))
+        return false;
+    if (!preservesOrder(castType, uncastType))
+        return false;
+    return true;
+}
+
+bool castPreservesInformationAndOrder(IHqlExpression * expr)
+{
+    assertex(isCast(expr));
+    IHqlExpression * uncast = expr->queryChild(0);
+    ITypeInfo * castType = expr->queryType();
+    ITypeInfo * uncastType = uncast->queryType();
     if (castLosesInformation(castType, uncastType))
         return false;
     if (!preservesOrder(castType, uncastType))
@@ -4954,7 +5070,7 @@ void getStoredDescription(StringBuffer & text, IHqlExpression * sequence, IHqlEx
             break;
         case ResultSequenceInternal:
             text.append("Internal");
-            if (includeInternalName)
+            if (includeInternalName && name)
                 name->toString(text.append("(")).append(")");
             break;
         default:
@@ -6342,6 +6458,29 @@ void TempTableTransformer::reportWarning(WarnErrorCategory category, IHqlExpress
     errorProcessor.reportWarning(category, code, errorMsg.str(), str(where->sourcePath), where->lineno, where->column, where->position);
 }
 
+IHqlExpression *notePayloadFields(IHqlExpression *record, unsigned payloadCount)
+{
+    HqlExprArray fields;
+    unwindChildren(fields, record);
+    unsigned idx = fields.length();
+    while (idx && payloadCount)
+    {
+        IHqlExpression * cur = &fields.item(--idx);
+        switch (cur->getOperator())
+        {
+        case no_record:
+            throwUnexpected();
+            break;
+        case no_field:
+        case no_ifblock:
+            fields.replace(*appendOwnedOperand(cur, createAttribute(_payload_Atom)), idx);
+            payloadCount--;
+            break;
+        }
+    }
+    return createRecord(fields);
+}
+
 IHqlExpression *getDictionaryKeyRecord(IHqlExpression *record)
 {
     IHqlExpression * payload = record->queryAttribute(_payload_Atom);
@@ -7654,6 +7793,7 @@ public:
 
         if (formals->numChildren())
         {
+            bool hasMeta = getBoolAttribute(body, passParameterMetaAtom, false);
             ForEachChild(i, formals)
             {
                 IHqlExpression * param = formals->queryChild(i);
@@ -7664,7 +7804,7 @@ public:
 
                 if (isOut)
                     mangled.append("R");
-                if (!mangleSimpleType(mangled, paramType, isConst))
+                if (!mangleSimpleType(mangled, paramType, isConst, hasMeta))
                     return false;
             }
         }
@@ -7674,7 +7814,7 @@ public:
     }
 
 protected:
-    bool mangleSimpleType(StringBuffer & result, ITypeInfo * type, bool hasConst)
+    bool mangleSimpleType(StringBuffer & result, ITypeInfo * type, bool hasConst, bool hasMeta)
     {
         if (!type)
             return false;
@@ -7721,13 +7861,13 @@ protected:
             result.append("c");
             return true;
         case type_enumerated:
-            return mangleSimpleType(result, type->queryChildType(), hasConst);
+            return mangleSimpleType(result, type->queryChildType(), hasConst, hasMeta);
         case type_pointer:
             result.append("P");
-            return mangleSimpleType(result, type->queryChildType(), hasConst);
+            return mangleSimpleType(result, type->queryChildType(), hasConst, hasMeta);
         case type_array:
             result.append("A").append(type->getSize()).append("_");;
-            return mangleSimpleType(result, type->queryChildType(), hasConst);
+            return mangleSimpleType(result, type->queryChildType(), hasConst, hasMeta);
         case type_table:
         case type_groupedtable:
             result.append("j"); // size32_t
@@ -7739,7 +7879,9 @@ protected:
             result.append(lookupRepeat(hasConst ? "PKv" : "Pv")); // *
             return true;
         case type_row:
-            result.append(lookupRepeat("Ph"));
+            if (hasMeta)
+                result.append(lookupRepeat("R15IOutputMetaData"));
+            result.append(lookupRepeat("PKh"));  // Does not seem to depend on const
             return true;
         case type_void:
             result.append("v");
@@ -7754,6 +7896,9 @@ protected:
         case type_date:
             //may possibly have some support in the future, but not yet...
             return false;
+        case type_record:
+            result.append(lookupRepeat("R15IOutputMetaData"));
+            return true;
         }
         throwUnexpected();
     }
@@ -8290,8 +8435,8 @@ public:
     {
     }
 
-    void build(IHqlExpression * record, bool &hasMixedContent) const;
-    void build(IHqlExpression * record) const {bool mixed; build(record, mixed);}
+    void build(IHqlExpression * record, bool &hasMixedContent, unsigned keyedCount) const;
+    void build(IHqlExpression * record, unsigned keyedCount) const {bool mixed; build(record, mixed, keyedCount);}
 
 
 protected:
@@ -8304,7 +8449,7 @@ protected:
 
 
 
-void EclXmlSchemaBuilder::build(IHqlExpression * record, bool &hasMixedContent) const
+void EclXmlSchemaBuilder::build(IHqlExpression * record, bool &hasMixedContent, unsigned keyedCount) const
 {
     StringBuffer name, childName;
     ForEachChild(i, record)
@@ -8324,7 +8469,7 @@ void EclXmlSchemaBuilder::build(IHqlExpression * record, bool &hasMixedContent) 
                         unsigned updateMixed=0;
                         builder.beginRecord(name, false, &updateMixed);
                         bool mixed = false;
-                        build(cur->queryRecord(), (name.length()) ? mixed : hasMixedContent);
+                        build(cur->queryRecord(), (name.length()) ? mixed : hasMixedContent, 0);
                         if (mixed)
                             builder.updateMixedRecord(updateMixed, true);
                         builder.endRecord(name);
@@ -8351,7 +8496,7 @@ void EclXmlSchemaBuilder::build(IHqlExpression * record, bool &hasMixedContent) 
                             bool mixed = false;
                             if (builder.beginDataset(name, childName, false, &updateMixed))
                             {
-                                build(cur->queryRecord(), (name.length()) ? mixed : hasMixedContent);
+                                build(cur->queryRecord(), (name.length()) ? mixed : hasMixedContent, 0);
                                 if (mixed)
                                     builder.updateMixedRecord(updateMixed, true);
                             }
@@ -8365,7 +8510,7 @@ void EclXmlSchemaBuilder::build(IHqlExpression * record, bool &hasMixedContent) 
                 default:
                     extractName(name.clear(), NULL, NULL, cur, NULL);
                     if (name.length())
-                        builder.addField(name, *type, false);
+                        builder.addField(name, *type, i < keyedCount);
                     else
                         hasMixedContent = true;
                     break;
@@ -8374,11 +8519,11 @@ void EclXmlSchemaBuilder::build(IHqlExpression * record, bool &hasMixedContent) 
             }
         case no_ifblock:
             builder.beginIfBlock();
-            build(cur->queryChild(1), hasMixedContent);
+            build(cur->queryChild(1), hasMixedContent, 0);
             builder.endIfBlock();
             break;
         case no_record:
-            build(cur, hasMixedContent);
+            build(cur, hasMixedContent, 0);
             break;
         }
     }
@@ -8399,11 +8544,11 @@ void EclXmlSchemaBuilder::extractName(StringBuffer & name, StringBuffer * itemNa
 }
 
 
-void getRecordXmlSchema(StringBuffer & result, IHqlExpression * record, bool useXPath)
+void getRecordXmlSchema(StringBuffer & result, IHqlExpression * record, bool useXPath, unsigned keyedCount)
 {
     XmlSchemaBuilder xmlbuilder(false);
     EclXmlSchemaBuilder builder(xmlbuilder, useXPath);
-    builder.build(record);
+    builder.build(record, keyedCount);
     xmlbuilder.getXml(result);
 }
 
@@ -8637,10 +8782,19 @@ bool ConstantRowCreator::processFieldValue(IHqlExpression * optLhs, ITypeInfo * 
     switch (lhsType->getTypeCode())
     {
     case type_packedint:
+    {
         if (!rhs->queryValue())
             return false;
-        //MORE: Could handle this...
-        return false;
+        unsigned orig = out.length();
+        void *tgt = out.reserve(9);
+        if (lhsType->isSigned())
+            rtlSetPackedSigned(tgt, rhs->queryValue()->getIntValue());
+        else
+            rtlSetPackedUnsigned(tgt, rhs->queryValue()->getIntValue());
+        unsigned actualSize = rtlGetPackedSize(tgt);
+        out.setLength(orig+actualSize);
+        return true;
+    }
     case type_set:
         if (isNullList(rhs))
         {
@@ -8692,7 +8846,7 @@ bool ConstantRowCreator::processFieldValue(IHqlExpression * optLhs, ITypeInfo * 
                     if (rhsOp == no_null)
                     {
                         rtlWriteSize32t(out.reserve(sizeof(size32_t)), 0);
-                        memset(out.reserve(sizeof(byte * *)), 0, sizeof(byte * *));
+                        memset(out.reserve(sizeof(const byte * *)), 0, sizeof(const byte * *));
                         return true;
                     }
                 }
@@ -8762,6 +8916,22 @@ bool ConstantRowCreator::processFieldValue(IHqlExpression * optLhs, ITypeInfo * 
             castValue->toMem(out.reserve(lenValue));
             return true;
         }
+    case type_varunicode:
+    {
+        if (sizeLhs == UNKNOWN_LENGTH)
+        {
+            void * target = out.reserve((lenValue+1)*sizeof(UChar));
+            castValue->toMem(target);
+        }
+        else
+        {
+            UChar * target = (UChar *) out.reserve(sizeLhs);
+            for (size32_t pos = 0; pos < sizeLhs/sizeof(UChar); pos++)
+                target[pos] = (UChar) ' ';
+            castValue->toMem(target);
+        }
+        return true;
+    }
     case type_varstring:
         {
             //Move to else
@@ -8772,9 +8942,6 @@ bool ConstantRowCreator::processFieldValue(IHqlExpression * optLhs, ITypeInfo * 
             }
             else
             {
-                //Disabled for the moment to prevent the size of generated expressions getting too big.
-                if (sizeLhs > 40)
-                    return false;
                 void * target = out.reserve(sizeLhs);
                 memset(target, ' ', sizeLhs);   // spaces expand better in the c++
                 castValue->toMem(target);
@@ -8790,9 +8957,6 @@ bool ConstantRowCreator::processFieldValue(IHqlExpression * optLhs, ITypeInfo * 
             castValue->toMem(out.reserve(castValue->getSize()));
             return true;
         }
-    //MORE:
-    //type_varunicode
-    //type_packedint
     }
     return false;
 }
@@ -9080,7 +9244,7 @@ IHqlExpression * expandMacroDefinition(IHqlExpression * expr, HqlLookupContext &
             if (!def || !getFoldedConstantText(curParam, def))
             {
                 if (reportError)
-                    ctx.errs->reportError(HQLERR_CannotSubmitMacroX, "Cannot submit a MACRO with parameters that do no have default values", NULL, 1, 0, 0);
+                    ctx.errs->reportError(HQLERR_CannotSubmitMacroX, "Cannot submit a MACRO with parameters that do not have default values", NULL, 1, 0, 0);
                 return NULL;
             }
             macroParms->setProp(str(formal->queryName()), curParam.str());
@@ -9108,13 +9272,13 @@ IHqlExpression * expandMacroDefinition(IHqlExpression * expr, HqlLookupContext &
     Owned<IHqlScope> scope = createPrivateScope();
     if (queryLegacyImportSemantics())
         importRootModulesToScope(scope, ctx);
-    return parseQuery(scope, mappedContents, ctx, NULL, macroParms, true);
+    return parseQuery(scope, mappedContents, ctx, NULL, macroParms, true, true);
 }
 
 static IHqlExpression * transformAttributeToQuery(IHqlExpression * expr, HqlLookupContext & ctx, bool syntaxCheck)
 {
     if (expr->isMacro())
-        return expandMacroDefinition(expr, ctx, true);
+        return expandMacroDefinition(expr, ctx, !syntaxCheck);
 
     if (expr->isFunction())
     {
@@ -9446,3 +9610,337 @@ IHqlExpression * convertSetToExpression(bool isAll, size32_t len, const void * p
     }
     return createValue(no_list, LINK(setType), results);
 }
+
+//-------------------------------------------------------------------------------------------------
+
+void getFieldTypeInfo(FieldTypeInfoStruct &out, ITypeInfo *type)
+{
+    assertex(type);
+    type_t tc = type->getTypeCode();
+    if (tc == type_record)
+        type = queryUnqualifiedType(type);
+
+    if (tc == type_alien)
+    {
+        ITypeInfo * physicalType = queryAlienType(type)->queryPhysicalType();
+        if (physicalType->getSize() != UNKNOWN_LENGTH)
+        {
+            //Don't use the generated class for xml generation since it will generate physical rather than logical
+            out.fieldType |= (RFTMalien|RFTMinvalidxml|RFTMnoserialize);
+            type = physicalType;
+            tc = type->getTypeCode();
+        }
+        else
+        {
+            out.fieldType |= RFTMunknownsize;
+            //can't work out the size of the field - to keep it as unknown for the moment.
+            //until the alien field type is supported
+        }
+    }
+    out.fieldType |= tc;
+    out.length = type->getSize();
+    out.locale = nullptr;
+    out.className = nullptr;
+    if (out.length == UNKNOWN_LENGTH)
+    {
+        out.fieldType |= RFTMunknownsize;
+        out.length = 0;
+    }
+
+    switch (tc)
+    {
+    case type_boolean:
+        out.className = "RtlBoolTypeInfo";
+        break;
+    case type_real:
+        out.className ="RtlRealTypeInfo";
+        break;
+    case type_date:
+    case type_enumerated:
+    case type_int:
+        out.className = "RtlIntTypeInfo";
+        if (!type->isSigned())
+            out.fieldType |= RFTMunsigned;
+        break;
+    case type_swapint:
+        out.className = "RtlSwapIntTypeInfo";
+        if (!type->isSigned())
+            out.fieldType |= RFTMunsigned;
+        break;
+    case type_packedint:
+        out.className = "RtlPackedIntTypeInfo";
+        if (!type->isSigned())
+            out.fieldType |= RFTMunsigned;
+        break;
+    case type_decimal:
+        out.className = "RtlDecimalTypeInfo";
+        if (!type->isSigned())
+            out.fieldType |= RFTMunsigned;
+        out.length = type->getDigits() | (type->getPrecision() << 16);
+        break;
+    case type_char:
+        out.className = "RtlCharTypeInfo";
+        break;
+    case type_data:
+        out.className = "RtlDataTypeInfo";
+        break;
+    case type_qstring:
+        out.className = "RtlQStringTypeInfo";
+        out.length = type->getStringLen();
+        break;
+    case type_varstring:
+        out.className = "RtlVarStringTypeInfo";
+        if (type->queryCharset() && type->queryCharset()->queryName()==ebcdicAtom)
+            out.fieldType |= RFTMebcdic;
+        out.length = type->getStringLen();
+        break;
+    case type_string:
+        out.className = "RtlStringTypeInfo";
+        if (type->queryCharset() && type->queryCharset()->queryName()==ebcdicAtom)
+            out.fieldType |= RFTMebcdic;
+        break;
+    case type_bitfield:
+        {
+        out.className = "RtlBitfieldTypeInfo";
+        unsigned size = type->queryChildType()->getSize();
+        unsigned bitsize = type->getBitSize();
+        unsigned offset = (unsigned)getIntValue(queryAttributeChild(type, bitfieldOffsetAtom, 0),-1);
+        bool isLastBitfield = (queryAttribute(type, isLastBitfieldAtom) != NULL);
+        if (isLastBitfield)
+            out.fieldType |= RFTMislastbitfield;
+        if (!type->isSigned())
+            out.fieldType |= RFTMunsigned;
+        out.length = size | (bitsize << 8) | (offset << 16);
+        break;
+        }
+    case type_record:
+        {
+            IHqlExpression * record = ::queryRecord(type);
+            out.className = "RtlRecordTypeInfo";
+            out.length = getMinRecordSize(record);
+            if (!isFixedSizeRecord(record))
+                out.fieldType |= RFTMunknownsize;
+            break;
+        }
+    case type_row:
+        {
+            out.className = "RtlRowTypeInfo";
+            if (hasLinkCountedModifier(type))
+                out.fieldType |= RFTMlinkcounted;
+            break;
+        }
+    case type_table:
+    case type_groupedtable:
+        {
+            out.className = "RtlDatasetTypeInfo";
+            if (hasLinkCountedModifier(type))
+            {
+                out.fieldType |= RFTMlinkcounted;
+                out.fieldType &= ~RFTMunknownsize;
+            }
+            break;
+        }
+    case type_dictionary:
+        {
+            out.className = "RtlDictionaryTypeInfo";
+            out.fieldType |= RFTMnoserialize;
+            if (hasLinkCountedModifier(type))
+            {
+                out.fieldType |= RFTMlinkcounted;
+                out.fieldType &= ~RFTMunknownsize;
+            }
+            break;
+        }
+    case type_set:
+        out.className = "RtlSetTypeInfo";
+        break;
+    case type_unicode:
+        out.className = "RtlUnicodeTypeInfo";
+        out.locale = str(type->queryLocale());
+        out.length = type->getStringLen();
+        break;
+    case type_varunicode:
+        out.className = "RtlVarUnicodeTypeInfo";
+        out.locale = str(type->queryLocale());
+        out.length = type->getStringLen();
+        break;
+    case type_utf8:
+        out.className = "RtlUtf8TypeInfo";
+        out.locale = str(type->queryLocale());
+        out.length = type->getStringLen();
+        break;
+    case type_blob:
+    case type_pointer:
+    case type_class:
+    case type_array:
+    case type_void:
+    case type_alien:
+    case type_none:
+    case type_any:
+    case type_pattern:
+    case type_rule:
+    case type_token:
+    case type_feature:
+    case type_event:
+    case type_null:
+    case type_scope:
+    case type_transform:
+    default:
+        out.className = "RtlUnimplementedTypeInfo";
+        out.fieldType |= (RFTMcontainsunknown|RFTMinvalidxml|RFTMnoserialize);
+        break;
+    }
+}
+
+bool checkXpathIsNonScalar(const char *xpath)
+{
+    return (strpbrk(xpath, "/?*[]<>")!=NULL); //anything other than a single tag/attr name cannot name a scalar field
+}
+
+unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned &idx, const RtlFieldInfo * * fieldsArray, IHqlExpression *record, IHqlExpression *rowRecord)
+{
+    unsigned typeFlags = 0;
+    ForEachChild(i, record)
+    {
+        unsigned fieldFlags = 0;
+        IHqlExpression * field = record->queryChild(i);
+        switch (field->getOperator())
+        {
+        case no_ifblock:
+            typeFlags |= RFTMnoserialize;
+            break;
+        case no_field:
+        {
+            ITypeInfo *fieldType = field->queryType();
+            switch (fieldType->getTypeCode())
+            {
+            case type_alien:
+                //MORE:::
+                break;
+            case type_row:
+                //Backward compatibility - should revisit
+                fieldType = fieldType->queryChildType();
+                break;
+            case type_bitfield:
+                UNIMPLEMENTED;
+                break;
+            }
+
+            const RtlTypeInfo *type = buildRtlType(deserializer, fieldType);
+            typeFlags |= type->fieldType & RFTMinherited;
+            StringBuffer lowerName;
+            lowerName.append(field->queryName()).toLowerCase();
+
+            StringBuffer xpathName, xpathItem;
+            switch (field->queryType()->getTypeCode())
+            {
+            case type_set:
+                extractXmlName(xpathName, &xpathItem, NULL, field, "Item", false);
+                break;
+            case type_dictionary:
+            case type_table:
+            case type_groupedtable:
+                extractXmlName(xpathName, &xpathItem, NULL, field, "Row", false);
+                //Following should be in the type processing, and the type should include the information
+                if (field->hasAttribute(sizeAtom) || field->hasAttribute(countAtom))
+                    fieldFlags |= RFTMinvalidxml;
+                break;
+            default:
+                extractXmlName(xpathName, NULL, NULL, field, NULL, false);
+                break;
+            }
+            //Format of the xpath field is (nested-item 0x01 repeated-item)
+            if (xpathItem.length())
+                xpathName.append(xpathCompoundSeparatorChar).append(xpathItem);
+            if (xpathName.charAt(0) == '@')
+                fieldFlags |= RFTMhasxmlattr;
+            if (checkXpathIsNonScalar(xpathName))
+                fieldFlags |= RFTMhasnonscalarxpath;
+            const char *xpath = xpathName.str();
+            if (strcmp(lowerName, xpath)==0)
+                xpath = nullptr;
+
+            MemoryBuffer defaultInitializer;
+            IHqlExpression *defaultValue = queryAttributeChild(field, defaultAtom, 0);
+            if (defaultValue)
+            {
+                LinkedHqlExpr targetField = field;
+                if (fieldType->getTypeCode() == type_bitfield)
+                    targetField.setown(createField(field->queryId(), LINK(fieldType->queryChildType()), NULL));
+
+                if (!createConstantField(defaultInitializer, targetField, defaultValue))
+                    UNIMPLEMENTED;  // MORE - fail more gracefully!
+            }
+            fieldsArray[idx] = deserializer.addFieldInfo(lowerName, xpath, type, fieldFlags, (const char *) defaultInitializer.detach());
+            typeFlags |= fieldFlags & RFTMinherited;
+            idx++;
+            break;
+        }
+        case no_record:
+            typeFlags |= buildRtlRecordFields(deserializer, idx, fieldsArray, field, rowRecord);
+            break;
+        }
+    }
+    return typeFlags;
+}
+
+const RtlTypeInfo *buildRtlType(IRtlFieldTypeDeserializer &deserializer, ITypeInfo *type)
+{
+    assertex(type);
+    switch (type->getTypeCode())
+    {
+    case type_alien:
+        //MORE:::
+        break;
+    case type_row:
+        //Backward compatibility - should revisit
+        return buildRtlType(deserializer, type->queryChildType());
+    //case type_bitfield:
+        //fieldKey contains a field with a type annotated with offsets/isLastBitfield
+        //OwnedHqlExpr fieldKey = getRtlFieldKey(field, rowRecord);
+        //return buildRtlType(deserializer, fieldKey->queryType());
+    }
+
+    const RtlTypeInfo * found = deserializer.lookupType(type);
+    if (found)
+        return found;
+
+    FieldTypeInfoStruct info;
+    getFieldTypeInfo(info, type);
+
+    switch (info.fieldType & RFTMkind)
+    {
+    case type_record:
+        {
+            IHqlExpression * record = ::queryRecord(type);
+            unsigned numFields = getFlatFieldCount(record);
+            info.fieldsArray = new const RtlFieldInfo * [numFields+1];
+            unsigned idx = 0;
+            info.fieldType |= buildRtlRecordFields(deserializer, idx, info.fieldsArray, record, record);
+            info.fieldsArray[idx] = nullptr;
+            break;
+        }
+    case type_row:
+        {
+            info.childType = buildRtlType(deserializer, ::queryRecordType(type));
+            break;
+        }
+    case type_table:
+    case type_groupedtable:
+        {
+            info.childType = buildRtlType(deserializer, ::queryRecordType(type));
+            break;
+        }
+    case type_dictionary:
+        return nullptr;  // MORE - does this leak?
+    case type_set:
+        info.childType = buildRtlType(deserializer, type->queryChildType());
+        break;
+    }
+    if (info.childType)
+        info.fieldType |= info.childType->fieldType & RFTMinherited;
+
+    return deserializer.addType(info, type);
+}
+
+

@@ -456,6 +456,7 @@ void CHttpMessage::addParameter(const char* paramname, const char *value)
 
     m_queryparams->setProp(paramname, value);
     m_paramCount++;
+    allParameterString.append("&").append(paramname).append("=").append(value);
 }
 
 StringBuffer& CHttpMessage::getParameter(const char* paramname, StringBuffer& paramval)
@@ -771,7 +772,14 @@ void CHttpMessage::logMessage(MessageLogFlag messageLogFlag, const char *prefix)
             else if ((m_content_type.length() > 0) && (strieq(m_content_type.get(), "text/css") || strieq(m_content_type.get(), "text/javascript")))
                 DBGLOG("%s<content_type: %s>", prefix, m_content_type.get());
             else
-                logMessage(m_content.str(), prefix);
+            {
+                StringBuffer httpPath;
+                getPath(httpPath);
+                if (!strieq(httpPath.str(), "/esp/login"))
+                    logMessage(m_content.str(), prefix);
+                else
+                    logMessage(m_content.str(), prefix, "password=*", "password=(hidden)");
+            }
         }
     }
     catch (IException *e)
@@ -1090,16 +1098,6 @@ StringBuffer& CHttpRequest::getMethod(StringBuffer & method)
 void CHttpRequest::setMethod(const char* method)
 {
     m_httpMethod.set(method);
-}
-
-StringBuffer& CHttpRequest::getPath(StringBuffer & path)
-{
-    return path.append(m_httpPath.str());
-}
-
-void CHttpRequest::setPath(const char* path)
-{
-    m_httpPath.set(path);
 }
 
 void CHttpRequest::parseQueryString(const char* querystr)
@@ -1458,6 +1456,8 @@ void CHttpRequest::parseEspPathInfo()
                     m_sstype=sub_serv_respsamplexml;
                 else if (m_queryparams && (m_queryparams->hasProp("respjson_")))
                     m_sstype=sub_serv_respsamplejson;
+                else if (m_queryparams && (m_queryparams->hasProp("reqjson_")))
+                    m_sstype=sub_serv_reqsamplejson;
                 else if (m_queryparams && (m_queryparams->hasProp("soap_builder_")))
                     m_sstype=sub_serv_soap_builder;
                 else if (m_queryparams && (m_queryparams->hasProp("roxie_builder_")))
@@ -2445,4 +2445,10 @@ bool CHttpResponse::handleExceptions(IXslProcessor *xslp, IMultiException *me, c
         return true;
     }
     return false;
+}
+
+void CHttpResponse::handleExceptions(IXslProcessor *xslp, IMultiException *me, const char *serv, const char *meth, const char *errorXslt, bool logHandleExceptions)
+{
+    if (handleExceptions(xslp, me, serv, meth, errorXslt) && logHandleExceptions)
+        PROGLOG("Exception(s) handled");
 }

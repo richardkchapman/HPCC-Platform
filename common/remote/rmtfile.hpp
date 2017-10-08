@@ -54,7 +54,7 @@ extern REMOTE_API void setDaliServixSocketCaching(bool set);
 extern REMOTE_API bool canAccessDirectly(const RemoteFilename & file);
 extern REMOTE_API IFile *createDaliServixFile(const RemoteFilename & file);
 extern REMOTE_API bool testDaliServixPresent(const IpAddress &ip);
-extern REMOTE_API bool testDaliServixPresent(const SocketEndpoint &ep);
+extern REMOTE_API unsigned short getActiveDaliServixPort(const IpAddress &ip);
 extern REMOTE_API unsigned getDaliServixVersion(const IpAddress &ip,StringBuffer &ver);
 extern REMOTE_API unsigned getDaliServixVersion(const SocketEndpoint &ep,StringBuffer &ver);
 extern REMOTE_API DAFS_OS getDaliServixOs(const SocketEndpoint &ep);
@@ -62,9 +62,6 @@ extern REMOTE_API DAFS_OS getDaliServixOs(const SocketEndpoint &ep);
 extern REMOTE_API void setLocalMountRedirect(const IpAddress &ip,const char *dir,const char *mountdir);
 // redirects a daliservix file to a local mount. To remove redirect use NULL for mount dir or NULL for dir
 
-
-extern REMOTE_API int remoteExec(const SocketEndpoint &ep,const char *cmdline, const char *workdir,bool sync,
-                                 size32_t insize, void *inbuf, MemoryBuffer *outbuf);
 
 extern REMOTE_API void remoteExtractBlobElements(const char * prefix, const RemoteFilename &file, ExtractedBlobArray & extracted);
 
@@ -102,7 +99,7 @@ extern REMOTE_API void setRemoteFileTimeouts(unsigned maxconnecttime,unsigned ma
 #define DAFS_VALIDATE_DISK_FULL_MIRROR   (0x28)
 #define DAFS_SCRIPT_FAIL            (0x40)
                                 
-extern REMOTE_API unsigned validateNodes(const SocketEndpointArray &eps,const char *dataDir, const char *mirrorDir, bool chkver, const char *script, unsigned scripttimeout, SocketEndpointArray &failures, UnsignedArray &failedcodes, StringArray &failedmessages, const char *filename=NULL);
+extern REMOTE_API unsigned validateNodes(const SocketEndpointArray &eps,const char *dataDir, const char *mirrorDir, bool chkver, SocketEndpointArray &failures, UnsignedArray &failedcodes, StringArray &failedmessages, const char *filename=NULL);
 
 extern REMOTE_API void installFileHooks(const char *filespec);
 extern REMOTE_API void removeFileHooks(); // Should be called before closedown

@@ -19,6 +19,7 @@
 #define _HTTPBINDING_HPP__
 
 #include "http/platform/httptransport.ipp"
+#include "espcache.hpp"
 
 #include "bindutil.hpp"
 #include "seclib.hpp"
@@ -91,6 +92,7 @@ interface IEspHttpBinding
     virtual int onGetReqSampleXml(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method)=0;
     virtual int onGetRespSampleXml(IEspContext &context, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method)=0;
     virtual int onGetRespSampleJson(IEspContext &context, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method)=0;
+    virtual int onGetReqSampleJson(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method)=0;
     virtual int onStartUpload(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method)=0;
     virtual int onFinishUpload(IEspContext &context, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method,
     StringArray& fileNames, StringArray& files, IMultiException *me)=0;
@@ -141,7 +143,35 @@ private:
     StringAttrMapping desc_map;
     StringAttrMapping help_map;
 
+    Owned<IEspCache> espCacheClient;
+    StringAttr espCacheInitString;
+    unsigned cacheMethods = 0;
+    MapStringTo<unsigned> cacheSecondsMap;
+    MapStringTo<bool> cacheGlobalMap;
+
+    bool queryCacheSeconds(const char *method, unsigned& cacheSecond);
+    bool queryCacheGlobal(const char *method);
+    const char* createESPCacheID(CHttpRequest* request, StringBuffer& cacheID);
+    void addToESPCache(CHttpRequest* request, CHttpResponse* response, const char* cacheID);
+    bool sendFromESPCache(CHttpRequest* request, CHttpResponse* response, const char* cacheID);
+
+    StringAttr              processName;
+    StringAttr              domainName;
+    StringBuffer            sessionSDSPath;
+    StringBuffer            espSessionSDSPath;
+    StringBuffer            sessionIDCookieName;
+    AuthType                domainAuthType;
+
+    StringAttr              loginURL;
+    StringAttr              logoutURL;
+    int                     clientSessionTimeoutSeconds = 60 * ESP_SESSION_TIMEOUT;
+    int                     serverSessionTimeoutSeconds = 120 * ESP_SESSION_TIMEOUT;
+    int                     checkSessionTimeoutSeconds = ESP_CHECK_SESSION_TIMEOUT; //the duration to clean timed out sesssions
+    BoolHash                domainAuthResources;
+    StringArray             domainAuthResourcesWildMatch;
+
     void getXMLMessageTag(IEspContext& ctx, bool isRequest, const char *method, StringBuffer& tag);
+
 protected:
     MethodInfoArray m_methods;
     bool                    m_includeSoapTest;
@@ -194,6 +224,16 @@ public:
     {
         StringBuffer key(method);
         help_map.setValue(key.toUpperCase().str(), help);
+    }
+    //The setCacheTimeout() is not thread safe because it is only called when ESP is
+    //starting and the WsWorkunits lib is loading.
+    void setCacheTimeout(const char *method, unsigned timeoutSeconds, bool global)
+    {
+        StringBuffer key(method);
+        cacheSecondsMap.setValue(key.toUpperCase().str(), timeoutSeconds);
+        cacheMethods++;
+        if (global)
+            cacheGlobalMap.setValue(key.str(), global);
     }
 
     int onGetConfig(IEspContext &context, CHttpRequest* request, CHttpResponse* response);
@@ -250,6 +290,7 @@ public:
     virtual int onGetReqSampleXml(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
     virtual int onGetRespSampleXml(IEspContext &context, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method);
     virtual int onGetRespSampleJson(IEspContext &context, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method);
+    virtual int onGetReqSampleJson(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
 
     virtual int onStartUpload(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
     virtual int onFinishUpload(IEspContext &context, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method,
@@ -287,14 +328,48 @@ public:
         }
         return false;
     }
-    ISecManager* querySecManager() {return m_secmgr.get(); }
+    ISecManager* querySecManager() const { return m_secmgr.get(); }
+    IAuthMap* queryAuthMAP() const { return m_authmap.get();}
+    const char* queryAuthMethod() const { return m_authmethod.str(); }
+    void setProcessName(const char* name) { processName.set(name); }
+    const char* queryProcessName() const { return processName.get(); }
+    void setDomainName(const char* name) { domainName.set(name ? name : "default"); }
+    const char* queryDomainName() const { return domainName.get(); }
+    void setSessionSDSPath(const char* path) { sessionSDSPath.set(path); }
+    const char* querySessionSDSPath() const { return sessionSDSPath.str(); }
+    void setESPSessionSDSPath(const char* path) { espSessionSDSPath.set(path); }
+    const char* queryESPSessionSDSPath() const { return espSessionSDSPath.str(); }
+    const char* querySessionIDCookieName() const { return sessionIDCookieName.str(); }
+    AuthType getDomainAuthType() const { return domainAuthType; }
+    const char* queryLoginURL() const { return loginURL.get(); }
+    const char* queryLogoutURL() const { return logoutURL.get(); }
+    int getClientSessionTimeoutSeconds() const { return clientSessionTimeoutSeconds; }
+    int getServerSessionTimeoutSeconds() const { return serverSessionTimeoutSeconds; }
+    int getCheckSessionTimeoutSeconds() const { return checkSessionTimeoutSeconds; }
+    bool isDomainAuthResources(const char* resource)
+    {
+        bool* found = domainAuthResources.getValue(resource);
+        if (found && *found)
+            return true;
+
+        ForEachItemIn(i, domainAuthResourcesWildMatch)
+        {
+            const char* wildResourcePath = domainAuthResourcesWildMatch.item(i);
+            if (WildMatch(resource, wildResourcePath, true))
+                return true;
+        }
+        return false;
+    }
+    void readAuthDomainCfg(IPropertyTree* procCfg);
+    void readUnrestrictedResources(const char* resources);
+    void setSDSSession();
 
     static void escapeSingleQuote(StringBuffer& src, StringBuffer& escaped);
 
 protected:
     virtual bool basicAuth(IEspContext* ctx);
     int getWsdlOrXsd(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *service, const char *method, bool isWsdl);
-    bool getSchema(StringBuffer& schema, IEspContext &ctx, CHttpRequest* req, const char *service, const char *method,bool standalone);
+    virtual bool getSchema(StringBuffer& schema, IEspContext &ctx, CHttpRequest* req, const char *service, const char *method,bool standalone);
     virtual void appendSchemaNamespaces(IPropertyTree *namespaces, IEspContext &ctx, CHttpRequest* req, const char *service, const char *method){}
     void generateSampleXml(bool isRequest, IEspContext &context, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method);
     void generateSampleXml(bool isRequest, IEspContext &context, CHttpRequest* request, StringBuffer &content, const char *serv, const char *method);
@@ -308,7 +383,6 @@ protected:
                             const char *serviceName, const char* methodName);
     void sortResponse(IEspContext& context, CHttpRequest* request,MemoryBuffer& contentconst,
                             const char *serviceName, const char* methodName);
-    const char* queryAuthMethod() {return m_authmethod.str(); }
 };
 
 inline bool isEclIdeRequest(CHttpRequest *request)

@@ -99,7 +99,6 @@
 #define HQLERR_OverwriteMismatch                4075
 #define HQLERR_ExtendOverwriteMismatch          4076
 #define HQLERR_EmbeddedCppNotAllowed            4078
-#define HQLERR_ContentsInSoapCall               4079
 #define HQLERR_FullKeyedNeedsFile               4081
 #define HQLERR_ExpectedConstant                 4082
 #define HQLERR_AccessRowBlobInsideChildQuery    4083
@@ -225,6 +224,7 @@
 #define HQLERR_DatasetPassedToRowArg            4205
 #define HQLERR_DedupBestWithKeepn               4206
 #define HQLERR_HashStoredDuplication            4207
+#define HQLERR_DatafileRequiresSigned           4208
 
 //Warnings....
 #define HQLWRN_PersistDataNotLikely             4500
@@ -327,6 +327,7 @@
 #define HQLERR_ReadSpillBeforeWriteFix          4838
 #define HQLERR_AccessUnavailableGraph           4839
 #define HQLERR_NoMappingForField                4840
+#define HQLERR_InvalidMatchedPatternInJoin      4841
 //#define HQLERR_Max                            4999
 
 //---- Text for all errors (make it easy to internationalise) ---------------------------
@@ -358,6 +359,7 @@
 #define HQLERR_IndexTypeNotSupported_Text       "Index is not supported for type %s yet"
 #define HQLERR_RankOnNull_Text                  "RANK has no meaning on an empty list"
 #define HQLERR_MatchedUsedOutsideParse_Text     "%s can only be used in a record supplied to a PARSE() command"
+#define HQLERR_InvalidMatchedPatternInJoin_Text "MATCHED parameter in JOIN/DENORMALIZE must refer to current LEFT or RIGHT"
 #define HQLERR_BadMatchedPath_Text              "The parameter to MATCHED(%s) is not found in the pattern"
 #define HQLERR_RoxieExpectedConstantFilename_Text "Roxie requires constant filenames - expression %s cannot be computed at deployment time"
 #define HQLERR_MatchTextNotUnicode_Text         "MATCHTEXT found where MATCHUNICODE was expected"
@@ -406,7 +408,6 @@
 #define HQLERR_OverwriteMismatch_Text           "OVERWRITE is required on all outputs to NAMED(%s)"
 #define HQLERR_ExtendOverwriteMismatch_Text     "OVERWRITE/EXTEND should be consistent on all outputs to NAMED(%s)"
 #define HQLERR_EmbeddedCppNotAllowed_Text       "Insufficient access rights to use embedded code"
-#define HQLERR_ContentsInSoapCall_Text          "Tag contents syntax <> is not supported by SOAPCALL"
 #define HQLERR_FullKeyedNeedsFile_Text          "RIGHT side of a full keyed join must be a disk file"
 #define HQLERR_ExpectedConstant_Text            "Expression is not constant: %s"
 #define HQLERR_AccessRowBlobInsideChildQuery_Text "Unimplemented: Cannot access row blob inside a child query, contact tech support"
@@ -527,6 +528,7 @@
 #define HQLERR_DatasetPassedToRowArg_Text       "Cannot pass a dataset to row argument %s"
 #define HQLERR_DedupBestWithKeepn_Text          "DEDUP with BEST does not support KEEP"
 #define HQLERR_HashStoredDuplication_Text       "Inconsistent #%s(%s, %s) and #%s(%s, %s)"
+#define HQLERR_DatafileRequiresSigned_Text      "Insufficient access rights to use datafiles"
 
 //Warnings.
 #define HQLWRN_CannotRecreateDistribution_Text  "Cannot recreate the distribution for a persistent dataset"

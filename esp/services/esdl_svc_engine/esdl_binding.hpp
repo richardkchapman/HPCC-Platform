@@ -303,6 +303,8 @@ private:
     Owned<CESDLDefinitionSubscription>      m_pDefinitionSubscription;
     CriticalSection                         configurationLoadCritSec;
     StringBuffer                            m_esdlStateFilesLocation;
+    MapStringTo<SecAccessFlags>             m_accessmap;
+    StringBuffer                            m_staticNamespace;
 
     virtual void clearDESDLState()
     {
@@ -339,7 +341,7 @@ public:
     void handleJSONPost(CHttpRequest *request, CHttpResponse *response);
 
     int onGetXsd(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serviceName, const char *methodName);
-    virtual bool getSchema(StringBuffer& schema, IEspContext &ctx, CHttpRequest* req, const char *service, const char *method, bool standalone);
+    virtual bool getSchema(StringBuffer& schema, IEspContext &ctx, CHttpRequest* req, const char *service, const char *method, bool standalone) override;
     int onGetWsdl(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serviceName, const char *methodName);
     int onJavaPlugin(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serviceName, const char *methodName);
 
@@ -366,7 +368,6 @@ public:
     virtual StringBuffer &generateNamespace(IEspContext &context, CHttpRequest* request, const char *serv, const char *method, StringBuffer &ns);
     virtual int onGetReqSampleXml(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
     virtual int onGetRespSampleXml(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
-    virtual int onGetRespSampleJson(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
     virtual void handleSoapRequestException(IException *e, const char *source);
 
     int onGetSampleXml(bool isRequest, IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
@@ -376,11 +377,12 @@ public:
 
     bool usesESDLDefinition(const char * name, int version);
     bool usesESDLDefinition(const char * id);
+    virtual bool isDynamicBinding() const override { return true; }
+    virtual unsigned getCacheMethodCount(){return 0;}
 
 private:
     int onGetRoxieBuilder(CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method);
     int onRoxieRequest(CHttpRequest* request, CHttpResponse* response, const char *  method);
-    bool getRoxieConfig(StringBuffer & queryName, StringBuffer & url, StringBuffer & username, StringBuffer & password, const char *method);
     void getSoapMessage(StringBuffer& out,StringBuffer& soapresp,const char * starttxt,const char * endtxt);
 
     bool reloadBindingFromDali(const char *binding, const char *process);

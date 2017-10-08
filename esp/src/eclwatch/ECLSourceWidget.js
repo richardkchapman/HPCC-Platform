@@ -20,6 +20,7 @@ define([
     "dojo/i18n!./nls/hpcc",
     "dojo/dom",
     "dojo/request/xhr",
+    "dojo/topic",
 
     "dijit/layout/BorderContainer",
     "dijit/layout/ContentPane",
@@ -34,7 +35,7 @@ define([
     "dijit/ToolbarSeparator",
     "dijit/form/Button"
 
-], function (declare, lang, i18n, nlsHPCC, dom, xhr,
+], function (declare, lang, i18n, nlsHPCC, dom, xhr, topic,
             BorderContainer, ContentPane, registry,
             _Widget, ESPWorkunit,
             template) {
@@ -117,6 +118,8 @@ define([
                     }
                 } else if (lang.exists("ECL", params)) {
                     this.setText(params.ECL ? params.ECL : "");
+                } else if (lang.exists("Usergenerated", params)) {
+                    this.setText(params.Usergenerated);
                 } else if (lang.exists("sourceURL", params)) {
                     xhr(params.sourceURL, {
                         handleAs: "text"

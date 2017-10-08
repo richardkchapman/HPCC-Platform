@@ -42,7 +42,9 @@
 #include "rtlds_imp.hpp"
 #include "rtlfield.hpp"
 #include "roxiemem.hpp"
+#include <time.h>
 
+#include <vector>
 
 namespace couchbaseembed
 {
@@ -174,8 +176,6 @@ namespace couchbaseembed
         virtual const void* nextRow();
         virtual void stop();
     private:
-        Couchbase::Query *              m_CouchBaseQuery;   //!< pointer to couchbase query (holds results and metadata)
-
         Linked<IEngineRowAllocator>     m_resultAllocator;  //!< Pointer to allocator used when building result rows
         bool                            m_shouldRead;       //!< If true, we should continue trying to read more messages
         StringArray                     m_Rows;             //!< Local copy of result rows
@@ -186,41 +186,85 @@ namespace couchbaseembed
     class CouchbaseConnection : public CInterface
     {
     public:
-        inline CouchbaseConnection(bool useSSL, const char * host, unsigned port, const char * bucketname, const char * user, const char * password, const char * connOptions)
+        CouchbaseConnection(bool useSSL, const char * host, unsigned port, const char * bucketname, const char * password, const char * connOptions)
         {
-            m_connectionString.setf("couchbase%s://%s:%d/%s%s", useSSL ? "s" : "", host, port, bucketname, connOptions);
-            m_pCouchbaseClient = new Couchbase::Client(m_connectionString.str());//USER/PASS still needed
-            m_pQuery = nullptr;
+            StringBuffer connectionString;
+
+            makeConnectionString(useSSL, host, port, bucketname, connOptions, connectionString);
+            m_pCouchbaseClient = new Couchbase::Client(connectionString.str(), password);
+            timeLastUsed = 0;
         }
 
-        inline ~CouchbaseConnection()
+        CouchbaseConnection(const StringBuffer& connectionString, const char * password)
         {
+            m_pCouchbaseClient = new Couchbase::Client(connectionString.str(), password);
+            timeLastUsed = 0;
         }
 
-        inline void connect()
+        virtual ~CouchbaseConnection()
         {
-            m_connectionStatus = m_pCouchbaseClient->connect();
-            if (!m_connectionStatus.success())
-                failx("Failed to connect to couchbase instance: %s Reason: %s", m_connectionString.str(), m_connectionStatus.description());
+            if (m_pCouchbaseClient)
+            {
+                delete m_pCouchbaseClient;
+                m_pCouchbaseClient = nullptr;
+            }
+        }
+
+        static void makeConnectionString(bool useSSL, const char * host, unsigned port, const char * bucketname, const char * connOptions, StringBuffer& out)
+        {
+            out.setf("couchbase%s://%s:%d/%s%s", useSSL ? "s" : "", host, port, bucketname, connOptions);
         }
 
         Couchbase::Query * query(Couchbase::QueryCommand * qcommand);
 
+        inline void connect() { m_connectionStatus = m_pCouchbaseClient->connect(); }
+        inline const Couchbase::Status& getConnectionStatus() const { return m_connectionStatus; }
+        inline time_t getTimeTouched() const { return timeLastUsed; }
+        inline void updateTimeTouched() {timeLastUsed = time(NULL); }
+
     private:
-        StringBuffer m_connectionString;
         Couchbase::Client * m_pCouchbaseClient;
         Couchbase::Status  m_connectionStatus;
-        Couchbase::Query  * m_pQuery;
 
         CouchbaseConnection(const CouchbaseConnection &);
+
+        time_t timeLastUsed;
+    };
+
+    enum PathNodeType {CPNTScalar, CPNTDataset, CPNTSet};
+
+    struct PathTracker
+    {
+        StringBuffer    nodeName;
+        PathNodeType    nodeType;
+        unsigned int    currentChildIndex;
+        unsigned int    childCount;
+        unsigned int    childrenProcessed;
+
+        // Simple constructor
+        PathTracker()
+        {}
+
+        // Constructor given node name and dataset bool
+        PathTracker(const StringBuffer& _nodeName, PathNodeType _nodeType)
+            :   nodeName(_nodeName), nodeType(_nodeType), currentChildIndex(0), childCount(0), childrenProcessed(0)
+        {}
+
+        // Copy constructor
+        PathTracker(const PathTracker& other)
+            :   nodeName(other.nodeName), nodeType(other.nodeType), currentChildIndex(other.currentChildIndex), childCount(other.childCount), childrenProcessed(other.childrenProcessed)
+        {}
     };
 
     class CouchbaseRowBuilder : public CInterfaceOf<IFieldSource>
     {
     public:
-        CouchbaseRowBuilder(IPropertyTree * resultrow) :  m_fieldsProcessedCount(0), m_rowFieldCount(0)
+        CouchbaseRowBuilder(IPropertyTree * resultrow)
         {
             m_oResultRow.set(resultrow);
+            if (!m_oResultRow)
+                failx("Missing result row data");
+            m_pathStack.reserve(10);
         }
 
         virtual bool getBooleanResult(const RtlFieldInfo *field);
@@ -232,33 +276,23 @@ namespace couchbaseembed
         virtual void getUTF8Result(const RtlFieldInfo *field, size32_t &chars, char * &result);
         virtual void getUnicodeResult(const RtlFieldInfo *field, size32_t &chars, UChar * &result);
         virtual void getDecimalResult(const RtlFieldInfo *field, Decimal &value);
-        virtual void processBeginSet(const RtlFieldInfo * field, bool &isAll)
-        {
-            UNSUPPORTED("Embedded Couchbase support error: processBeginSet() not supported");
-        }
-        virtual bool processNextSet(const RtlFieldInfo * field)
-        {
-            UNSUPPORTED("Embedded Couchbase support error: processNextSet() not supported");
-            return false;
-        }
+        virtual void processBeginSet(const RtlFieldInfo * field, bool &isAll);
+        virtual bool processNextSet(const RtlFieldInfo * field);
         virtual void processBeginDataset(const RtlFieldInfo * field);
         virtual void processBeginRow(const RtlFieldInfo * field);
         virtual bool processNextRow(const RtlFieldInfo * field);
-        virtual void processEndSet(const RtlFieldInfo * field)
-        {
-            UNSUPPORTED("Embedded Couchbase support error: processEndSet() not supported");
-        }
+        virtual void processEndSet(const RtlFieldInfo * field);
         virtual void processEndDataset(const RtlFieldInfo * field);
         virtual void processEndRow(const RtlFieldInfo * field);
 
     protected:
         const char * nextField(const RtlFieldInfo * field);
+        void xpathOrName(StringBuffer & outXPath, const RtlFieldInfo * field) const;
+        void constructNewXPath(StringBuffer& outXPath, const char * nextNode) const;
     private:
         TokenDeserializer m_tokenDeserializer;
         Owned<IPropertyTree> m_oResultRow;
-        Owned<IPropertyTree> m_oNestedField;
-        int m_fieldsProcessedCount;
-        int m_rowFieldCount;
+        std::vector<PathTracker> m_pathStack;
     };
 
     // Bind Couchbase columns from an ECL record
@@ -343,14 +377,14 @@ namespace couchbaseembed
         {
             while (bindNext())
             {
-                auto m_pQuery = conn->query(m_pQcmd);
+                std::unique_ptr<Couchbase::Query> query(conn->query(m_pQcmd));
 
-                if (m_pQuery->meta().status().errcode() != LCB_SUCCESS )//rows.length() == 0)
-                    failx("Query execution error: %s", m_pQuery->meta().body().to_string().c_str());
+                if (query->meta().status().errcode() != LCB_SUCCESS )//rows.length() == 0)
+                    failx("Query execution error: %s", query->meta().body().to_string().c_str());
 
                 //consider parsing json result
-                if (strstr(m_pQuery->meta().body().data(), "\"status\": \"errors\""))
-                    failx("Err: %s", m_pQuery->meta().body().data());
+                if (strstr(query->meta().body().data(), "\"status\": \"errors\""))
+                    failx("Err: %s", query->meta().body().data());
             }
         }
 
@@ -362,6 +396,7 @@ namespace couchbaseembed
     {
        public:
            CouchbaseEmbedFunctionContext(const IContextLogger &_logctx, const char *options, unsigned _flags);
+           virtual ~CouchbaseEmbedFunctionContext();
            IPropertyTree * nextResultRowTree();
            IPropertyTreeIterator * nextResultRowIterator();
            const char * nextResultScalar();
@@ -381,7 +416,7 @@ namespace couchbaseembed
            virtual IRowStream * getDatasetResult(IEngineRowAllocator * _resultAllocator);
            virtual byte * getRowResult(IEngineRowAllocator * _resultAllocator);
            virtual size32_t getTransformResult(ARowBuilder & rowBuilder);
-           virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, byte *val);
+           virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, const byte *val) override;
            virtual void bindDatasetParam(const char *name, IOutputMetaData & metaVal, IRowStream * val);
            virtual void bindBooleanParam(const char *name, bool val);
            virtual void bindDataParam(const char *name, size32_t len, const void *val);
@@ -424,15 +459,14 @@ namespace couchbaseembed
            unsigned checkNextParam(const char *name);
 
            const IContextLogger &logctx;
-           Owned<CouchbaseConnection>    m_oCBConnection;
-           Couchbase::Client           * m_pCouchbaseClient;
+           CouchbaseConnection         * m_oCBConnection;
            Couchbase::Query            * m_pQuery;
            Couchbase::QueryCommand     * m_pQcmd;
+           Owned<IPropertyTreeIterator>  m_resultrow;
 
            StringArray m_Rows;
            int m_NextRow;
            Owned<CouchbaseDatasetBinder> m_oInputStream;
-           Couchbase::Internal::RowIterator<Couchbase::QueryRow> * cbQueryIterator;
            TokenDeserializer m_tokenDeserializer;
            TokenSerializer m_tokenSerializer;
            unsigned m_nextParam;

@@ -118,13 +118,20 @@ protected:
         return (node) ? node->getPropBool("@resolveLocally", false) : true;  // default is false for explicit package files, but true for the default empty package
     }
 
-    virtual bool getSysFieldTranslationEnabled() const {return false;}
-    virtual bool getEnableFieldTranslation() const
+    virtual IRecordLayoutTranslator::Mode getSysFieldTranslationEnabled() const { return IRecordLayoutTranslator::NoTranslation; }
+    virtual IRecordLayoutTranslator::Mode getEnableFieldTranslation() const
     {
         const char *val = queryEnv("control:enableFieldTranslation");
         if (!val) val = queryEnv("enableFieldTranslation"); // Backward compatibility
         if (val)
-            return strToBool(val);
+        {
+            if (strieq(val, "payload"))
+                return IRecordLayoutTranslator::TranslatePayload;
+            else if (strToBool(val))
+                return IRecordLayoutTranslator::TranslateAll;
+            else
+                return IRecordLayoutTranslator::NoTranslation;
+        }
         else
             return getSysFieldTranslationEnabled();
     }
@@ -308,6 +315,7 @@ public:
     bool active;
     bool compulsory;
     StringArray wildMatches, wildIds;
+    StringArray parts;
 public:
     IMPLEMENT_IINTERFACE;
     CPackageMapOf(const char *_packageId, const char *_querySet, bool _active)
@@ -382,10 +390,18 @@ public:
     }
     void loadPart(IPropertyTree &part)
     {
+        const char *id = part.queryProp("@id");
+        if (id && *id)
+            parts.append(id);
         Owned<IPropertyTreeIterator> partPackages = part.getElements("Package");
         ForEach(*partPackages)
             loadPackage(partPackages->query());
     }
+    const StringArray &getPartIds() const override
+    {
+        return parts;
+    }
+
     void load(IPropertyTree *xml)
     {
         if (!xml)
@@ -434,7 +450,7 @@ public:
                 Owned<ISimpleSuperFileEnquiry> ssfe = pkg->resolveSuperFile(rf.getLogicalName());
                 if (ssfe && ssfe->numSubFiles()>0)
                 {
-                    IPropertyTree *superInfo = fileInfo->addPropTree("SuperFile", createPTree());
+                    IPropertyTree *superInfo = fileInfo->addPropTree("SuperFile");
                     superInfo->setProp("@name", rf.getLogicalName());
                     unsigned count = ssfe->numSubFiles();
                     while (count--)
@@ -479,7 +495,7 @@ public:
                     referencedPackages.setValue(baseId, true);
             }
         }
-        Owned<IPropertyTree> tempQuerySet=createPTree();
+        Owned<IPropertyTree> tempQuerySet=createPTree(ipt_fast);
         Owned<IPropertyTreeIterator> queries;
         if (queriesToCheck.length())
         {

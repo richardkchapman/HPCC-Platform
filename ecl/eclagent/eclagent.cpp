@@ -40,6 +40,7 @@
 #include "workunit.hpp"
 #include "eventqueue.hpp"
 #include "schedulectrl.hpp"
+#include "jhtree.hpp"
 
 #include "mpbase.hpp"
 #include "daclient.hpp"
@@ -1020,7 +1021,7 @@ void EclAgent::getExternalResultRaw(unsigned & tlen, void * & tgt, const char * 
     }
 }
 
-void EclAgent::getResultRowset(size32_t & tcount, byte * * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer)
+void EclAgent::getResultRowset(size32_t & tcount, const byte * * & tgt, const char * stepname, unsigned sequence, IEngineRowAllocator * _rowAllocator, bool isGrouped, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer)
 {
     tgt = NULL;
     PROTECTED_GETRESULT(stepname, sequence, "Rowset", "rowset",
@@ -1034,7 +1035,7 @@ void EclAgent::getResultRowset(size32_t & tcount, byte * * & tgt, const char * s
     );
 }
 
-void EclAgent::getResultDictionary(size32_t & tcount, byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher)
+void EclAgent::getResultDictionary(size32_t & tcount, const byte * * & tgt, IEngineRowAllocator * _rowAllocator, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer, IHThorHashLookupInfo * hasher)
 {
     tcount = 0;
     tgt = NULL;
@@ -1823,6 +1824,7 @@ void EclAgent::doProcess()
     PrintLog ("Entering doProcess ()");
 #endif
     bool failed = true;
+    CCycleTimer elapsedTimer;
     try
     {
         LOG(MCrunlock, unknownJob, "Waiting for workunit lock");
@@ -1844,7 +1846,7 @@ void EclAgent::doProcess()
             if(noRetry && (w->getState() == WUStateFailed))
                 throw MakeStringException(0, "Ecl agent started in 'no retry' mode for failed workunit, so failing");
             w->setState(WUStateRunning);
-            addTimeStamp(w, SSTglobal, NULL, StWhenQueryStarted);
+            addTimeStamp(w, SSTglobal, NULL, StWhenStarted);
             if (isRemoteWorkunit)
             {
                 w->setAgentSession(myProcessSession());
@@ -1914,7 +1916,8 @@ void EclAgent::doProcess()
 
         WorkunitUpdate w = updateWorkUnit();
 
-        addTimeStamp(w, SSTglobal, NULL, StWhenQueryFinished);
+        addTimeStamp(w, SSTglobal, NULL, StWhenFinished);
+        updateWorkunitTimeStat(w, SSTglobal, NULL, StTimeElapsed, nullptr, elapsedTimer.elapsedNs());
         addTimings();
 
         switch (w->getState())
@@ -3135,7 +3138,7 @@ void EclAgent::fatalAbort(bool userabort,const char *excepttext)
         if (userabort) 
             w->setState(WUStateAborted);
         if (excepttext&&*excepttext)
-            addException(SeverityError, "ECLAGENT", 1000, excepttext, NULL, 0, 0, true, false);
+            addException(SeverityError, "eclagent", 1000, excepttext, NULL, 0, 0, true, false);
         w->deleteTempFiles(NULL, false, true);
         wuRead.clear(); 
         w->commit();        // needed because we can't unlock the workunit in this thread
@@ -3423,7 +3426,7 @@ extern int HTHOR_API eclagent_main(int argc, const char *argv[], StringBuffer * 
                 Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
                 Owned<IWorkUnit> daliWu = factory->createWorkUnit("eclagent", "eclagent");
                 IExtendedWUInterface * extendedWu = queryExtendedWU(daliWu);
-                extendedWu->copyWorkUnit(standAloneWorkUnit, true);
+                extendedWu->copyWorkUnit(standAloneWorkUnit, true, true);
                 wuid.set(daliWu->queryWuid());
                 globals->setProp("WUID", wuid.str());
 

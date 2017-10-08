@@ -446,8 +446,8 @@ public:
     ITypeInfo *checkType(attribute &e1, attribute &e2);
     bool checkAlienTypeDef(IHqlScope* scope, const attribute& errpos);
     IHqlExpression* checkServiceDef(IHqlScope* serviceScope,IIdAtom * name, IHqlExpression* attrs, const attribute& errpos);
-    void checkConstant(attribute & attr);
-    IHqlExpression * checkConstant(const attribute & errpos, IHqlExpression * expr);
+    void checkConstant(attribute & attr, bool callAllowed);
+    IHqlExpression * checkConstant(const attribute & errpos, IHqlExpression * expr, bool callAllowed);
     void checkConstantEvent(attribute & attr);
     IHqlExpression * checkConcreteModule(const attribute & errpos, IHqlExpression * expr);
     void checkFoldConstant(attribute & attr);
@@ -478,6 +478,8 @@ public:
     void checkExportedModule(const attribute & errpos, IHqlExpression * scopeExpr);
     bool checkCompatibleSymbol(const attribute & errpos, IHqlExpression * prevValue, IHqlExpression * newValue);
     bool checkAllowed(const attribute & errpos, const char *category, const char *description);
+    void saveDiskAccessInformation(const attribute & errpos, HqlExprArray & options);
+    void saveDiskAccessInformation(const attribute & errpos, OwnedHqlExpr & options);
     IHqlExpression * createAveList(const attribute & errpos, IHqlExpression * list);
     IHqlExpression * createIff(attribute & condAttr, attribute & leftAttr, attribute & rightAttr);
     IHqlExpression * createListFromExpressionList(attribute & attr);
@@ -510,6 +512,7 @@ public:
     bool isSingleValuedExpressionList(const attribute & attr);
     bool convertAllToAttribute(attribute &atr);
     IHqlExpression * convertToOutOfLineFunction(const ECLlocation & errpos, IHqlExpression  * expr);
+    IHqlExpression * convertToInlineFunction(const ECLlocation & errpos, IHqlExpression  * expr);
 
     void ensureBoolean(attribute &a);
     void ensureDataset(attribute & attr);
@@ -576,7 +579,7 @@ public:
     void beginDefineId(IIdAtom * name, ITypeInfo * type);
 
     IHqlExpression * processAlienType(const attribute & errpos);
-    IHqlExpression * processIndexBuild(attribute & indexAttr, attribute * recordAttr, attribute * payloadAttr, attribute & filenameAttr, attribute & flagsAttr);
+    IHqlExpression * processIndexBuild(const attribute &err, attribute & indexAttr, attribute * recordAttr, attribute * payloadAttr, attribute & filenameAttr, attribute & flagsAttr);
     IHqlExpression * processCompoundFunction(attribute & result, bool outOfLine);
     IHqlExpression * processEmbedBody(const attribute & errpos, IHqlExpression * embedText, IHqlExpression * language, IHqlExpression *attribs);
     IHqlExpression * getGpgSignature();
@@ -803,6 +806,7 @@ protected:
     void normalizeStoredNameExpression(attribute & a);
     void checkPatternFailure(attribute & attr);
     void checkDistributer(const ECLlocation & errPos, HqlExprArray & args);
+    void checkConcreteRecord(attribute & cur);
     IHqlExpression * createScopedSequenceExpr();
     IHqlExpression * createPatternOr(HqlExprArray & args, const attribute & errpos);
     IHqlExpression * mapAlienArg(IHqlSimpleScope * scope, IHqlExpression * expr);

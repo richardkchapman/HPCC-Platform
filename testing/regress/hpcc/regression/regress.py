@@ -25,10 +25,9 @@ import thread
 import threading
 import inspect
 
-from ..common.config import Config
 from ..common.error import Error
 from ..common.logger import Logger
-from ..common.report import Report, Tee
+from ..common.report import Report
 from ..regression.suite import Suite
 from ..util.ecl.cc import ECLCC
 from ..util.ecl.command import ECLcmd
@@ -535,7 +534,7 @@ class Regression:
                                           password=self.config.password,
                                           retryCount=self.config.maxAttemptCount)
                 except Error as e:
-                    logging.debug("Exception raised:'%s'"  % ( str(e)),  extra={'taskId':cnt})
+                    logging.debug("Exception raised:'%s' (line: %s )"  % ( str(e), str(inspect.stack()[0][2]) ),  extra={'taskId':cnt})
                     res = False
                     wuid = 'Not found'
                     query.setWuid(wuid)
@@ -543,7 +542,7 @@ class Regression:
                     report[0].addResult(query)
                     pass
                 except:
-                    logging.error("Unexpected error:'%s'" %( sys.exc_info()[0]) ,  extra={'taskId':cnt})
+                    logging.error("Unexpected error:'%s' (line: %s )" %( sys.exc_info()[0], str(inspect.stack()[0][2]) ) ,  extra={'taskId':cnt})
 
                 wuid = query.getWuid()
                 logging.debug("CMD result: '%s', wuid:'%s'"  % ( res,  wuid),  extra={'taskId':cnt})
@@ -555,7 +554,11 @@ class Regression:
             wuid="N/A"
 
         if wuid and wuid.startswith("W"):
-            url = "http://" + self.config.espIp+self.config.espSocket
+            if self.config.useSsl.lower() == 'true':
+                url = "https://"
+            else:
+                url = "http://"
+            url += self.config.espIp + ":" + self.config.espSocket
             url += "/?Widget=WUDetailsWidget&Wuid="
             url += wuid
         elif query.testFail():

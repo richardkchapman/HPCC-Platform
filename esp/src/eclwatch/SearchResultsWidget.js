@@ -333,12 +333,13 @@ define([
         },
 
         loadGetDFUWorkunitResponse: function (prefix, response) {
+            var context = this;
             var workunit = lang.getObject("GetDFUWorkunitResponse.result", false, response)
             if (workunit && workunit.State !== 999) {
                 var idPrefix = prefix.split(" ").join("_");
                 this.store.add({
                     storeID: ++context._rowID,
-                    id: context.id + item.ID,
+                    id: context.id + workunit.ID,
                     Type: context.i18n.DFUWorkunit,
                     Reason: prefix,
                     Summary: workunit.ID,
@@ -436,6 +437,7 @@ define([
             }
 
             var searchECL = false;
+            var searchECLText = false;
             var searchDFU = false;
             var searchFile = false;
             var searchQuery = false;
@@ -443,6 +445,7 @@ define([
             if (this.searchText.indexOf("ecl:") === 0) {
                 this.selectChild(this.eclTab);
                 searchECL = true;
+                searchECLText = true;
                 searchText = this.searchText.substring(4);
             } else if (this.searchText.indexOf("dfu:") === 0) {
                 this.selectChild(this.dfuTab);
@@ -477,6 +480,8 @@ define([
                 searchArray.push(WsWorkunits.WUQuery({ request: { Owner: searchText } }).then(function (response) {
                     context.loadWUQueryResponse(context.i18n.Owner, response);
                 }));
+            }
+            if (searchECLText) {
                 searchArray.push(WsWorkunits.WUQuery({ request: { ECL: searchText } }).then(function (response) {
                     context.loadWUQueryResponse(context.i18n.ECL, response);
                 }));

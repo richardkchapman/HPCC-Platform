@@ -467,6 +467,7 @@ public:
         lock.clear();
         conn = NULL;
     }
+    void commit() { if (conn) conn->commit(); }
     IPropertyTree *queryRoot() const
     {
         return lock.get() ? lock->queryRoot() : NULL;
@@ -563,6 +564,7 @@ public:
         return CFileSubLock::init(logicalName, mode, "Attr", conn, timeout, msg);
     }
     IPropertyTree *queryRoot() const { return CFileSubLock::queryRoot(); }
+    void commit() { CFileSubLock::commit(); }
 };
 
 class CFileLockCompound : protected CFileLockBase
@@ -4586,8 +4588,18 @@ public:
         else
         {
             CFileAttrLock attrLock;
-            if (0 == proplockcount && conn)
-                verifyex(attrLock.init(logicalName, DXB_File, RTM_LOCK_WRITE, conn, defaultTimeout, "CDistributedFile::setAccessedTime"));
+            if (conn)
+            {
+                if (!attrLock.init(logicalName, DXB_File, RTM_LOCK_WRITE, conn, defaultTimeout, "CDistributedFile::setAccessedTime"))
+                {
+                    // In unlikely event File/Attr doesn't exist, must ensure created, commited and root connection is reloaded.
+                    verifyex(attrLock.init(logicalName, DXB_File, RTM_LOCK_WRITE|RTM_CREATE_QUERY, conn, defaultTimeout, "CDistributedFile::setAccessedTime"));
+                    attrLock.commit();
+                    conn->commit();
+                    conn->reload();
+                    root.setown(conn->getRoot());
+                }
+            }
             if (dt.isNull())
                 queryAttributes().removeProp("@accessed");
             else
@@ -7003,6 +7015,8 @@ public:
                     cached = true;
                     if (entry.exception)
                         throw LINK(entry.exception);
+                    if (!entry.group)  //cache entry of a deleted groupname
+                        return NULL;
                     if (range.length()==0)
                     {
                         if (dirret)
@@ -9708,7 +9722,7 @@ bool removeClusterSpares(const char *clusterName, const char *type, SocketEndpoi
     return init.removeSpares(clusterName, type, eps, response);
 }
 
-IGroup *getClusterNodeGroup(const char *clusterName, const char *type, unsigned timems)
+static IGroup *getClusterNodeGroup(const char *clusterName, const char *type, bool processGroup, unsigned timems)
 {
     VStringBuffer clusterPath("/Environment/Software/%s[@name=\"%s\"]", type, clusterName);
     Owned<IRemoteConnection> conn = querySDS().connect(clusterPath.str(), myProcessSession(), RTM_LOCK_READ, SDS_CONNECT_TIMEOUT);
@@ -9734,9 +9748,23 @@ IGroup *getClusterNodeGroup(const char *clusterName, const char *type, unsigned 
         throwStringExceptionV(0, "DFS cluster topology for '%s', does not match existing DFS group layout for group '%s'", clusterName, nodeGroupName.str());
     Owned<IGroup> clusterGroup = init.getGroupFromCluster(type, cluster, false);
     ICopyArrayOf<INode> nodes;
-    for (unsigned n=0; n<clusterGroup->ordinality(); n++)
-        nodes.append(nodeGroup->queryNode(n));
+    unsigned l=processGroup?cluster.getPropInt("@slavesPerNode", 1):1; // if process group requested, repeat clusterGroup slavesPerNode times.
+    for (unsigned t=0; t<l; t++)
+    {
+        for (unsigned n=0; n<clusterGroup->ordinality(); n++)
+            nodes.append(nodeGroup->queryNode(n));
+    }
     return createIGroup(nodes.ordinality(), nodes.getArray());
+}
+
+IGroup *getClusterNodeGroup(const char *clusterName, const char *type, unsigned timems)
+{
+    return getClusterNodeGroup(clusterName, type, false, timems);
+}
+
+IGroup *getClusterProcessNodeGroup(const char *clusterName, const char *type, unsigned timems)
+{
+    return getClusterNodeGroup(clusterName, type, true, timems);
 }
 
 
@@ -9931,7 +9959,19 @@ public:
         ForEachItemIn(m, matchingFiles)
         {
             CFileMatch &fileMatch = matchingFiles.item(m);
-            CDFAttributeIterator::serializeFileAttributes(mb, fileMatch.queryFileTree(), fileMatch.queryName(), fileMatch.queryIsSuper(), iterateFileFilterContainer->getSerializeFileAttrOptions());
+            unsigned pos = mb.length();
+            try
+            {
+                CDFAttributeIterator::serializeFileAttributes(mb, fileMatch.queryFileTree(), fileMatch.queryName(), fileMatch.queryIsSuper(), iterateFileFilterContainer->getSerializeFileAttrOptions());
+            }
+            catch (IException *e)
+            {
+                StringBuffer errMsg("Failed to serialize properties for file: ");
+                LOG(MCuserWarning, e, errMsg.append(fileMatch.queryName()));
+                e->Release();
+                mb.setLength(pos);
+                --count;
+            }
         }
         tookMs = msTick()-start;
         if (tookMs>100)
@@ -11209,6 +11249,37 @@ bool decodeChildGroupName(const char *gname,StringBuffer &parentname, StringBuff
     return true;
 }
 
+/* given a list of group offsets (positions), create a compact representation of the range
+ * compatible with the group range syntax, e.g. mygroup[1-5,8-10] or mygroup[1,5,10]
+ */
+StringBuffer &encodeChildGroupRange(UnsignedArray &positions, StringBuffer &rangeText)
+{
+    unsigned items = positions.ordinality();
+    if (0 == items)
+        return rangeText;
+    unsigned start = positions.item(0);
+    unsigned last = start;
+    rangeText.append('[');
+    unsigned p=1;
+    while (true)
+    {
+        unsigned pos = p==items ? NotFound : positions.item(p++);
+        if ((pos != last+1))
+        {
+            if (last-start>0)
+                rangeText.append(start).append('-').append(last);
+            else
+                rangeText.append(last);
+            if (NotFound == pos)
+                break;
+            rangeText.append(',');
+            start = pos;
+        }
+        last = pos;
+    }
+    return rangeText.append(']');
+}
+
 class CLightWeightSuperFileConn: implements ISimpleSuperFileEnquiry, public CInterface
 {
     CFileLock lock;
@@ -12130,7 +12201,7 @@ IDFProtectedIterator *CDistributedFileDirectory::lookupProtectedFiles(const char
 
 const char* DFUQResultFieldNames[] = { "@name", "@description", "@group", "@kind", "@modified", "@job", "@owner",
     "@DFUSFrecordCount", "@recordCount", "@recordSize", "@DFUSFsize", "@size", "@workunit", "@DFUSFcluster", "@numsubfiles",
-    "@accessed", "@numparts", "@compressedSize", "@directory", "@partmask", "@superowners", "@persistent", "@protect" };
+    "@accessed", "@numparts", "@compressedSize", "@directory", "@partmask", "@superowners", "@persistent", "@protect", "@compressed" };
 
 extern da_decl const char* getDFUQResultFieldName(DFUQResultField feild)
 {
@@ -12193,6 +12264,12 @@ IPropertyTreeIterator *deserializeFileAttrIterator(MemoryBuffer& mb, unsigned nu
             return;
         }
 
+        void setIsCompressed(IPropertyTree* file)
+        {
+            if (isCompressed(*file) || isFileKey(*file))
+                file->setPropBool(getDFUQResultFieldName(DFUQRFiscompressed), true);
+        }
+
         IPropertyTree *deserializeFileAttr(MemoryBuffer &mb, StringArray& nodeGroupFilter)
         {
             IPropertyTree *attr = getEmptyAttr();
@@ -12230,6 +12307,7 @@ IPropertyTreeIterator *deserializeFileAttrIterator(MemoryBuffer& mb, unsigned nu
             }
             attr->setPropInt64(getDFUQResultFieldName(DFUQRFsize), attr->getPropInt64(getDFUQResultFieldName(DFUQRForigsize), -1));//Sort the files with empty size to front
             setRecordCount(attr);
+            setIsCompressed(attr);
             return attr;
         }
 

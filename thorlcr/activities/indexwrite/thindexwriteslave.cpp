@@ -44,7 +44,7 @@ class IndexWriteSlaveActivity : public ProcessSlaveActivity, public ILookAheadSt
     Owned<IPropertyTree> metadata;
     Linked<IEngineRowAllocator> outRowAllocator;
 
-    bool buildTlk, inputStopped, active;
+    bool buildTlk, active;
     bool sizeSignalled;
     bool isLocal, singlePartKey, reportOverflow, fewcapwarned, refactor;
     unsigned __int64 totalCount;
@@ -60,17 +60,8 @@ class IndexWriteSlaveActivity : public ProcessSlaveActivity, public ILookAheadSt
     mptag_t mpTag2;
     Owned<IRowServer> rowServer;
 
-    void doStopInput()
-    {
-        if (!inputStopped)
-        {
-            inputStopped = true;
-            stop();
-        }
-    }
     void init()
     {
-        inputStopped = false;
         sizeSignalled = false;
         totalCount = 0;
         lastRowSize = firstRowSize = 0;
@@ -157,7 +148,9 @@ public:
     virtual void setInputStream(unsigned index, CThorInput &_input, bool consumerOrdered) override
     {
         PARENT::setInputStream(index, _input, consumerOrdered);
-        setLookAhead(0, createRowStreamLookAhead(this, inputStream, queryRowInterfaces(input), INDEXWRITE_SMART_BUFFER_SIZE, true, false, RCUNBOUND, this, &container.queryJob().queryIDiskUsage()));
+        // JCSMORE - not sure why you ever want a look ahead on a sink like this?
+        if (!isFastThrough(input))
+            setLookAhead(0, createRowStreamLookAhead(this, inputStream, queryRowInterfaces(input), INDEXWRITE_SMART_BUFFER_SIZE, true, false, RCUNBOUND, this, &container.queryJob().queryIDiskUsage()));
     }
     void open(IPartDescriptor &partDesc, bool isTopLevel, bool isVariable)
     {
@@ -376,7 +369,7 @@ public:
                     throw;
                 }
                 close(*partDesc, partCrc, true);
-                doStopInput();
+                stop();
             }
             else
             {
@@ -434,7 +427,7 @@ public:
                     throw;
                 }
                 close(*partDesc, partCrc, isLocal && !buildTlk && 1 == node);
-                doStopInput();
+                stop();
 
                 ActPrintLog("INDEXWRITE: Wrote %" RCPF "d records", processed & THORDATALINK_COUNT_MASK);
 
@@ -537,7 +530,8 @@ public:
     {
         if (processed & THORDATALINK_STARTED)
         {
-            doStopInput();
+            if (!inputStopped) // probably already stopped in process()
+                stop();
             processed |= THORDATALINK_STOPPED;
         }
         inputStream = NULL;

@@ -53,7 +53,6 @@ FOREACH( iFILES
     ${CMAKE_CURRENT_SOURCE_DIR}/eclscheduler.xsd
     ${CMAKE_CURRENT_SOURCE_DIR}/environment.xsd
     ${CMAKE_CURRENT_SOURCE_DIR}/esp_service_account.xsd
-    ${CMAKE_CURRENT_SOURCE_DIR}/esp_service_ecldirect.xsd
     ${CMAKE_CURRENT_SOURCE_DIR}/esp_service_wsecl.xsd
     ${CMAKE_CURRENT_SOURCE_DIR}/esp_service_wsecl2.xsd
     ${CMAKE_CURRENT_SOURCE_DIR}/GABConfig.xsd
@@ -90,6 +89,8 @@ FOREACH( iFILES
     ${CMAKE_CURRENT_SOURCE_DIR}/wslogging.xsd
     ${CMAKE_CURRENT_SOURCE_DIR}/cassandraloggingagent.xsd
     ${CMAKE_CURRENT_SOURCE_DIR}/daliplugin.xsd
+    ${CMAKE_CURRENT_SOURCE_DIR}/backupnode.xsd
+    ${CMAKE_CURRENT_SOURCE_DIR}/backupnode_vars.xsl
 )
     Install ( FILES ${iFILES} DESTINATION componentfiles/configxml COMPONENT Runtime)
 ENDFOREACH ( iFILES )

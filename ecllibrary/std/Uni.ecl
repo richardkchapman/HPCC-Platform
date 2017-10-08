@@ -1,4 +1,4 @@
-/*##############################################################################
+﻿/*##############################################################################
 ## HPCC SYSTEMS software Copyright (C) 2012 HPCC Systems®.  All rights reserved.
 ############################################################################## */
 
@@ -381,5 +381,85 @@ EXPORT unsigned4 WordCount(unicode text, varstring localename = '') :=
 
 EXPORT unicode GetNthWord(unicode text, unsigned4 n, varstring localename = '') :=
     lib_unicodelib.UnicodeLib.UnicodeLocaleGetNthWord(text, n, localename);
+
+/**
+ * Returns everything but the string's nth word and some whitespaces. Words are marked by the unicode break semantics.
+ * Trailing whitespaes are always removed with the word.
+ * Leading whitespaces are only removed with the word if the nth word is the first word.
+ * Returns a blank string if there are no words in the source string.
+ * Returns the source string if the number of words in the string is less than the n parameter's assigned value.
+ *
+ * @param text          The string to be broken into words.
+ * @param n             Which word should be removed from the string.
+ * @param localname     The locale to use for the break semantics.  Defaults to ''.
+ * @return              The string excluding the nth word.
+ */
+
+EXPORT ExcludeNthWord(unicode text, unsigned4 n, varstring localename = '') :=
+    lib_unicodelib.UnicodeLib.UnicodeLocaleExcludeNthWord(text, n, localename);
+
+/**
+ * Returns everything except the first word from the string.  Words are marked by the unicode break semantics.
+ * Whitespace before and after the first word is also removed.
+ *
+ * @param text          The string to be broken into words.
+ * @return              The string excluding the first word.
+ */
+
+EXPORT ExcludeFirstWord(unicode text, varstring localename = '') :=
+    lib_unicodelib.UnicodeLib.UnicodeLocaleExcludeNthWord(text, 1, localename);
+
+/**
+ * Returns everything except the last word from the string.  Word boundaries are marked by the unicode break semantics.
+ * Whitespace after a word is removed with the word and leading whitespace is removed with the first word.
+ *
+ * @param text          The string to be broken into words.
+ * @param localname     The locale to use for the break semantics. Defaults to ''.
+ * @return              The string excluding the last word.
+ */
+
+EXPORT unicode ExcludeLastWord(unicode text, varstring localename = '') :=
+    lib_unicodelib.UnicodeLib.UnicodeLocaleExcludeLastWord(text, localename);
+
+/**
+ * Returns the source string with the all characters that match characters in the search string replaced
+ * with the character at the corresponding position in the replacement string.
+ * The isEmpty() tests in the beginning of the function check for invalid sequences in addition to blank strings.
+ * If any of the isEmpty() tests are true, the function will return the source string.
+ *
+ * @param src           The string that is being tested.
+ * @param search        The string containing the set of characters to be included.
+ * @param replacement   The string containing the characters to act as replacements.
+ * @return              The string containing the source string but with the translated characters.
+ */
+
+EXPORT Translate(unicode text, unicode sear, unicode repl) :=
+    lib_unicodelib.UnicodeLib.UnicodeLocaleTranslate(text, sear, repl);
+
+/**
+ * Returns true if the prefix string matches the leading characters in the source string.  Trailing and Leading spaces
+ * are stripped from the prefix before matching. Unless specified, normalization will not occur. Unless initiated as hex and
+ * then converted to Unicode using TRANSFER, ecl will perform its own normalization on your declared Unicode string.
+ *
+ * @param src           The string being searched in.
+ * @param pref          The prefix to search for.
+ * @param form          The type of Normalization to be employed.
+ */
+
+EXPORT BOOLEAN StartsWith(unicode src, unicode pref, string form) :=
+	lib_unicodelib.UnicodeLib.UnicodeLocaleStartsWith(src, pref, form);
+
+/**
+ * Returns true if the suffix string matches the trailing characters in the source string.  Trailing and Leading spaces
+ * are stripped from the suffix before matching. Unless specified, normalization will not occur. Unless initiated as hex and
+ * then converted to Unicode using TRANSFER, ecl will perform its own normalization on your declared Unicode string.
+ *
+ * @param src           The string being searched in.
+ * @param suff          The suffix to search for.
+ * @param form          The type of Normalization to be employed.
+ */
+
+EXPORT BOOLEAN EndsWith(unicode src, unicode suff, string form) :=
+	lib_unicodelib.UnicodeLib.UnicodeLocaleEndsWith(src, suff, form);
 
 END;

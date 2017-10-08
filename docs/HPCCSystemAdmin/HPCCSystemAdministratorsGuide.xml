@@ -42,15 +42,18 @@
       <para></para>
     </legalnotice>
 
-    <xi:include href="common/Version.xml" xpointer="FooterInfo"
+    <xi:include href="common/Version.xml"
+                xpointer="xpointer(//*[@id='FooterInfo'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
-    <xi:include href="common/Version.xml" xpointer="DateVer"
+    <xi:include href="common/Version.xml"
+                xpointer="xpointer(//*[@id='DateVer'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <corpname>HPCC Systems<superscript>®</superscript></corpname>
 
-    <xi:include href="common/Version.xml" xpointer="Copyright"
+    <xi:include href="common/Version.xml"
+                xpointer="xpointer(//*[@id='Copyright'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <mediaobject role="logo">
@@ -331,11 +334,11 @@
         <sect3 id="SysAdm_Eclipse">
           <title>Eclipse</title>
 
-          <para>With the ECL plug-in for Eclipse, you can use the Eclipse IDE
+          <para>With the ECL plugin for Eclipse, you can use the Eclipse IDE
           to create and execute queries into your data on an HPCC platform
           using Enterprise Control Language (ECL). Eclipse is open-source, and
           multi-platform and it can be used to interface with your data and
-          workunits on HPCC. The ECL plug-in for Eclipse is also
+          workunits on HPCC. The ECL plugin for Eclipse is also
           open-source.</para>
         </sect3>
 
@@ -427,19 +430,19 @@
     your specific enterprise needs.</para>
 
     <xi:include href="Installing_and_RunningTheHPCCPlatform/Inst-Mods/Hardware.xml"
-                xpointer="HW-Switch"
+                xpointer="xpointer(//*[@id='HW-Switch'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="Installing_and_RunningTheHPCCPlatform/Inst-Mods/Hardware.xml"
-                xpointer="HW-LoadBalancer"
+                xpointer="xpointer(//*[@id='HW-LoadBalancer'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="System_sizings"
+                xpointer="xpointer(//*[@id='System_sizings'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="Installing_and_RunningTheHPCCPlatform/Inst-Mods/Hardware.xml"
-                xpointer="Nodes-Software"
+                xpointer="xpointer(//*[@id='Nodes-Software'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
   </chapter>
 
@@ -772,8 +775,8 @@
 
           <para>Thor, the data refinery, as one of the critical components of
           HPCC Systems<superscript>®</superscript> needs to be backed up.
-          Backup Thor by configuring replication and setting up a nightly
-          backup cron task. Backup Thor on demand before and/or after any node
+          Backup Thor by configuring replication and setting up a nightly back
+          up cron task. Backup Thor on demand before and/or after any node
           swap or drive swap if you do not have a RAID configured.</para>
 
           <para>A very important part of administering Thor is to check the
@@ -783,8 +786,9 @@
 
           <para>Backupnode is a tool that is packaged with HPCC. Backupnode
           allows you to backup Thor nodes on demand or in a script. You can
-          also use backupnode regularly in a crontab. You would always want to
-          run it on the Thor master of that cluster.</para>
+          also use backupnode regularly in a crontab or by adding a backupnode
+          component with Configuration Manager to your environment. You would
+          always want to run it on the Thor master of that cluster.</para>
 
           <para>The following example is one suggested way for invoking
           backupnode manually.</para>
@@ -799,6 +803,9 @@
           would call start_backupnode thor400_7s.</para>
 
           <programlisting>  /bin/su - hpcc -c "/opt/HPCCSystems/bin/start_backupnode thor400_7s" &amp; </programlisting>
+
+          <para><emphasis role="bold">Backupnode run regularly</emphasis>
+          </para>
 
           <para>To run backupnode regularly you could use cron. For example,
           you may want a crontab entry (to backup thor400_7s) set to run at
@@ -1001,7 +1008,7 @@
   </chapter>
 
   <xi:include href="HPCCCertify/Cert-Mods/CertPreflight.xml"
-              xpointer="Cert_Prelight"
+              xpointer="xpointer(//*[@id='Cert_Prelight'])"
               xmlns:xi="http://www.w3.org/2001/XInclude" />
 
   <chapter id="OnDemand_Maintenance">
@@ -1031,29 +1038,29 @@
     <!--/*Including special SysAdmin Config Module -paras- */-->
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="cfgmgr_introP0"
+                xpointer="xpointer(//*[@id='cfgmgr_introP0'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="cfgmgr_introP1"
+                xpointer="xpointer(//*[@id='cfgmgr_introP1'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="cfgmgr_p1b"
+                xpointer="xpointer(//*[@id='cfgmgr_p1b'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="cfgmgr_introP2"
+                xpointer="xpointer(//*[@id='cfgmgr_introP2'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="cfgmgr_introP3"
+                xpointer="xpointer(//*[@id='cfgmgr_introP3'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <!--/*Including special SysAdmin Config Module -Sect1- */-->
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="configuring-a-multi-node-system"
+                xpointer="xpointer(//*[@id='configuring-a-multi-node-system'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <sect1 id="SysAdm_Env.conf">
@@ -1227,7 +1234,7 @@ dfsSSLPrivateKeyFile=/keyfilepath/keyfile</programlisting>Set the <emphasis
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="Installing_and_RunningTheHPCCPlatform/Inst-Mods/UserSecurityMaint.xml"
-                xpointer="User_Security_Maint"
+                xpointer="xpointer(//*[@id='User_Security_Maint'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <sect1 id="SysAdm_WUs_ActiveDir">
@@ -1310,7 +1317,7 @@ dfsSSLPrivateKeyFile=/keyfilepath/keyfile</programlisting>Set the <emphasis
     </sect1>
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/CassandraWUServer.xml"
-                xpointer="CassandraWUStorage"
+                xpointer="xpointer(//*[@id='CassandraWUStorage'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <sect1 id="Redefining_Thor_Nodes">
@@ -1668,7 +1675,7 @@ dfsSSLPrivateKeyFile=/keyfilepath/keyfile</programlisting>Set the <emphasis
           master on the same node. Try to keep Dali and ESP on separate nodes.
           Even if you don't have the luxury of very many nodes, you want the
           Thor master and the Dali (at minimum) to be on separate nodes. The
-          best practice is to keep as many components as possible their own
+          best practice is to keep as many components as possible on their own
           nodes.</para>
 
           <para>Another consideration for a multiple node system is to avoid
@@ -1677,6 +1684,73 @@ dfsSSLPrivateKeyFile=/keyfilepath/keyfile</programlisting>Set the <emphasis
           slaves with less memory/cpu taking longer than the rest and dragging
           the whole performance of the cluster down as a result.</para>
         </sect3>
+
+        <sect3 id="Thor_TimesOut">
+          <title>Thor times out</title>
+
+          <para>There is a case where a system policy or practice could cause
+          an issue with Thor nodes. At startup if a Thor cluster hangs, and
+          then eventually times out. Then if your Thormaster log shows that
+          the master is fine, but indicates that it is waiting to connect the
+          slaves. Then you may have an issue with the SSH daemon
+          configuration.</para>
+
+          <para>There is a security feature called
+          <emphasis>"AllowUsers"</emphasis> that creates a white list in sshd
+          (the OpenSSH server process) that will disallow connections from
+          anyone not declared on that list. This is not default for sshd,
+          rather it is an option that must be enabled. If that option is
+          enabled that can cause the Thor nodes to hang in the manner
+          described. If that option is enabled, then you must unset the
+          option, or add the hpcc user to the AllowUsers list.</para>
+
+          <para></para>
+        </sect3>
+      </sect2>
+
+      <sect2>
+        <title>Multiple Roxie Clusters</title>
+
+        <para>You can configure multiple Roxie clusters. When you have
+        multiple Roxie clusters, it is better to use a load balancer with
+        those Roxies. To configure multiple Roxie clusters start with adding
+        your Roxie to the VIPS tab in the Configuration Manager. <figure>
+            <title>Configure VIP</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/SA011.jpg" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
+
+        <para>Open up the HPCC Configuration Manager and proceed to the
+        Advanced View option. For more information about using ConfigMgr see
+        Using Configuration Manager. <orderedlist>
+            <listitem>
+              <para>Select your ESP Service (the default is the <emphasis
+              role="bold">myws_ecl</emphasis>) from the Navigator panel on the
+              left side.</para>
+            </listitem>
+
+            <listitem>
+              <para>Select the <emphasis role="bold">VIPS</emphasis>
+              tab.</para>
+            </listitem>
+
+            <listitem>
+              <para>Right-click on the table, Select <emphasis>Add</emphasis>.
+              (see above image)</para>
+            </listitem>
+
+            <listitem>
+              <para>Set the <emphasis role="bold">Send Target To
+              Roxie</emphasis> value to <emphasis>False</emphasis>.</para>
+            </listitem>
+          </orderedlist></para>
+
+        <para>This setting (the <emphasis>includeTargetInURL</emphasis>
+        setting) must be false if running multiple Roxie clusters.</para>
       </sect2>
 
       <sect2 id="virtual-thor-slaves">
@@ -1894,11 +1968,11 @@ heapUseTransparentHugePages</programlisting>
     </sect1>
 
     <xi:include href="RoxieReference/RoxieRefMods/RoxieCapacityPlanning.xml"
-                xpointer="Capacity_Planning"
+                xpointer="xpointer(//*[@id='Capacity_Planning'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
 
     <xi:include href="HPCCSystemAdmin/SA-Mods/SysAdminConfigMod.xml"
-                xpointer="Sample_Sizings"
+                xpointer="xpointer(//*[@id='Sample_Sizings'])"
                 xmlns:xi="http://www.w3.org/2001/XInclude" />
   </chapter>
 
@@ -1915,7 +1989,7 @@ heapUseTransparentHugePages</programlisting>
       Systems<superscript>®</superscript> web portal. Visit the HPCC
       Systems<superscript>®</superscript> Web Portal at <ulink
       url="http://hpccsystems.com/">http://hpccsystems.com/</ulink> for
-      software updates, plug-ins, support, documentation, and more. This is
+      software updates, plugins, support, documentation, and more. This is
       where you can find resources useful for running and maintaining HPCC on
       the web portal.</para>
 

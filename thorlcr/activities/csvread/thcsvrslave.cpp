@@ -59,29 +59,6 @@ class CCsvReadSlaveActivity : public CDiskReadSlaveActivityBase
         bool readFinished;
         offset_t localOffset;
         size32_t maxRowSize;
-
-        unsigned splitLine()
-        {
-            if (inputStream->eos())
-                return 0;
-            size32_t minRequired = 4096; // MORE - make configurable
-            size32_t thisLineLength;
-            for (;;)
-            {
-                size32_t avail;
-                const void *peek = inputStream->peek(minRequired, avail);
-                thisLineLength = csvSplitter.splitLine(avail, (const byte *)peek);
-                if (thisLineLength < minRequired || avail < minRequired)
-                    break;
-                if (minRequired == maxRowSize)
-                    throw MakeActivityException(&activity, 0, "File %s contained a line of length greater than %d bytes.", activity.logicalFilename.get(), minRequired);
-                if (minRequired >= maxRowSize/2)
-                    minRequired = maxRowSize;
-                else
-                    minRequired += minRequired;
-            }
-            return thisLineLength;
-        }
     public:
         CCsvPartHandler(CCsvReadSlaveActivity &_activity) : CDiskPartHandlerBase(_activity), activity(_activity)
         {
@@ -137,7 +114,7 @@ class CCsvReadSlaveActivity : public CDiskReadSlaveActivityBase
                 {
                     do
                     {
-                        unsigned lineLength = splitLine();
+                        size32_t lineLength = csvSplitter.splitLine(inputStream, maxRowSize);
                         if (0 == lineLength)
                             break;
                         inputStream->skip(lineLength);
@@ -166,7 +143,7 @@ class CCsvReadSlaveActivity : public CDiskReadSlaveActivityBase
             {
                 if (eoi || activity.abortSoon)
                     return NULL;
-                unsigned lineLength = splitLine();
+                size32_t lineLength = csvSplitter.splitLine(inputStream, maxRowSize);
                 if (!lineLength)
                     return NULL;
                 size32_t res = activity.helper->transform(row, csvSplitter.queryLengths(), (const char * *)csvSplitter.queryData());
@@ -284,6 +261,16 @@ class CCsvReadSlaveActivity : public CDiskReadSlaveActivityBase
         CMessageBuffer msgMb;
         msgMb.append(subFile);
         msgMb.append(headerLinesRemaining[subFile]);
+        // inform next slave about all subfiles I'm not dealing with.
+        for (unsigned s=0; s<subFiles; s++)
+        {
+            if (NotFound == localLastPart[s])
+            {
+                sentHeaderLines->testSet(s);
+                msgMb.append(s);
+                msgMb.append(headerLinesRemaining[s]);
+            }
+        }
         queryJobChannel().queryJobComm().send(msgMb, queryJobChannel().queryMyRank()+1, mpTag);
     }
     void sendRemainingHeaderLines()
@@ -347,7 +334,9 @@ public:
             mpTag = container.queryJobChannel().deserializeMPTag(data);
             data.read(subFiles);
             superFDesc = partDescs.ordinality() ? partDescs.item(0).queryOwner().querySuperFileDescriptor() : NULL;
-            localLastPart.allocateN(subFiles, true);
+            localLastPart.allocateN(subFiles);
+            for (unsigned llp=0; llp<subFiles; llp++)
+                localLastPart[llp] = NotFound;
             ForEachItemIn(p, partDescs)
             {
                 IPartDescriptor &partDesc = partDescs.item(p);
@@ -360,7 +349,7 @@ public:
                         throw MakeActivityException(this, 0, "mapSubPart failed, file=%s, partnum=%d", logicalFilename.get(), pnum);
                     pnum = lnum;
                 }
-                if (pnum > localLastPart[subFile]) // don't think they can really be out of order
+                if ((NotFound == localLastPart[subFile]) || (pnum > localLastPart[subFile])) // don't think they can really be out of order
                     localLastPart[subFile] = pnum;
             }
             headerLinesRemaining.allocateN(subFiles);
@@ -385,27 +374,31 @@ public:
             cachedMetaInfo.isSource = true;
             getPartsMetaInfo(cachedMetaInfo, partDescs.ordinality(), partDescs.getArray(), partHandler);
             cachedMetaInfo.unknownRowsOutput = true; // at least I don't think we know
+            cachedMetaInfo.fastThrough = true;
         }
         info = cachedMetaInfo;
     }
     CATCH_NEXTROW()
     {
         ActivityTimer t(totalCycles, timeActivities);
-        OwnedConstThorRow row = out->nextRow();
-        if (row)
+        if (out)
         {
-            rowcount_t c = getDataLinkCount();
-            if (0 == stopAfter || (c < stopAfter)) // NB: only slave limiter, global performed in chained choosen activity
+            OwnedConstThorRow row = out->nextRow();
+            if (row)
             {
-                if (c < limit) // NB: only slave limiter, global performed in chained limit activity
+                rowcount_t c = getDataLinkCount();
+                if (0 == stopAfter || (c < stopAfter)) // NB: only slave limiter, global performed in chained choosen activity
                 {
-                    dataLinkIncrement();
-                    return row.getClear();
+                    if (c < limit) // NB: only slave limiter, global performed in chained limit activity
+                    {
+                        dataLinkIncrement();
+                        return row.getClear();
+                    }
+                    helper->onLimitExceeded();
                 }
-                helper->onLimitExceeded();
             }
+            sendRemainingHeaderLines();
         }
-        sendRemainingHeaderLines();
         return NULL;
     }
     virtual void start()

@@ -469,8 +469,6 @@ CRoxieMetricsManager::CRoxieMetricsManager()
     addMetric(preloadCacheHits, 0);
     addMetric(preloadCacheAdds, 0);
     addMetric(unwantedDiscarded, 1000);
-    addMetric(packetsRetried, 1000);
-    addMetric(packetsAbandoned, 1000);
 
     addMetric(getHeapAllocated, 0);
     addMetric(getHeapPercentAllocated, 0);
@@ -953,7 +951,7 @@ public:
     }
     static IPropertyTree *getAllQueryStats(bool includeQueries, time_t from, time_t to)
     {
-        Owned<IPTree> result = createPTree("QueryStats");
+        Owned<IPTree> result = createPTree("QueryStats", ipt_fast);
         if (includeQueries)
         {
             SpinBlock b(queryStatsCrit);
@@ -994,7 +992,7 @@ public:
     {
         time_t timeNow;
         time(&timeNow);
-        Owned<IPropertyTree> result = createPTree("Query");
+        Owned<IPropertyTree> result = createPTree("Query", ipt_fast);
         result->setProp("@id", queryName);
         if (expirySeconds && difftime(timeNow, from) <= expirySeconds)
         {

@@ -185,13 +185,15 @@ public:
     void getEclSchemaFields(IArrayOf<IEspECLSchemaItem>& schemas, IHqlExpression * expr, bool isConditional);
     bool getResultEclSchemas(IConstWUResult &r, IArrayOf<IEspECLSchemaItem>& schemas);
     void getResult(IConstWUResult &r, IArrayOf<IEspECLResult>& results, unsigned long flags);
-    void getStats(StatisticsFilter& filter, bool createDescriptions, IArrayOf<IEspWUStatisticItem>& statistics);
+    void getStats(const WuScopeFilter & filter, const StatisticsFilter& statsFilter, bool createDescriptions, IArrayOf<IEspWUStatisticItem>& statistics);
 
     void getWorkunitEclAgentLog(const char* eclAgentInstance, const char* agentPid, MemoryBuffer& buf);
     void getWorkunitThorLog(const char *processName, MemoryBuffer& buf);
     void getWorkunitThorSlaveLog(const char *groupName, const char *ipAddress, const char* logDate, const char* logDir, int slaveNum, MemoryBuffer& buf, bool forDownload);
     void getWorkunitResTxt(MemoryBuffer& buf);
-    void getWorkunitArchiveQuery(MemoryBuffer& buf);
+    void getWorkunitArchiveQuery(IStringVal& str);
+    void getWorkunitArchiveQuery(StringBuffer& str);
+    void getWorkunitArchiveQuery(MemoryBuffer& mb);
     void getWorkunitDll(StringBuffer &name, MemoryBuffer& buf);
     void getWorkunitXml(const char* plainText, MemoryBuffer& buf);
     void getWorkunitQueryShortText(MemoryBuffer& buf);
@@ -208,13 +210,10 @@ public:
     void setWUAbortTime(IEspECLWorkunit &info, unsigned __int64 abortTS);
     IConstWUQuery* getEmbeddedQuery();
 
-protected:
     void addTimerToList(SCMStringBuffer& name, const char * scope, IConstWUStatistic & stat, IArrayOf<IEspECLTimer>& timers);
+protected:
     unsigned getTotalThorTime();
-    unsigned getLegacyTotalThorTime();
     bool hasSubGraphTimings();
-    bool legacyHasSubGraphTimings();
-    void legacyGetGraphTimingData(IArrayOf<IConstECLTimingData> &timingData);
 
 public:
     IEspContext &context;

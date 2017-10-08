@@ -67,6 +67,7 @@ typedef IEclCommand *(*EclCommandFactory)(const char *cmdname);
 #define ECLOPT_PASSWORD_ENV "ECL_PASSWORD"
 
 #define ECLOPT_NORELOAD "--no-reload"
+#define ECLOPT_NOPUBLISH "--no-publish"
 #define ECLOPT_OVERWRITE "--overwrite"
 #define ECLOPT_REPLACE "--replace"
 #define ECLOPT_OVERWRITE_S "-O"
@@ -159,6 +160,9 @@ typedef IEclCommand *(*EclCommandFactory)(const char *cmdname);
 #define ECLOPT_PROCESS_S "-p"
 #define ECLOPT_SOURCE_PROCESS "--source-process"
 
+#define ECLOPT_PATH "--path"
+#define ECLOPT_INC_THOR_SLAVE_LOGS "--inc-thor-slave-logs"
+#define ECLOPT_PROBLEM_DESC "--description"
 
 
 #define ECLOPT_LIB_PATH_S "-L"
@@ -167,11 +171,14 @@ typedef IEclCommand *(*EclCommandFactory)(const char *cmdname);
 #define ECLOPT_MANIFEST_DASH "-manifest"
 #define ECLOPT_LEGACY "--legacy"
 #define ECLOPT_LEGACY_DASH "-legacy"
+#define ECLOPT_CHECKDIRTY "-checkDirty"
 #define ECLOPT_DEBUG "--debug"
 #define ECLOPT_DEBUG_DASH "-g"
 
 #define ECLOPT_VERBOSE "--verbose"
 #define ECLOPT_VERBOSE_S "-v"
+
+const char *queryEclccPath(bool optVerbose);
 
 bool isValidMemoryValue(const char *value);
 bool isValidPriorityValue(const char *value);
@@ -259,7 +266,7 @@ public:
 class EclCmdWithEclTarget : public EclCmdCommon
 {
 public:
-    EclCmdWithEclTarget() : optLegacy(false), optNoArchive(false), optResultLimit((unsigned)-1), optDebug(false), paramCount(0)
+    EclCmdWithEclTarget() : optLegacy(false), optCheckDirty(false), optNoArchive(false), optResultLimit((unsigned)-1), optDebug(false), paramCount(0)
     {
     }
     virtual eclCmdOptionMatchIndicator matchCommandLineOption(ArgvIterator &iter, bool finalAttempt=false);
@@ -275,7 +282,9 @@ public:
             "   --snapshot,-sn=<label> Snapshot label to use from legacy ECL repository\n"
             "   --ecl-only             Send ECL query to HPCC as text rather than as a generated archive\n"
             "   --limit=<limit>        Sets the result limit for the query, defaults to 100\n"
-            "   -f<option>[=value]     Set an ECL option (equivalent to #option)\n"
+            "   -f<option>[=value]     Set an ECL language option (equivalent to #option)\n"
+            "   -f-<option>[=value]    Set an eclcc command line option (single '-')\n"
+            "   -f--<option>[=value]   Set an eclcc command line option (double '-')\n"
             "   -Dname=value           Override the definition of a global attribute 'name'\n"
             " eclcc options (everything following):\n"
         );
@@ -319,6 +328,7 @@ public:
     bool optNoArchive;
     bool optLegacy;
     bool optDebug;
+    bool optCheckDirty;
 };
 
 class EclCmdWithQueryTarget : public EclCmdCommon

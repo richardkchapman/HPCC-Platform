@@ -61,8 +61,8 @@ class CRowStreamLookAhead : public CSimpleInterfaceOf<IStartableEngineRowStream>
     CSlaveActivity &activity;
     bool allowspill, preserveGrouping;
     ILookAheadStopNotify *notify;
-    bool running;
-    bool stopped;
+    bool running = false;
+    bool started = false;
     rowcount_t required;
     Semaphore startSem;
     Owned<IException> getexception;
@@ -207,7 +207,6 @@ public:
         running = true;
         required = _required;
         count = 0;
-        stopped = true;
     }
     ~CRowStreamLookAhead()
     {
@@ -235,7 +234,7 @@ public:
 #ifdef _FULL_TRACE
         ActPrintLog(&activity, "CRowStreamLookAhead start %x",(unsigned)(memsize_t)this);
 #endif
-        stopped = false;
+        started = true;
         running = true;
         thread.start();
         startSem.wait();
@@ -248,13 +247,19 @@ public:
 #ifdef _FULL_TRACE
         ActPrintLog(&activity, "CRowStreamLookAhead stop %x",(unsigned)(memsize_t)this);
 #endif
-        if (!stopped)
+        if (!started) // never started
+        {
+            // still want to chain stop()'s even if never started
+            if (inputStream)
+                inputStream->stop();
+        }
+        else
         {
             running = false;
             if (smartbuf)
                 smartbuf->stop(); // just in case blocked
             thread.join();
-            stopped = true;
+            started = false;
             if (getexception)
                 throw getexception.getClear();
         }
@@ -418,6 +423,28 @@ void calcMetaInfoSize(ThorDataLinkMetaInfo &info, ThorDataLinkMetaInfo *infos, u
     }
     else if (info.totalRowsMin<0)
         info.totalRowsMin = 0; // a good bet
+}
+
+bool isFastThrough(IThorDataLink *input)
+{
+    CSlaveActivity *act = (CSlaveActivity *)input->queryFromActivity();
+    if (act)
+    {
+        ThorDataLinkMetaInfo info;
+        act->getMetaInfo(info);
+        if (!info.fastThrough)
+            return false;
+        unsigned i=0;
+        while (true)
+        {
+            input = act->queryInput(i++);
+            if (!input)
+                break;
+            if (!isFastThrough(input))
+                return false;
+        }
+    }
+    return true;
 }
 
 static bool canStall(CActivityBase *act)

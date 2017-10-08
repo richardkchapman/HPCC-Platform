@@ -900,6 +900,16 @@ IHqlExpression * HqlGram::convertToOutOfLineFunction(const ECLlocation & errpos,
     return LINK(expr);
 }
 
+IHqlExpression * HqlGram::convertToInlineFunction(const ECLlocation & errpos, IHqlExpression  * expr)
+{
+    if (expr->getOperator() != no_inline)
+    {
+        if (queryParametered())
+            return createWrapper(no_inline, LINK(expr));
+    }
+    return LINK(expr);
+}
+
 IHqlExpression * HqlGram::processEmbedBody(const attribute & errpos, IHqlExpression * embedText, IHqlExpression * language, IHqlExpression *attribs)
 {
     HqlExprArray args;
@@ -1076,7 +1086,7 @@ IHqlExpression * HqlGram::processUserAggregate(const attribute & mainPos, attrib
     return ret.getClear();
 }
 
-IHqlExpression * HqlGram::processIndexBuild(attribute & indexAttr, attribute * recordAttr, attribute * payloadAttr, attribute & filenameAttr, attribute & flagsAttr)
+IHqlExpression * HqlGram::processIndexBuild(const attribute &err, attribute & indexAttr, attribute * recordAttr, attribute * payloadAttr, attribute & filenameAttr, attribute & flagsAttr)
 {
     if (!recordAttr)
         warnIfRecordPacked(indexAttr);
@@ -1124,10 +1134,7 @@ IHqlExpression * HqlGram::processIndexBuild(attribute & indexAttr, attribute * r
     args.append(*filenameAttr.getExpr());
     if (flags)
         flags->unwindList(args, no_comma);
-    IHqlExpression * sig = getGpgSignature();
-    if (sig)
-        args.append(*sig);
-
+    saveDiskAccessInformation(err, args);
     checkDistributer(flagsAttr.pos, args);
     return createValue(no_buildindex, makeVoidType(), args);
 }
@@ -1751,7 +1758,8 @@ IHqlExpression * HqlGram::forceEnsureExprType(IHqlExpression * expr, ITypeInfo *
 {
     //Ensure the no_outofline remains the top most node.  I suspect this casting should occur much earlier
     //or the out of line node should be added much later.
-    if (expr->getOperator() == no_outofline)
+    node_operator op = expr->getOperator();
+    if ((op == no_outofline) || (op == no_inline))
     {
         HqlExprArray args;
         args.append(*forceEnsureExprType(expr->queryChild(0), type));
@@ -2276,10 +2284,10 @@ void HqlGram::checkFoldConstant(attribute & attr)
         attr.setExpr(foldHqlExpression(expr), attr);
     }
     else
-        checkConstant(attr);
+        checkConstant(attr, false);
 }
 
-IHqlExpression * HqlGram::checkConstant(const attribute & errpos, IHqlExpression * expr)
+IHqlExpression * HqlGram::checkConstant(const attribute & errpos, IHqlExpression * expr, bool callAllowed)
 {
     if (expr->isConstant() || (expr->getOperator() == no_assertconstant))
         return LINK(expr);
@@ -2287,13 +2295,16 @@ IHqlExpression * HqlGram::checkConstant(const attribute & errpos, IHqlExpression
     if (expr->getOperator() == no_compound)
         reportError(ERR_ASSOCIATED_SIDEEFFECT, errpos, "Constant expression has an implicitly associated side effect");
 
+    if (!callAllowed && !lookupCtx.queryExpandCallsWhenBound() && containsCall(expr, true))
+        reportError(ERR_EXPECTED_CONST, errpos, "Constant expression should not contain unresolved function calls");
+
     return createValue(no_assertconstant, expr->getType(), LINK(expr), createLocationAttr(errpos));
 }
 
-void HqlGram::checkConstant(attribute & attr)
+void HqlGram::checkConstant(attribute & attr, bool callAllowed)
 {
     OwnedHqlExpr value = attr.getExpr();
-    attr.setExpr(checkConstant(attr, value));
+    attr.setExpr(checkConstant(attr, value, callAllowed));
 }
 
 
@@ -2615,6 +2626,9 @@ void HqlGram::addField(const attribute &errpos, IIdAtom * name, ITypeInfo *_type
             reportUnsupportedFieldType(fieldType, errpos);
             fieldType.set(defaultIntegralType);
         }
+        break;
+    case type_enumerated:
+        fieldType.set(fieldType->queryChildType());
         break;
     case type_decimal:
         if (fieldType->getSize() == UNKNOWN_LENGTH)
@@ -3520,9 +3534,10 @@ IHqlExpression *HqlGram::lookupSymbol(IIdAtom * searchName, const attribute& err
         if (dotScope) 
         {
             IHqlExpression *ret = NULL;
-            if (dotScope->getOperator() == no_enum)
+            IHqlScope * scope = dotScope->queryScope();
+            if (scope)
             {
-                ret = dotScope->queryScope()->lookupSymbol(searchName, LSFrequired, lookupCtx);
+                ret = scope->lookupSymbol(searchName, LSFrequired, lookupCtx);
             }
             else
             {
@@ -5806,9 +5821,9 @@ IHqlExpression * HqlGram::createAssert(attribute & condAttr, attribute * msgAttr
 {
     if (queryAttributeInList(constAtom, flagsAttr.queryExpr()))
     {
-        checkConstant(condAttr);
+        checkConstant(condAttr, true);
         if (msgAttr)
-            checkConstant(*msgAttr);
+            checkConstant(*msgAttr, true);
     }
 
     OwnedHqlExpr cond = condAttr.getExpr();
@@ -6244,7 +6259,13 @@ void HqlGram::checkFormals(IIdAtom * name, HqlExprArray& parms, HqlExprArray& de
         // check default value
         if (isMacro)
         {
-            IHqlExpression* def = &defaults.item(idx);
+            LinkedHqlExpr def = &defaults.item(idx);
+            if (!def->isConstant() && !lookupCtx.queryParseContext().expandCallsWhenBound)
+            {
+                OwnedHqlExpr expanded = expandDelayedFunctionCalls(nullptr, def);
+                defaults.replace(*LINK(expanded), idx);
+                def.set(expanded);
+            }
             
             if ((def->getOperator() != no_omitted) && !def->isConstant()) 
             {
@@ -6326,27 +6347,13 @@ IHqlExpression *HqlGram::bindParameters(const attribute & errpos, IHqlExpression
             {
                 if (requireLateBind(function, actuals))
                 {
-                    IHqlExpression * ret = NULL;
-                    if (!expandCallsWhenBound)
-                    {
-                        HqlExprArray args;
-                        args.append(*LINK(body));
-                        unwindChildren(args, function, 1);
-                        OwnedHqlExpr newFunction = createFunctionDefinition(function->queryId(), args);
-                        OwnedHqlExpr boundExpr = createBoundFunction(this, newFunction, actuals, lookupCtx.functionCache, expandCallsWhenBound);
+                    //A function with virtual dataset parameters - must be expanded now
+                    const bool expandCallsWhenBound = true;
+                    OwnedHqlExpr boundExpr = createBoundFunction(this, function, actuals, lookupCtx.functionCache, expandCallsWhenBound);
                         
-                        // get rid of the wrapper
-                        //assertex(boundExpr->getOperator()==no_template_context);
-                        ret = LINK(boundExpr);//->queryChild(0));
-                    }
-                    else
-                    {
-                        OwnedHqlExpr boundExpr = createBoundFunction(this, function, actuals, lookupCtx.functionCache, expandCallsWhenBound);
-                        
-                        // get rid of the wrapper
-                        assertex(boundExpr->getOperator()==no_template_context);
-                        ret = LINK(boundExpr->queryChild(0));
-                    }
+                    // get rid of the wrapper
+                    assertex(boundExpr->getOperator()==no_template_context);
+                    IHqlExpression * ret = LINK(boundExpr->queryChild(0));
 
                     IHqlExpression * formals = function->queryChild(1);
                     // bind fields
@@ -6622,7 +6629,7 @@ IHqlExpression * HqlGram::checkParameter(const attribute * errpos, IHqlExpressio
 
 //  if (formal->hasAttribute(constAtom) && funcdef && !isExternalFunction(funcdef))
     if (errpos && formal->hasAttribute(assertConstAtom))
-        ret.setown(checkConstant(*errpos, ret));
+        ret.setown(checkConstant(*errpos, ret, true));
 
     if (formal->hasAttribute(fieldAtom))
     {
@@ -7046,10 +7053,7 @@ IHqlExpression * HqlGram::createBuildIndexFromIndex(attribute & indexAttr, attri
     if (distribution)
         args.append(*distribution.getClear());
 
-    IHqlExpression * sig = getGpgSignature();
-    if (sig)
-        args.append(*sig);
-
+    saveDiskAccessInformation(indexAttr, args);
     checkDistributer(flagsAttr.pos, args);
     return createValue(no_buildindex, makeVoidType(), args);
 }
@@ -7194,8 +7198,8 @@ void HqlGram::checkOutputRecord(attribute & errpos, bool outerLevel)
     OwnedHqlExpr record = errpos.getExpr();
     bool allConstant = true;
     errpos.setExpr(checkOutputRecord(record, errpos, allConstant, outerLevel));
-    if (allConstant && (record->getOperator() != no_null) && (record->numChildren() != 0))
-        reportWarning(CategoryUnusual, WRN_OUTPUT_ALL_CONSTANT,errpos.pos,"All values for OUTPUT are constant - is this the intention?");
+    if (allConstant && (record->getOperator() != no_null) && (record->numChildren() != 0) && record->isFullyBound())
+        reportWarning(CategoryUnusual, WRN_OUTPUT_ALL_CONSTANT, errpos.pos, "All values for OUTPUT are constant - is this the intention?");
 }
 
 void HqlGram::checkSoapRecord(attribute & errpos)
@@ -7588,6 +7592,21 @@ static void unwindExtraFields(HqlExprArray & fields, IHqlExpression * expr)
     }
 }
 
+
+void HqlGram::checkConcreteRecord(attribute & cur)
+{
+    IHqlExpression * record = cur.queryExpr();
+    if (record->getOperator() != no_record)
+    {
+        OwnedHqlExpr bad = cur.getExpr();
+        if (!bad->isFullyBound())
+            reportError(ERR_CONCRETE_RECORD, cur, "Record cannot contain unresolved function calls");
+        else
+            reportError(ERR_CONCRETE_RECORD, cur, "Expected a concrete record");
+
+        cur.setExpr(LINK(bad->queryRecord()));
+    }
+}
 
 IHqlExpression * HqlGram::createRecordUnion(IHqlExpression * left, IHqlExpression * right, const attribute & errpos)
 {
@@ -8298,6 +8317,9 @@ void HqlGram::expandPayload(HqlExprArray & fields, IHqlExpression * payload, IHq
             break;
         case no_ifblock:
             lastFieldType = NULL;
+            // MORE - it might make sense to annotate the fields here (and below) - i.e.
+            // fields.append(*appendOwnedOperand(cur, createAttribute(_payload_Atom)));
+            // But that causes some changes to crcs, new errors about incompatible rows, etc
             fields.append(*LINK(cur));
             break;
         case no_field:
@@ -8319,6 +8341,9 @@ void HqlGram::expandPayload(HqlExprArray & fields, IHqlExpression * payload, IHq
                 else
                 {
                     lastFieldType = cur->queryType();
+                    // MORE - it might make sense to annotate the fields here (and above) - i.e.
+                    // fields.append(*appendOwnedOperand(cur, createAttribute(_payload_Atom)));
+                    // But that causes some changes to crcs, new errors about incompatible rows, etc
                     fields.append(*LINK(cur));
                 }
                 break;
@@ -8834,7 +8859,7 @@ void HqlGram::ensureMapToRecordsMatch(OwnedHqlExpr & defaultExpr, HqlExprArray &
         }
     }
 
-    if (groupingDiffers)
+    if (lookupCtx.queryParseContext().expandCallsWhenBound && groupingDiffers)
         reportError(ERR_GROUPING_MISMATCH, errpos, "Branches of the condition have different grouping");
 }
 
@@ -8951,7 +8976,7 @@ void HqlGram::checkMergeInputSorted(attribute &atr, bool isLocal)
     
     if (isGrouped(expr) && appearsToBeSorted(expr, false, false))
         reportWarning(CategoryUnexpected, WRN_MERGE_NOT_SORTED, atr.pos, "Input to MERGE is only sorted with the group");
-    else
+    else if (expr->isFullyBound())
         reportWarning(CategoryUnexpected, WRN_MERGE_NOT_SORTED, atr.pos, "Input to MERGE doesn't appear to be sorted");
 }
 
@@ -9145,7 +9170,7 @@ IHqlExpression * HqlGram::processIfProduction(attribute & condAttr, attribute & 
     if (left->queryRecord() && falseAttr)
         right.setown(checkEnsureRecordsMatch(left, right, falseAttr->pos, false));
 
-    if (isGrouped(left) != isGrouped(right))
+    if (lookupCtx.queryParseContext().expandCallsWhenBound && (isGrouped(left) != isGrouped(right)))
         reportError(ERR_GROUPING_MISMATCH, trueAttr, "Branches of the condition have different grouping");
 
     if (cond->isConstant())
@@ -9284,6 +9309,20 @@ bool HqlGram::checkAllowed(const attribute & errpos, const char *category, const
         return false;
     }
     return true;
+}
+
+void HqlGram::saveDiskAccessInformation(const attribute & errpos, HqlExprArray & options)
+{
+    IHqlExpression * sig = getGpgSignature();
+    if (sig)
+        options.append(*sig);
+}
+
+void HqlGram::saveDiskAccessInformation(const attribute & errpos, OwnedHqlExpr & options)
+{
+    IHqlExpression * sig = getGpgSignature();
+    if (sig)
+        options.setown(createComma(options.getClear(), sig));
 }
 
 bool HqlGram::checkDFSfields(IHqlExpression *dfsRecord, IHqlExpression *defaultRecord, const attribute& errpos)
@@ -12041,12 +12080,13 @@ IHqlExpression * PseudoPatternScope::lookupSymbol(IIdAtom * name, unsigned looku
 
 //---------------------------------------------------------------------------------------------------------------------
 
-extern HQL_API IHqlExpression * parseQuery(IHqlScope *scope, IFileContents * contents, HqlLookupContext & ctx, IXmlScope *xmlScope, IProperties * macroParams, bool loadImplicit)
+extern HQL_API IHqlExpression * parseQuery(IHqlScope *scope, IFileContents * contents, HqlLookupContext & ctx, IXmlScope *xmlScope, IProperties * macroParams, bool loadImplicit, bool isRoot)
 {
     assertex(scope);
     try
     {
-        ctx.noteBeginQuery(scope, contents);
+        if (isRoot)
+            ctx.noteBeginQuery(scope, contents);
 
         HqlGram parser(scope, scope, contents, ctx, xmlScope, false, loadImplicit);
         parser.setQuery(true);
@@ -12054,11 +12094,14 @@ extern HQL_API IHqlExpression * parseQuery(IHqlScope *scope, IFileContents * con
         parser.getLexer()->set_yyColumn(1);
         parser.getLexer()->setMacroParams(macroParams);
         OwnedHqlExpr ret = parser.yyParse(false, true);
-        ctx.noteEndQuery();
+        if (isRoot)
+            ctx.noteEndQuery(true);
         return parser.clearFieldMap(ret.getClear());
     }
     catch (IException *E)
     {
+        if (isRoot)
+            ctx.noteEndQuery(false);
         if (ctx.errs)
         {
             ISourcePath * sourcePath = contents->querySourcePath();
@@ -12083,16 +12126,17 @@ extern HQL_API IHqlExpression * parseQuery(IHqlScope *scope, IFileContents * con
 extern HQL_API void parseModule(IHqlScope *scope, IFileContents * contents, HqlLookupContext & ctx, IXmlScope *xmlScope, bool loadImplicit)
 {
     assertex(scope);
+    HqlLookupContext moduleCtx(ctx);
+    bool success = false;
     try
     {
-        HqlLookupContext moduleCtx(ctx);
         moduleCtx.noteBeginModule(scope, contents);
 
         HqlGram parser(scope, scope, contents, moduleCtx, xmlScope, false, loadImplicit);
         parser.getLexer()->set_yyLineNo(1);
         parser.getLexer()->set_yyColumn(1);
         OwnedHqlExpr ret = parser.yyParse(false, true);
-        moduleCtx.noteEndModule();
+        success = true;
     }
     catch (IException *E)
     {
@@ -12113,6 +12157,7 @@ extern HQL_API void parseModule(IHqlScope *scope, IFileContents * contents, HqlL
         }
         E->Release();
     }
+    moduleCtx.noteEndModule(success);
 }
 
 
@@ -12121,7 +12166,7 @@ extern HQL_API IHqlExpression * parseQuery(const char * text, IErrorReceiver * e
     Owned<IHqlScope> scope = createScope();
     HqlDummyLookupContext ctx(errs);
     Owned<IFileContents> contents = createFileContentsFromText(text, NULL, false, NULL);
-    return parseQuery(scope, contents, ctx, NULL, NULL, true);
+    return parseQuery(scope, contents, ctx, NULL, NULL, true, true);
 }
 
 
@@ -12145,18 +12190,26 @@ void parseAttribute(IHqlScope * scope, IFileContents * contents, HqlLookupContex
     HqlLookupContext attrCtx(ctx);
     attrCtx.noteBeginAttribute(scope, contents, name);
 
-    //The attribute will be added to the current scope as a side-effect of parsing the attribute.
-    const char * moduleName = scope->queryFullName();
+    try
+    {
+        //The attribute will be added to the current scope as a side-effect of parsing the attribute.
+        const char * moduleName = scope->queryFullName();
 
-    //NOTE: The container scope needs to be re-resolved globally so merged file trees are supported
-    Owned<IHqlScope> globalScope = getResolveDottedScope(moduleName, LSFpublic, ctx);
-    HqlGram parser(globalScope, scope, contents, attrCtx, NULL, false, true);
-    parser.setExpectedAttribute(name);
-    parser.setAssociateWarnings(true);
-    parser.getLexer()->set_yyLineNo(1);
-    parser.getLexer()->set_yyColumn(1);
-    ::Release(parser.yyParse(false, false));
-    attrCtx.noteEndAttribute();
+        //NOTE: The container scope needs to be re-resolved globally so merged file trees are supported
+        Owned<IHqlScope> globalScope = getResolveDottedScope(moduleName, LSFpublic, ctx);
+        HqlGram parser(globalScope, scope, contents, attrCtx, NULL, false, true);
+        parser.setExpectedAttribute(name);
+        parser.setAssociateWarnings(true);
+        parser.getLexer()->set_yyLineNo(1);
+        parser.getLexer()->set_yyColumn(1);
+        ::Release(parser.yyParse(false, false));
+    }
+    catch (...)
+    {
+        attrCtx.noteEndAttribute(false);
+        throw;
+    }
+    attrCtx.noteEndAttribute(true);
 }
 
 int testHqlInternals()
