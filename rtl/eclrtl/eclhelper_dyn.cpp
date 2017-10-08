@@ -28,6 +28,53 @@
 #include "rtldynfield.hpp"
 #include "rtlkey.hpp"
 
+class AnotherClonedMemoryBufferBuilder : public RtlRowBuilderBase // Common up once merged!
+{
+public:
+    AnotherClonedMemoryBufferBuilder(MemoryBuffer & _buffer, unsigned _minSize)
+        : buffer(_buffer), minSize(_minSize)
+    {
+        reserved = 0;
+    }
+
+    virtual byte * ensureCapacity(size32_t required, const char * fieldName)
+    {
+        if (required > reserved)
+        {
+            void * next = buffer.reserve(required-reserved);
+            self = (byte *)next - reserved;
+            reserved = required;
+        }
+        return self;
+    }
+
+    void finishRow(size32_t length)
+    {
+        assertex(length <= reserved);
+        size32_t newLength = (buffer.length() - reserved) + length;
+        buffer.setLength(newLength);
+        self = NULL;
+        reserved = 0;
+    }
+    virtual IEngineRowAllocator *queryAllocator() const
+    {
+        return NULL;
+    }
+
+protected:
+    virtual byte * createSelf()
+    {
+        return ensureCapacity(minSize, NULL);
+    }
+
+protected:
+    MemoryBuffer & buffer;
+    size32_t minSize;
+    size32_t reserved;
+};
+
+
+
 //---------------------------------------------------------------------------
 static const RtlRecordTypeInfo &loadTypeInfo(IPropertyTree &xgmml, IRtlFieldTypeDeserializer *deserializer, const char *key)
 {
@@ -40,6 +87,20 @@ static const RtlRecordTypeInfo &loadTypeInfo(IPropertyTree &xgmml, IRtlFieldType
     return *(RtlRecordTypeInfo *) typeInfo;
 }
 
+static void readString(StringBuffer &out, const char * &in)
+{
+    for (;;)
+    {
+        char c = *in++;
+        if (!c)
+            throw MakeStringException(0, "Invalid filter - missing closing '");
+        if (c=='\'')
+            break;
+        if (c=='\\')
+            UNIMPLEMENTED;
+        out.append(c);
+    }
+}
 class ECLRTL_API CDynamicDiskReadArg : public CThorDiskReadArg
 {
 public:
@@ -70,23 +131,90 @@ public:
         Owned<IPropertyTreeIterator> filters = xgmml.getElements("att[@name=\"keyfilter\"]");
         ForEach(*filters)
         {
+            // Format of a filter is:
+            // field[..n]: valuestring
+            // value string format specifies ranges using a comma-separated list of ranges.
+            // Each range is specified as paren lower, upper paren, where the paren is either ( or [ depending
+            // on whether the specified bound is inclusive or exclusive.
+            // If only one bound is specified then it is used for both upper and lower bound (only meaningful with [] )
+            //
+            // ( A means values > A - exclusive
+            // [ means values >= A - inclusive
+            // A ) means values < A - exclusive
+            // A ] means values <= A - inclusive
+            // For example:
+            // [A] matches just A
+            // (,A),(A,) matches all but A
+            // (A] of [A) are both empty ranges
+            // [A,B) means A*
+            // Values use the ECL syntax for constants. String constants are always utf8. Binary use d'xx' format (hexpairs)
+            // Note that binary serialization format is different
+
             const char *curFilter = filters->query().queryProp("@value");
             assertex(curFilter);
-            // field = value is all I support for now
-            const char *epos = strchr(curFilter,'=');
+            const char *epos = strchr(curFilter,':');
             assertex(epos);
             StringBuffer fieldName(epos-curFilter, curFilter);
-            curFilter = epos+1;
-            assertex (*curFilter == '\'');
-            curFilter++;
-            epos = strchr(curFilter, '\'');
-            StringBuffer fieldVal(epos-curFilter, curFilter);
             unsigned fieldNum = inrec->getFieldNum(fieldName);
             assertex(fieldNum != (unsigned) -1);
             unsigned fieldOffset = offsetCalculator.getOffset(fieldNum);
             unsigned fieldSize = offsetCalculator.getSize(fieldNum);
-            printf("Filtering: %s(%u,%u)=%s\n", fieldName.str(), fieldOffset, fieldSize, fieldVal.str());
-            irc->append(createSingleKeySegmentMonitor(false, fieldOffset, fieldSize, fieldVal.str()));
+            const RtlTypeInfo *fieldType = inrec->queryType(fieldNum);
+            MemoryBuffer lobuffer;
+            MemoryBuffer hibuffer;
+            curFilter = epos+1;
+            Owned<IStringSet> filterSet = createStringSet(fieldSize);
+            while (*curFilter)
+            {
+                char startRange = *curFilter++;
+                if (startRange != '(' && startRange != '[')
+                    throw MakeStringException(0, "Invalid filter string: expected [ or ( at start of range");
+                // Now we expect a constant - type depends on type of field. Assume string or int for now
+                StringBuffer upperString, lowerString;
+                if (*curFilter=='\'')
+                {
+                    curFilter++;
+                    readString(lowerString, curFilter);
+                }
+                else
+                    UNIMPLEMENTED; // lowerInt = readInt(curFilter);
+                if (*curFilter == ',')
+                {
+                    curFilter++;
+                    if (*curFilter=='\'')
+                    {
+                        curFilter++;
+                        readString(upperString, curFilter);
+                    }
+                    else
+                        UNIMPLEMENTED; //upperInt = readInt(curFilter);
+                }
+                else
+                    upperString.set(lowerString);
+                char endRange = *curFilter++;
+                if (endRange != ')' && endRange != ']')
+                    throw MakeStringException(0, "Invalid filter string: expected ] or ) at end of range");
+                if (*curFilter==',')
+                    curFilter++;
+                else if (*curFilter)
+                    throw MakeStringException(0, "Invalid filter string: expected , between ranges");
+                printf("Filtering: %s(%u,%u)=%c%s,%s%c\n", fieldName.str(), fieldOffset, fieldSize, startRange, lowerString.str(), upperString.str(), endRange);
+                AnotherClonedMemoryBufferBuilder lobuilder(lobuffer.clear(), inrec->getMinRecordSize());
+                fieldType->buildUtf8(lobuilder, 0, inrec->queryField(fieldNum), lowerString.length(), lowerString.str());
+
+                AnotherClonedMemoryBufferBuilder hibuilder(hibuffer.clear(), inrec->getMinRecordSize());
+                fieldType->buildUtf8(hibuilder, 0, inrec->queryField(fieldNum), upperString.length(), upperString.str());
+
+                filterSet->addRange(lobuffer.toByteArray(), hibuffer.toByteArray());
+                if (startRange=='(')
+                    filterSet->killRange(lobuffer.toByteArray(), lobuffer.toByteArray());
+                if (endRange==')')
+                    filterSet->killRange(hibuffer.toByteArray(), hibuffer.toByteArray());
+            }
+            StringBuffer str;
+            filterSet->describe(str);
+            printf("Using filterset %s", str.str());
+            irc->append(createKeySegmentMonitor(false, filterSet.getClear(), fieldOffset, fieldSize));
         }
     }
 
