@@ -22,6 +22,7 @@
 #include "rtlkey2.hpp"
 #include "eclrtl_imp.hpp"
 #include "rtlrecord.hpp"
+#include "boost/regex/icu.hpp"
 
 #define KSM_SET             0x01
 #define KSM_WILD            0x02
@@ -214,7 +215,7 @@ public:
     virtual bool isWild() const override { return false; }
     virtual IKeySegmentMonitor * split(unsigned splitSize) override { throwUnexpected(); }
 private:
-    ICompiledStrRegExpr *regex=nullptr;
+    boost::u32regex regex;
 };
 
 class CSetKeySegmentMonitor : public CKeySegmentMonitor
@@ -374,20 +375,21 @@ IKeySegmentMonitor *CWildKeySegmentMonitor::merge(IKeySegmentMonitor *next) cons
 CRegexKeySegmentMonitor::CRegexKeySegmentMonitor(const char *_regex, bool caseSensitive, unsigned _offset, unsigned _size)
 : CWildKeySegmentMonitor(_offset, _size)
 {
-    regex = rtlCreateCompiledStrRegExpr(_regex, caseSensitive);
+    regex = boost::make_u32regex(_regex);
 }
 
 CRegexKeySegmentMonitor::~CRegexKeySegmentMonitor()
 {
-    rtlDestroyCompiledStrRegExpr(regex);
 }
 
 bool CRegexKeySegmentMonitor::matchesBuffer(const void *keyval) const
 {
-    IStrRegExprFindInstance *found = regex->find((const char *) keyval, 0, size, false);
-    bool ret = found && found->found();
-    rtlDestroyStrRegExprFindInstance(found);
-    return ret;
+    boost::smatch what;
+    std::string s((const char *) keyval, size);
+    if (boost::u32regex_match(s, what, regex))
+        return true;
+    else
+        return false;
 }
 
 
