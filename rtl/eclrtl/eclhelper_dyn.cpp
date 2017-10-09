@@ -152,7 +152,7 @@ public:
 
             const char *curFilter = filters->query().queryProp("@value");
             assertex(curFilter);
-            const char *epos = strchr(curFilter,':');
+            const char *epos = strchr(curFilter,'=');
             assertex(epos);
             StringBuffer fieldName(epos-curFilter, curFilter);
             unsigned fieldNum = inrec->getFieldNum(fieldName);
@@ -160,61 +160,68 @@ public:
             unsigned fieldOffset = offsetCalculator.getOffset(fieldNum);
             unsigned fieldSize = offsetCalculator.getSize(fieldNum);
             const RtlTypeInfo *fieldType = inrec->queryType(fieldNum);
-            MemoryBuffer lobuffer;
-            MemoryBuffer hibuffer;
             curFilter = epos+1;
-            Owned<IStringSet> filterSet = createStringSet(fieldSize);
-            while (*curFilter)
+            if (*curFilter=='~')
             {
-                char startRange = *curFilter++;
-                if (startRange != '(' && startRange != '[')
-                    throw MakeStringException(0, "Invalid filter string: expected [ or ( at start of range");
-                // Now we expect a constant - type depends on type of field. Assume string or int for now
-                StringBuffer upperString, lowerString;
-                if (*curFilter=='\'')
+                irc->append(createRegexKeySegmentMonitor(curFilter+1, false, fieldOffset, fieldSize));
+            }
+            else
+            {
+                MemoryBuffer lobuffer;
+                MemoryBuffer hibuffer;
+                Owned<IStringSet> filterSet = createStringSet(fieldSize);
+                while (*curFilter)
                 {
-                    curFilter++;
-                    readString(lowerString, curFilter);
-                }
-                else
-                    UNIMPLEMENTED; // lowerInt = readInt(curFilter);
-                if (*curFilter == ',')
-                {
-                    curFilter++;
+                    char startRange = *curFilter++;
+                    if (startRange != '(' && startRange != '[')
+                        throw MakeStringException(0, "Invalid filter string: expected [ or ( at start of range");
+                    // Now we expect a constant - type depends on type of field. Assume string or int for now
+                    StringBuffer upperString, lowerString;
                     if (*curFilter=='\'')
                     {
                         curFilter++;
-                        readString(upperString, curFilter);
+                        readString(lowerString, curFilter);
                     }
                     else
-                        UNIMPLEMENTED; //upperInt = readInt(curFilter);
+                        UNIMPLEMENTED; // lowerInt = readInt(curFilter);
+                    if (*curFilter == ',')
+                    {
+                        curFilter++;
+                        if (*curFilter=='\'')
+                        {
+                            curFilter++;
+                            readString(upperString, curFilter);
+                        }
+                        else
+                            UNIMPLEMENTED; //upperInt = readInt(curFilter);
+                    }
+                    else
+                        upperString.set(lowerString);
+                    char endRange = *curFilter++;
+                    if (endRange != ')' && endRange != ']')
+                        throw MakeStringException(0, "Invalid filter string: expected ] or ) at end of range");
+                    if (*curFilter==',')
+                        curFilter++;
+                    else if (*curFilter)
+                        throw MakeStringException(0, "Invalid filter string: expected , between ranges");
+                    printf("Filtering: %s(%u,%u)=%c%s,%s%c\n", fieldName.str(), fieldOffset, fieldSize, startRange, lowerString.str(), upperString.str(), endRange);
+                    AnotherClonedMemoryBufferBuilder lobuilder(lobuffer.clear(), inrec->getMinRecordSize());
+                    fieldType->buildUtf8(lobuilder, 0, inrec->queryField(fieldNum), lowerString.length(), lowerString.str());
+
+                    AnotherClonedMemoryBufferBuilder hibuilder(hibuffer.clear(), inrec->getMinRecordSize());
+                    fieldType->buildUtf8(hibuilder, 0, inrec->queryField(fieldNum), upperString.length(), upperString.str());
+
+                    filterSet->addRange(lobuffer.toByteArray(), hibuffer.toByteArray());
+                    if (startRange=='(')
+                        filterSet->killRange(lobuffer.toByteArray(), lobuffer.toByteArray());
+                    if (endRange==')')
+                        filterSet->killRange(hibuffer.toByteArray(), hibuffer.toByteArray());
                 }
-                else
-                    upperString.set(lowerString);
-                char endRange = *curFilter++;
-                if (endRange != ')' && endRange != ']')
-                    throw MakeStringException(0, "Invalid filter string: expected ] or ) at end of range");
-                if (*curFilter==',')
-                    curFilter++;
-                else if (*curFilter)
-                    throw MakeStringException(0, "Invalid filter string: expected , between ranges");
-                printf("Filtering: %s(%u,%u)=%c%s,%s%c\n", fieldName.str(), fieldOffset, fieldSize, startRange, lowerString.str(), upperString.str(), endRange);
-                AnotherClonedMemoryBufferBuilder lobuilder(lobuffer.clear(), inrec->getMinRecordSize());
-                fieldType->buildUtf8(lobuilder, 0, inrec->queryField(fieldNum), lowerString.length(), lowerString.str());
-
-                AnotherClonedMemoryBufferBuilder hibuilder(hibuffer.clear(), inrec->getMinRecordSize());
-                fieldType->buildUtf8(hibuilder, 0, inrec->queryField(fieldNum), upperString.length(), upperString.str());
-
-                filterSet->addRange(lobuffer.toByteArray(), hibuffer.toByteArray());
-                if (startRange=='(')
-                    filterSet->killRange(lobuffer.toByteArray(), lobuffer.toByteArray());
-                if (endRange==')')
-                    filterSet->killRange(hibuffer.toByteArray(), hibuffer.toByteArray());
+                StringBuffer str;
+                filterSet->describe(str);
+                printf("Using filterset %s", str.str());
+                irc->append(createKeySegmentMonitor(false, filterSet.getClear(), fieldOffset, fieldSize));
             }
-            StringBuffer str;
-            filterSet->describe(str);
-            printf("Using filterset %s", str.str());
-            irc->append(createKeySegmentMonitor(false, filterSet.getClear(), fieldOffset, fieldSize));
         }
     }
 

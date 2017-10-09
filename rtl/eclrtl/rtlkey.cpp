@@ -203,7 +203,18 @@ public:
     virtual IKeySegmentMonitor *clone() const;
     virtual IKeySegmentMonitor *combine(const IKeySegmentMonitor *with) const { throwUnexpected(); }
     virtual KeySegmentMonitorSerializeType serializeType() const { return KSMST_WILDKEYSEGMENTMONITOR; }
+};
 
+class CRegexKeySegmentMonitor : public CWildKeySegmentMonitor
+{
+public:
+    CRegexKeySegmentMonitor(const char *_regex, bool caseSenstive, unsigned _offset, unsigned _size);
+    ~CRegexKeySegmentMonitor();
+    virtual bool matchesBuffer(const void *keyval) const override;
+    virtual bool isWild() const override { return false; }
+    virtual IKeySegmentMonitor * split(unsigned splitSize) override { throwUnexpected(); }
+private:
+    ICompiledStrRegExpr *regex=nullptr;
 };
 
 class CSetKeySegmentMonitor : public CKeySegmentMonitor
@@ -359,6 +370,26 @@ IKeySegmentMonitor *CWildKeySegmentMonitor::merge(IKeySegmentMonitor *next) cons
     else
         return NULL;
 }
+
+CRegexKeySegmentMonitor::CRegexKeySegmentMonitor(const char *_regex, bool caseSensitive, unsigned _offset, unsigned _size)
+: CWildKeySegmentMonitor(_offset, _size)
+{
+    regex = rtlCreateCompiledStrRegExpr(_regex, caseSensitive);
+}
+
+CRegexKeySegmentMonitor::~CRegexKeySegmentMonitor()
+{
+    rtlDestroyCompiledStrRegExpr(regex);
+}
+
+bool CRegexKeySegmentMonitor::matchesBuffer(const void *keyval) const
+{
+    IStrRegExprFindInstance *found = regex->find((const char *) keyval, 0, size, false);
+    bool ret = found && found->found();
+    rtlDestroyStrRegExprFindInstance(found);
+    return ret;
+}
+
 
 CSetKeySegmentMonitor::CSetKeySegmentMonitor(bool _optional, IStringSet *_set, unsigned _offset, unsigned _size)
     : set(_set), CKeySegmentMonitor(_offset, _size)
@@ -1245,6 +1276,11 @@ ECLRTL_API IStringSet *createRtlStringValue(size32_t size, const char * value)
 IKeySegmentMonitor *createWildKeySegmentMonitor(unsigned _offset, unsigned _size)
 {
     return new CWildKeySegmentMonitor(_offset, _size);
+}
+
+IKeySegmentMonitor *createRegexKeySegmentMonitor(const char *_regex, bool _caseSensitive, unsigned _offset, unsigned _size)
+{
+    return new CRegexKeySegmentMonitor(_regex, _caseSensitive, _offset, _size);
 }
 
 IKeySegmentMonitor *createEmptyKeySegmentMonitor(bool optional, unsigned _offset, unsigned _size)

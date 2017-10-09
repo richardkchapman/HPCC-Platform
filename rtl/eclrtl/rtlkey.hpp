@@ -171,6 +171,7 @@ ECLRTL_API IStringSet *rtlIntersectSet(IStringSet * lhs, IStringSet * rhs);
 
 ECLRTL_API IKeySegmentMonitor *createKeySegmentMonitor(bool optional, IStringSet *set, unsigned _offset, unsigned _size);
 ECLRTL_API IKeySegmentMonitor *createEmptyKeySegmentMonitor(bool optional, unsigned _offset, unsigned _size);
+ECLRTL_API IKeySegmentMonitor *createRegexKeySegmentMonitor(const char *_regex, bool _caseSensitive, unsigned _offset, unsigned _size);
 ECLRTL_API IKeySegmentMonitor *createWildKeySegmentMonitor(unsigned _offset, unsigned _size);
 ECLRTL_API IKeySegmentMonitor *createDummyKeySegmentMonitor(unsigned _offset, unsigned _size, bool isSigned, bool isLittleEndian);
 ECLRTL_API IKeySegmentMonitor *createSingleKeySegmentMonitor(bool optional, unsigned _offset, unsigned _size, const void * value);
