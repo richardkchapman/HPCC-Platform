@@ -41,6 +41,26 @@ using roxiemem::IRowManager;
  #define new new(_NORMAL_BLOCK, __FILE__, __LINE__)
 #endif
 
+#ifdef _DEBUG
+#define ASSERT_SINGLE_THREADED \
+{   \
+    static SpinLock paranoid;   \
+    SpinBlock pb(paranoid);     \
+    static pthread_t lastTID = 0;    \
+    if (GetCurrentThreadId() != lastTID)    \
+    {   \
+        if (lastTID)    \
+        {   \
+            DBGLOG("Unexpected multithreading detected at line %u", __LINE__);  \
+            assert(false);  \
+        }   \
+        lastTID = GetCurrentThreadId(); \
+    }   \
+}
+#else
+#define ASSERT_SINGLE_THREADED {}
+#endif
+
 atomic_t unwantedDiscarded;
 
 // PackageSequencer ====================================================================================
@@ -496,6 +516,7 @@ public:
 
     virtual bool add_package(DataBuffer *dataBuff) 
     {
+        ASSERT_SINGLE_THREADED;
         UdpPacketHeader *pktHdr = (UdpPacketHeader*) dataBuff->data;
         if (checkTraceLevel(TRACE_MSGPACK, 4))
         {
