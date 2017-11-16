@@ -318,6 +318,7 @@ void SegMonitorList::append(IKeySegmentMonitor *segment)
         }
         else
         {
+            assertex(false);  // Don't think this should ever happen!
             // we need to combine new segmonitor with existing segmonitors
             assertex (offset + size <= last.getOffset() + last.getSize());   // no holes should ever be created...
             if (!segment->isWild())  // X and wild is always X
