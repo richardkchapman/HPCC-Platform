@@ -155,18 +155,18 @@ typedef unsigned short UChar;
 #include "rtlkey.hpp"
 #include "jmisc.hpp"
 
-class jhtree_decl SegMonitorList : implements IInterface, implements IIndexReadContext, public CInterface
+interface IKeyMatch
 {
-    unsigned _lastRealSeg() const;
-    unsigned cachedLRS;
-    unsigned mergeBarrier;
-    bool modified;
+
+};
+
+class jhtree_decl SegMonitorList : implements IInterface, implements IIndexReadContext, implements IKeyMatch, public CInterface
+{
 public:
     IMPLEMENT_IINTERFACE;
     inline SegMonitorList() { reset(); }
     IArrayOf<IKeySegmentMonitor> segMonitors;
 
-    void reset();
     void swapWith(SegMonitorList &other);
     void setLow(unsigned segno, void *keyBuffer) const;
     unsigned setLowAfter(size32_t offset, void *keyBuffer) const;
@@ -174,20 +174,27 @@ public:
     void endRange(unsigned segno, void *keyBuffer) const;
     inline unsigned lastRealSeg() const { assertex(!modified); return cachedLRS; }
     unsigned lastFullSeg() const;
-    bool matched(void *keyBuffer, unsigned &lastMatch) const;
-    size32_t getSize() const;
-    inline void setMergeBarrier(unsigned offset) { mergeBarrier = offset; }
 
     void checkSize(size32_t keyedSize, char const * keyname);
+
+    void reset();
+    inline void setMergeBarrier(unsigned offset) { mergeBarrier = offset; }
     void recalculateCache();
     void finish();
-    void deserialize(MemoryBuffer &mb);
     void serialize(MemoryBuffer &mb) const;
+    void deserialize(MemoryBuffer &mb);
 
     // interface IIndexReadContext
     virtual void append(IKeySegmentMonitor *segment);
     virtual unsigned ordinality() const;
     virtual IKeySegmentMonitor *item(unsigned i) const;
+protected:
+    size32_t getSize() const;
+
+    unsigned _lastRealSeg() const;
+    unsigned cachedLRS;
+    unsigned mergeBarrier;
+    bool modified;
 };
 
 class IRecordLayoutTranslator;

@@ -371,17 +371,6 @@ void SegMonitorList::append(IKeySegmentMonitor *segment)
         segMonitors.append(*segment);
 }
 
-bool SegMonitorList::matched(void *keyBuffer, unsigned &lastMatch) const
-{
-    lastMatch = 0;
-    for (; lastMatch < segMonitors.length(); lastMatch++)
-    {
-        if (!segMonitors.item(lastMatch).matchesBuffer(keyBuffer))
-            return false;
-    }
-    return true;
-}
-
 
 ///
 
@@ -758,7 +747,7 @@ public:
                 if (linuxYield)
                     sched_yield();
 #endif
-                eof = !incrementKey(i);
+                eof = !incrementKey(i); // i is the first non-matching segmonitor
                 if (!exact)
                 {
                     ret = true;
