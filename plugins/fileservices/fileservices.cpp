@@ -2134,6 +2134,9 @@ FILESERVICES_API unsigned __int64 FILESERVICES_CALL fsGetUniqueInteger(ICodeCont
 
 FILESERVICES_API void FILESERVICES_CALL fsAddFileRelationship(ICodeContext * ctx,const char *primary, const char *secondary, const char *primflds, const char *secflds, const char *kind, const char *cardinality, bool payload, const char *description)
 {
+    IEngineContext *engineContext = ctx->queryEngineContext();
+    if (engineContext && !engineContext->allowDaliAccess())
+        return;
     StringBuffer pfn;
     constructLogicalName(ctx, primary, pfn);
     StringBuffer sfn;

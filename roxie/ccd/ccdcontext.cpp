@@ -3093,7 +3093,7 @@ public:
     virtual bool allowDaliAccess() const
     {
         Owned<IRoxieDaliHelper> dali = ::connectToDali();
-        return dali != nullptr;
+        return dali && dali->connected();
     }
     virtual StringBuffer &getQueryId(StringBuffer &result, bool isShared) const
     {
