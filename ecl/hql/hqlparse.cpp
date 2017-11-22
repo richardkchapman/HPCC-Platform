@@ -2131,47 +2131,44 @@ bool HqlLex::checkUnicodeLiteral(char const * str, unsigned length, unsigned & e
     return true;
 }
 
-int HqlLex::processStringLiteral(YYSTYPE & returnToken, char *CUR_TOKEN_TEXT, unsigned CUR_TOKEN_LENGTH, int oldColumn, int oldPosition)
+static char readStringLiteral(StringBuffer &ret, const char *input, unsigned inputLength)
 {
-    MemoryAttr tempBuff;
-    char *b = (char *)tempBuff.allocate(CUR_TOKEN_LENGTH); // Escape sequence can only make is shorter...
-    char *bf = b;
-    const char *finger = CUR_TOKEN_TEXT;
-    type_t tc = type_string;
-    if (*finger != '\'')
+    ret.ensureCapacity(inputLength); // Escape sequence can only make it shorter...
+    const char *finger = input;
+    char tc = tolower(*finger);  // Check for leading modifier - d,v,q etc
+    if (tc=='d' || tc=='q' || tc=='v')
     {
-        if ((*finger == 'd') || (*finger == 'D'))
-            tc = type_data;
-        else if((*finger == 'q') || (*finger == 'Q'))
-            tc = type_qstring;
-        else if((*finger == 'v') || (*finger == 'V'))
-            tc = type_varstring;
         finger++;
+        inputLength--;
     }
+    if (*finger != '\'')
+        throw makeStringException(ERR_STRING_UNENDED, "Illegal string constant - expected \' at start");
+    finger++;
+    inputLength--;
+    if (inputLength < 1 || finger[inputLength-1] != '\'')
+        throw makeStringException(ERR_STRING_UNENDED, "String constant not properly terminated");
+    inputLength--;
     bool isMultiline = false;
-    if (finger[1]=='\'' && finger[2]=='\'')
+    if (inputLength >= 2 && finger[0]=='\'' && finger[1]=='\'')
     {
         isMultiline = true;
-        CUR_TOKEN_TEXT[CUR_TOKEN_LENGTH-2] = '\0';
+        inputLength -= 2;
         finger += 2;
+        if (inputLength < 2 || finger[inputLength-1] != '\'' || finger[inputLength-2] != '\'')
+            throw makeStringException(ERR_STRING_UNENDED, "Multiline string constant not properly terminated");
+        inputLength -= 2;
     }
-    for (finger++; finger[1]; finger++)
+    const char * end = finger+inputLength;
+    for (; finger < end; finger++)
     {
         unsigned char next = *finger;
-        size32_t delta = (size32_t)(finger-CUR_TOKEN_TEXT);
+        size32_t delta = (size32_t)(finger-input);
         if (next == '\\')
         {
+            if (finger == end-1)  // finger[1] must be '.
+                throw makeStringExceptionV(ERR_ESCAPE_ENDWITHSLASH, "Can not terminate a string with escape char");
             next = finger[1];
-            if (finger[2]==0)  // finger[1] must be '.
-            {
-                returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-                StringBuffer msg("Can not terminate a string with escape char '\\': ");
-                msg.append(CUR_TOKEN_TEXT);
-                reportError(returnToken, RRR_ESCAPE_ENDWITHSLASH, "%s", msg.str());
-                if (checkAborting())
-                    return EOF;
-            }
-            else if (next == '\'' || next == '\\' || next == '?' || next == '"')
+            if (next == '\'' || next == '\\' || next == '?' || next == '"')
             {
                 finger++;
             }
@@ -2229,105 +2226,99 @@ int HqlLex::processStringLiteral(YYSTYPE & returnToken, char *CUR_TOKEN_TEXT, un
                 }
                 if(count != 3)
                 {
-                    returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-                    StringBuffer msg;
-                    msg.append("3-digit numeric escape sequence contained non-octal digit: ").append(next);
-                    reportError(returnToken, ERR_ESCAPE_UNKNOWN, "%s", msg.str());
-                    if (checkAborting())
-                        return EOF;
+                    throw makeStringExceptionV(ERR_ESCAPE_UNKNOWN, "3-digit numeric escape sequence contained non-octal digit: %c", next);
                 }
-                *bf++ = value;
-                if(!(isValidAsciiLikeCharacter(value) || (tc == type_data)))
+                ret.append(value);
+                if(!(isValidAsciiLikeCharacter(value) || (tc == 'd')))
                 {
-                    returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-                    reportWarning(CategoryCast, returnToken, ERR_STRING_NON_ASCII, "Character in string literal is not defined in encoding " ASCII_LIKE_CODEPAGE);
-                    if (checkAborting())
-                        return EOF;
+                    // MORE - this is a configurable warning
+                    throw makeStringException(ERR_STRING_NON_ASCII, "Character in string literal is not defined in encoding " ASCII_LIKE_CODEPAGE);
                 }
                 finger += count;
                 continue;
             }
             else
             {
-                StringBuffer msg;
-                msg.append("Unrecognized escape sequence: ");
-                msg.append("\\").append(finger[1]);
-                returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-                reportError(returnToken, ERR_ESCAPE_UNKNOWN, "%s", msg.str());
-                if (checkAborting())
-                    return EOF;
+                throw makeStringExceptionV(ERR_ESCAPE_UNKNOWN, "Unrecognized escape sequence: \\%c", next);
             }
-            *bf++ = next;
+            ret.append(next);
         }
         else if (next == '\'' && !isMultiline)
         {
-            returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-            reportError(returnToken, ERR_STRING_NEEDESCAPE,"' needs to be escaped by \\ inside string");
-            if (checkAborting())
-                return EOF;
+            throw makeStringException(ERR_STRING_NEEDESCAPE, "' needs to be escaped by \\ inside string");
         }
         else if (next >= 128)
         {
             const byte * temp = (byte *)finger;
-            unsigned lenLeft = CUR_TOKEN_LENGTH - (size32_t)(finger - CUR_TOKEN_TEXT);
-            int extraCharsRead = rtlSingleUtf8ToCodepage(bf, lenLeft, finger, ASCII_LIKE_CODEPAGE);
+            unsigned lenLeft = end - finger;
+            char c;
+            int extraCharsRead = rtlSingleUtf8ToCodepage(&c, lenLeft, finger, ASCII_LIKE_CODEPAGE);
             if (extraCharsRead == -1)
             {
                 //This really has to be an error, otherwise it will work most of the time, but will then sometimes fail
                 //because two characters > 128 are next to each other.
-                returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-                reportError(returnToken, ERR_STRING_NON_ASCII, "Character in string literal is not legal UTF-8");
-                if (checkAborting())
-                    return EOF;
-                *bf = next;
+                throw makeStringException(ERR_STRING_NON_ASCII, "Character in string literal is not legal UTF-8");
             }
             else
             {
-                if (*bf == ASCII_LIKE_SUBS_CHAR)
+                if (c == ASCII_LIKE_SUBS_CHAR)
                 {
-                    returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-                    reportWarning(CategoryCast, returnToken, ERR_STRING_NON_ASCII, "Character in string literal is not defined in encoding " ASCII_LIKE_CODEPAGE ", try using a unicode constant");
+                    throw makeStringException(ERR_STRING_NON_ASCII, "Character in string literal is not defined in encoding " ASCII_LIKE_CODEPAGE ", try using a unicode constant");
                 }
                 finger += extraCharsRead;
             }
-            bf++;
+            ret.append(c);
         }
         else
         {
-            *bf++ = next;
+            ret.append(next);
             if(!(isValidAsciiLikeCharacter(next) || (tc == type_data)))
             {
-                returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
-                reportError(returnToken, ERR_STRING_NON_ASCII, "Character in string literal is not defined in encoding " ASCII_LIKE_CODEPAGE);
-                if (checkAborting())
-                    return EOF;
+                throw makeStringException(ERR_STRING_NON_ASCII, "Character in string literal is not defined in encoding " ASCII_LIKE_CODEPAGE);
             }
         }
     }
-    returnToken.setPosition(yyLineNo, oldColumn, oldPosition, querySourcePath());
-    switch (tc)
+    return tc;
+}
+
+int HqlLex::processStringLiteral(YYSTYPE & returnToken, char *CUR_TOKEN_TEXT, unsigned CUR_TOKEN_LENGTH, int oldColumn, int oldPosition)
+{
+    try
     {
-    case type_qstring:
+        StringBuffer ret;
+        char prefix = readStringLiteral(ret, CUR_TOKEN_TEXT, CUR_TOKEN_LENGTH);
+        returnToken.setPosition(yyLineNo, oldColumn, oldPosition, querySourcePath());
+        switch (prefix)
         {
-            Owned<ITypeInfo> qStrType = makeQStringType(UNKNOWN_LENGTH);
-            returnToken.setExpr(createConstant(qStrType->castFrom((size32_t)(bf-b), b)));
-            return (DATA_CONST);
+        case 'q':
+            {
+                Owned<ITypeInfo> qStrType = makeQStringType(UNKNOWN_LENGTH);
+                returnToken.setExpr(createConstant(qStrType->castFrom(ret.length(), ret.str())));
+                return (DATA_CONST);
+            }
+        case 'd':
+            {
+                returnToken.setExpr(createConstant(createDataValue(ret.str(), ret.length())));
+                return (DATA_CONST);
+            }
+        case 'v':
+            {
+                returnToken.setExpr(createConstant(createVarStringValue(ret.length(), ret.str(), makeVarStringType(UNKNOWN_LENGTH))));
+                return (DATA_CONST);
+            }
+        default:
+            returnToken.setExpr(createConstant(createStringValue(ret.str(), ret.length())));
+            return (STRING_CONST);
         }
-    case type_data:
-        {
-            returnToken.setExpr(createConstant(createDataValue(b, (size32_t)(bf-b))));
-            return (DATA_CONST);
-        }
-    case type_varstring:
-        {
-            returnToken.setExpr(createConstant(createVarStringValue((size32_t)(bf-b), b, makeVarStringType(UNKNOWN_LENGTH))));
-            return (DATA_CONST);
-        }
-    case type_string:
-        returnToken.setExpr(createConstant(createStringValue(b, (size32_t)(bf-b))));
-        return (STRING_CONST);
     }
-    throwUnexpected();
+    catch (IException *E)
+    {
+        StringBuffer msg;
+        reportError(returnToken, E->errorCode(), "%s", E->errorMessage(msg).str());
+        if (checkAborting())
+            return EOF;
+    }
+    return (STRING_CONST);
 }
 
 //====================================== Error Reporting  ======================================

@@ -224,7 +224,7 @@
 
 /* lex error */
 #define ERR_ESCAPE_UNKNOWN          2180  /* Unknown escape sequence */
-#define RRR_ESCAPE_ENDWITHSLASH     2181  /* A string end with escape char \, eg., x := 'abc\'; */
+#define ERR_ESCAPE_ENDWITHSLASH     2181  /* A string end with escape char \, eg., x := 'abc\'; */
 #define ERR_HEXDATA_ILL             2182  /* Illegal hex data, it can only have 0-9a-fA-F */
 #define ERR_HEXDATA_ODDDIGITS       2183  /* Odd number of digits in hex data, e.g., x'ABC'.  */
 #define ERR_HEXDATA_EMPTY           2184  /* Empty hex data, e.g., x''. */
