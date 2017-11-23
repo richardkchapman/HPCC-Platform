@@ -119,6 +119,7 @@ public:
     bool disableLocalOptimizations;
     IRecordLayoutTranslator::Mode enableFieldTranslation;
     bool skipFileFormatCrcCheck;
+    bool forceFieldTranslation;
     bool stripWhitespaceFromStoredDataset;
     bool timeActivities;
     bool allSortsMaySpill;
@@ -287,6 +288,22 @@ public:
         // Default is no additional information
     }
 
+    unsigned getFormatCrc(unsigned helperCrc) const
+    {
+        if (queryFactory.queryOptions().skipFileFormatCrcCheck)
+            return 0;
+#ifdef _DEBUG
+        else if (queryFactory.queryOptions().forceFieldTranslation)
+            return helperCrc+1;
+#endif
+        else
+            return helperCrc;
+    }
+
+    IRecordLayoutTranslator::Mode getEnableFieldTranslation() const
+    {
+        return queryFactory.queryOptions().enableFieldTranslation;
+    }
 };
 
 extern void addXrefFileInfo(IPropertyTree &reply, const IResolvedFile *dataFile);

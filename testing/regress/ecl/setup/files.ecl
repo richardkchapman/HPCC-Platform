@@ -35,8 +35,8 @@ SHARED useLayoutTrans := false;
 SHARED useVarIndex := false;
 
 #if (useDynamic=true)
-SHARED STRING EmptyString := '' : STORED('dummy');
-#option ('allowVariableRoxieFilenames', 1);
+STRING DummyString := '' : STORED('dummy');
+SHARED STRING EmptyString := WHEN(DummyString,#option ('allowVariableRoxieFilenames', 1));
 #else
 SHARED STRING EmptyString := '';
 #end
@@ -50,8 +50,10 @@ SHARED STRING _indexPrefix := '~regress::'+ IF(multiPart AND useLocal, 'local',
                              IF(multiPart, 'multi',
                              'single')) + '::' + EmptyString;
 
-EXPORT filePrefix := #IFDEFINED(root.filePrefix, _filePrefix);
-EXPORT indexPrefix := #IFDEFINED(root.filePrefix, _indexPrefix);
+SHARED forceLayoutTranslation := #IFDEFINED(root.forceLayoutTranslation, 0);
+SHARED setLayout := #option('layoutTranslationEnabled', CASE(forceLayoutTranslation,1=>v'alwaysECL',2=>v'alwaysDisk',v''));
+EXPORT filePrefix := WHEN(#IFDEFINED(root.filePrefix, _filePrefix), setLayout);
+EXPORT indexPrefix := WHEN(#IFDEFINED(root.filePrefix, _indexPrefix), setLayout);
         
 EXPORT DG_FileOut              := filePrefix + 'DG_';
 EXPORT DG_IndexOut             := indexPrefix + 'DG_';

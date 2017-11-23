@@ -294,9 +294,10 @@ QueryOptions::QueryOptions()
     heapFlags = defaultHeapFlags;
 
     checkingHeap = defaultCheckingHeap;
-    disableLocalOptimizations = false;  // No global default for this
+    disableLocalOptimizations = defaultDisableLocalOptimizations;
     enableFieldTranslation = fieldTranslationEnabled;
     skipFileFormatCrcCheck = false;
+    forceFieldTranslation = false;
     stripWhitespaceFromStoredDataset = ((ptr_ignoreWhiteSpace & defaultXmlReadFlags) != 0);
     timeActivities = defaultTimeActivities;
     traceEnabled = defaultTraceEnabled;
@@ -328,6 +329,7 @@ QueryOptions::QueryOptions(const QueryOptions &other)
     disableLocalOptimizations = other.disableLocalOptimizations;
     enableFieldTranslation = other.enableFieldTranslation;
     skipFileFormatCrcCheck = other.skipFileFormatCrcCheck;
+    forceFieldTranslation = other.forceFieldTranslation;
     stripWhitespaceFromStoredDataset = other.stripWhitespaceFromStoredDataset;
     timeActivities = other.timeActivities;
     traceEnabled = other.traceEnabled;
@@ -369,6 +371,7 @@ void QueryOptions::setFromWorkUnit(IConstWorkUnit &wu, const IPropertyTree *stat
     updateFromWorkUnit(disableLocalOptimizations, wu, "disableLocalOptimizations");
     updateFromWorkUnit(enableFieldTranslation, wu, "layoutTranslationEnabled");  // Name is different for compatibility reasons
     updateFromWorkUnit(skipFileFormatCrcCheck, wu, "skipFileFormatCrcCheck");
+    updateFromWorkUnit(forceFieldTranslation, wu, "forceFieldTranslation");
     updateFromWorkUnit(stripWhitespaceFromStoredDataset, wu, "stripWhitespaceFromStoredDataset");
     updateFromWorkUnit(timeActivities, wu, "timeActivities");
     updateFromWorkUnit(traceEnabled, wu, "traceEnabled");
@@ -403,6 +406,13 @@ void QueryOptions::updateFromWorkUnit(IRecordLayoutTranslator::Mode &value, ICon
     wu.getDebugValue(name, val);
     if (val.length())
     {
+#ifdef _DEBUG
+        if (strieq(val.str(), "alwaysDisk"))
+            value = IRecordLayoutTranslator::TranslateAlwaysDisk;
+        else if (strieq(val.str(), "alwaysECL"))
+            value = IRecordLayoutTranslator::TranslateAlwaysECL;
+        else
+#endif
         if (strieq(val.str(), "payload"))
             value = IRecordLayoutTranslator::TranslatePayload;
         else if (strToBool(val.str()))
@@ -434,7 +444,8 @@ void QueryOptions::setFromContext(const IPropertyTree *ctx)
         updateFromContext(checkingHeap, ctx, "@checkingHeap", "_CheckingHeap");
         // Note: disableLocalOptimizations is not permitted at context level (too late)
         // Note: enableFieldTranslation is not permitted at context level (generally too late anyway)
-        updateFromContext(skipFileFormatCrcCheck, ctx, "_SkipFileFormatCrcCheck", "@skipFileFormatCrcCheck");
+        // Note: skipFileFormatCrcCheck is not permitted at context level (generally too late anyway)
+        // Note: forceFieldTranslation is not permitted at context level (generally too late anyway)
         updateFromContext(stripWhitespaceFromStoredDataset, ctx, "_StripWhitespaceFromStoredDataset", "@stripWhitespaceFromStoredDataset");
         updateFromContext(timeActivities, ctx, "@timeActivities", "_TimeActivities");
         updateFromContext(traceEnabled, ctx, "@traceEnabled", "_TraceEnabled");

@@ -16,6 +16,10 @@
 ############################################################################## */
 
 //UseStandardFiles
+//version forceLayoutTranslation=0
+//version forceLayoutTranslation=1
+//version forceLayoutTranslation=2
+
 import $.setup;
 prefix := setup.Files(false, false).FilePrefix;
 
