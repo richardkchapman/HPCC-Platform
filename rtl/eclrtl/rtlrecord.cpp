@@ -131,11 +131,11 @@ public:
         }
         return conditions[idx]==0;
     }
+    inline unsigned queryStartField() const { return startIdx; }
 private:
     const RtlFieldInfo &field;
     const IfBlockInfo *parent = nullptr;  // for nested ifblocks
     unsigned idx;
-public:
     unsigned startIdx; // For ifblocks inside child records
 };
 
@@ -379,7 +379,7 @@ void RtlRecord::calcRowOffsets(size_t * variableOffsets, const void * _row, unsi
             if (field->flags & RFTMinifblock)
             {
                 const RtlCondFieldStrInfo *condfield = static_cast<const RtlCondFieldStrInfo *>(field);
-                unsigned startField = condfield->ifblock.startIdx;
+                unsigned startField = condfield->ifblock.queryStartField();
                 const byte *childRow = row;
                 if (startField)
                     childRow += getOffset(variableOffsets, startField);
@@ -520,7 +520,7 @@ bool RtlRecord::excluded(const RtlFieldInfo *field, const byte *row, byte *condi
     if (!field->omitable())
         return false;
     const RtlCondFieldStrInfo *condfield = static_cast<const RtlCondFieldStrInfo *>(field);
-    unsigned startField = condfield->ifblock.startIdx;
+    unsigned startField = condfield->ifblock.queryStartField();
     const byte *childRow = row;
     if (startField)
         childRow += calculateOffset(row, startField);

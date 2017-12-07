@@ -1534,10 +1534,6 @@ protected:
     {
         if (factory->queryQueryFactory().queryOptions().skipFileFormatCrcCheck)
             return 0;
-#ifdef _DEBUG
-        else if (factory->queryQueryFactory().queryOptions().forceFieldTranslation)
-            return helperCrc+1;
-#endif
         else
             return helperCrc;
     }

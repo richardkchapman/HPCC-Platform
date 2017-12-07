@@ -838,14 +838,11 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         const char *val = topology->queryProp("@fieldTranslationEnabled");
         if (val)
         {
-#ifdef _DEBUG
             if (strieq(val, "alwaysDisk"))
                 fieldTranslationEnabled = IRecordLayoutTranslator::TranslateAlwaysDisk;
             else if (strieq(val, "alwaysECL"))
                 fieldTranslationEnabled = IRecordLayoutTranslator::TranslateAlwaysECL;
-            else
-#endif
-            if (strieq(val, "payload"))
+            else if (strieq(val, "payload"))
                 fieldTranslationEnabled = IRecordLayoutTranslator::TranslatePayload;
             else if (strToBool(val))
                 fieldTranslationEnabled = IRecordLayoutTranslator::TranslateAll;

@@ -2212,14 +2212,11 @@ private:
                 const char *val = control->queryProp("@val");
                 if (val)
                 {
-#ifdef _DEBUG
                     if (strieq(val, "alwaysDisk"))
                         fieldTranslationEnabled = IRecordLayoutTranslator::TranslateAlwaysDisk;
                     else if (strieq(val, "alwaysECL"))
                         fieldTranslationEnabled = IRecordLayoutTranslator::TranslateAlwaysECL;
-        else
-#endif
-                    if (strieq(val, "payload"))
+                    else if (strieq(val, "payload"))
                         fieldTranslationEnabled = IRecordLayoutTranslator::TranslatePayload;
                     else if (!val || strToBool(val))
                         fieldTranslationEnabled = IRecordLayoutTranslator::TranslateAll;

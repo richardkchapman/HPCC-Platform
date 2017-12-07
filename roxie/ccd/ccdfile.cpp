@@ -2103,7 +2103,6 @@ public:
             {
                 const char *subname = subNames.item(idx);
                 int thisFormatCrc = formatCrcs.item(idx);
-#ifdef _DEBUG
                 if (mode == IRecordLayoutTranslator::TranslateAlwaysDisk && diskTypeInfo.item(idx))
                 {
                     actual = diskTypeInfo.item(idx);
@@ -2117,9 +2116,7 @@ public:
                     if (!translator->canTranslate())
                         throw MakeStringException(ROXIE_MISMATCH, "Untranslatable record layout mismatch detected for file %s", subname);
                 }
-                else
-#endif
-                if (!thisFormatCrc || thisFormatCrc==formatCrc)
+                else if (!thisFormatCrc || thisFormatCrc==formatCrc)
                     translator.clear();
                 else
                 {
