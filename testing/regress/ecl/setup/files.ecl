@@ -134,6 +134,7 @@ END;
 EXPORT DG_BlankSet := dataset([{0,'','',0}],DG_OutRec);
 
 EXPORT DG_FlatFile      := DATASET(DG_FileOut+'FLAT',{DG_OutRec,UNSIGNED8 filepos{virtual(fileposition)}},FLAT);
+EXPORT DG_FlatFile2     := DATASET(DG_FileOut+'FLAT2',{DG_OutRec,STRING5 extra := 'extra',UNSIGNED8 filepos{virtual(fileposition)}},FLAT);
 EXPORT DG_FlatFileGrouped := DATASET(DG_FileOut+'GROUPED',{DG_OutRec,UNSIGNED8 filepos{virtual(fileposition)}},FLAT,__GROUPED__);
 EXPORT DG_FlatFileEvens := DATASET(DG_FileOut+'FLAT_EVENS',{DG_OutRec,UNSIGNED8 filepos{virtual(fileposition)}},FLAT);
 

@@ -84,19 +84,28 @@ EvensFilter := DG_ParentRecs.DG_firstname in [Files.DG_Fnames[2],Files.DG_Fnames
 
 SEQUENTIAL(
     PARALLEL(output(DG_ParentRecs,,Files.DG_FileOut+'FLAT',overwrite),
+             output(DG_ParentRecs,{DG_ParentRecs, STRING5 extra := 'extra'},Files.DG_FileOut+'FLAT2',overwrite),
              output(GROUP(SORT(DG_ParentRecs, DG_FirstName),DG_Firstname),,Files.DG_FileOut+'GROUPED',__GROUPED__,overwrite),
              output(DG_ParentRecs(EvensFilter),,Files.DG_FileOut+'FLAT_EVENS',overwrite)),
     PARALLEL(buildindex(Files.DG_NormalIndexFile,overwrite),
              buildindex(Files.DG_NormalIndexFileEvens,overwrite,SET('_nodeSize', 512)),
              buildindex(Files.DG_TransIndexFile,overwrite),
              buildindex(Files.DG_TransIndexFileEvens,overwrite),
-             buildindex(Files.DG_KeyedIndexFile,overwrite))
-    );
+             buildindex(Files.DG_KeyedIndexFile,overwrite));
 
     fileServices.AddFileRelationship( __nameof__(Files.DG_FlatFile), __nameof__(Files.DG_NormalIndexFile), '', '', 'view', '1:1', false);
     fileServices.AddFileRelationship( __nameof__(Files.DG_FlatFile), __nameof__(Files.DG_NormalIndexFile), '__fileposition__', 'filepos', 'link', '1:1', true);
     fileServices.AddFileRelationship( __nameof__(Files.DG_FlatFileEvens), __nameof__(Files.DG_NormalIndexFileEvens), '', '', 'view', '1:1', false);
     fileServices.AddFileRelationship( __nameof__(Files.DG_FlatFileEvens), __nameof__(Files.DG_NormalIndexFileEvens), '__fileposition__', 'filepos', 'link', '1:1', true);
+    fileServices.DeleteSuperFile(Files.DG_FileOut+'SUPER'),
+    fileServices.CreateSuperFile(Files.DG_FileOut+'SUPER'),
+    fileServices.StartSuperFileTransaction(),
+    fileServices.AddSuperFile(Files.DG_FileOut+'SUPER',Files.DG_FileOut+'FLAT'),
+    fileServices.AddSuperFile(Files.DG_FileOut+'SUPER',Files.DG_FileOut+'FLAT2'),
+    fileServices.AddSuperFile(Files.DG_FileOut+'SUPER',Files.DG_FileOut+'GROUPED'),
+    fileServices.AddSuperFile(Files.DG_FileOut+'SUPER',Files.DG_FileOut+'FLAT_EVENS'),
+    fileServices.FinishSuperFileTransaction(),
+);
 
 Files.DG_VarOutRec Proj1(Files.DG_OutRec L) := TRANSFORM
   SELF := L;
