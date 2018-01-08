@@ -365,7 +365,7 @@ public:
         else
         {
             unsigned r;
-            Rcpp::List l = stack.tos().cell(r);
+            Rcpp::NumericVector l = stack.tos().cell(r);
             l[r] = value;
         }
     }
