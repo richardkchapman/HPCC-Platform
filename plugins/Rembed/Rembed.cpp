@@ -365,7 +365,7 @@ public:
         else
         {
             unsigned r;
-            Rcpp::NumericVector l = stack.tos().cell(r);
+            Rcpp::NumericVector l = stack.tos().celln(r);
             l[r] = value;
         }
     }
@@ -490,6 +490,7 @@ protected:
     interface IDataListPosition : public IInterface
     {
         virtual Rcpp::List cell(unsigned &row) = 0;
+        virtual Rcpp::NumericVector celln(unsigned &row) = 0;
         virtual void nextRow() = 0;
         virtual bool isNestedRow(const RtlFieldInfo *_field) const = 0;
     };
@@ -502,6 +503,11 @@ protected:
             row = rowIdx-1;        // nextRow is called before the first row, so rowIdx is 1-based
             curCell = frame[colIdx++];
             return curCell;
+        }
+        virtual Rcpp::NumericVector celln(unsigned &row) override
+        {
+            row = rowIdx-1;        // nextRow is called before the first row, so rowIdx is 1-based
+            return frame[colIdx++];
         }
         virtual void nextRow() override
         {
