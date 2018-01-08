@@ -535,6 +535,7 @@ protected:
             row = colIdx++;
             return list;
         }
+        virtual Rcpp::NumericVector celln(unsigned &row) override { UNIMPLEMENTED; }
         virtual void nextRow() override
         {
             colIdx = 0;
