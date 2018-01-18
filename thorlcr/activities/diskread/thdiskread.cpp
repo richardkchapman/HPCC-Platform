@@ -64,7 +64,7 @@ public:
             }
         }
         if (0 == (TDRnocrccheck & helper->getFlags()))
-            checkFormatCrc(this, file, helper->getFormatCrc(), helper->queryProjectedDiskRecordSize(), helper->queryDiskRecordSize(), RecordTranslationMode::Payload, false); // MORE - mode should come from options somewhere
+            checkFormatCrc(this, file, helper->getFormatCrc(), helper->queryProjectedDiskRecordSize(), helper->queryDiskRecordSize(), false); // MORE - mode should come from options somewhere
     }
 };
 

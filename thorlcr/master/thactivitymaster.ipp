@@ -36,6 +36,6 @@ WUFileKind getDiskOutputKind(unsigned flags);
 
 void updateActivityResult(IConstWorkUnit &workunit, unsigned helperFlags, unsigned sequence, const char *logicalFilename, unsigned __int64 recordCount);
 void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned helperCrc,
-                               IOutputMetaData *projected, IOutputMetaData *expected, RecordTranslationMode mode, bool index);
+                               IOutputMetaData *projected, IOutputMetaData *expected, bool index);
 
 #endif

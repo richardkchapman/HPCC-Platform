@@ -624,7 +624,7 @@ void checkSuperFileOwnership(IDistributedFile &file)
 }
 
 void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned helperCrc,
-                               IOutputMetaData *projected, IOutputMetaData *expected, RecordTranslationMode mode, bool index)
+                               IOutputMetaData *projected, IOutputMetaData *expected, bool index)
 {
     IDistributedFile *f = file;
     IDistributedSuperFile *super = f->querySuperFile();
@@ -684,8 +684,8 @@ void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned he
                     throw MakeStringException(TE_FormatCrcMismatch, "Untranslatable record layout mismatch detected for file %s", subname);
                 if (translator->needsTranslate())
                 {
-                    if (mode == RecordTranslationMode::None)
-                        throw MakeStringException(TE_FormatCrcMismatch, "Translatable record layout mismatch detected for file %s, but translation disabled", subname);
+                    // if (mode == RecordTranslationMode::None)
+                    //    throw MakeStringException(TE_FormatCrcMismatch, "Translatable record layout mismatch detected for file %s, but translation disabled", subname);
                     keyedTranslator.setown(createKeyTranslator(actualFormat->queryRecordAccessor(true), expected->queryRecordAccessor(true)));
                     if (index && keyedTranslator->needsTranslate())
                         throw MakeStringException(TE_FormatCrcMismatch, "Record layout mismatch detected in keyed fields for file %s", subname);

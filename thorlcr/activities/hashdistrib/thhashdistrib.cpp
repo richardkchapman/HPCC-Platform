@@ -132,7 +132,7 @@ public:
         if (0 == file->numParts())
             throw MakeActivityException(this, 0, "KeyedDistribute: Can't distribute based on an empty key: %s", scoped.str());
 
-        checkFormatCrc(this, file, helper->getFormatCrc(), nullptr, nullptr, RecordTranslationMode::None, true);
+        checkFormatCrc(this, file, helper->getFormatCrc(), nullptr, nullptr, true);
         Owned<IFileDescriptor> fileDesc = file->getFileDescriptor();
         Owned<IPartDescriptor> tlkDesc = fileDesc->getPart(fileDesc->numParts()-1);
         if (!tlkDesc->queryProperties().hasProp("@kind") || 0 != stricmp("topLevelKey", tlkDesc->queryProperties().queryProp("@kind")))
