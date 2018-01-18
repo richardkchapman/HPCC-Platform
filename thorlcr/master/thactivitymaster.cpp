@@ -685,7 +685,7 @@ void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned he
                 if (translator->needsTranslate())
                 {
                     // if (mode == RecordTranslationMode::None)
-                    //    throw MakeStringException(TE_FormatCrcMismatch, "Translatable record layout mismatch detected for file %s, but translation disabled", subname);
+                        throw MakeStringException(TE_FormatCrcMismatch, "Translatable record layout mismatch detected for file %s, but translation disabled", subname);
                     keyedTranslator.setown(createKeyTranslator(actualFormat->queryRecordAccessor(true), expected->queryRecordAccessor(true)));
                     if (index && keyedTranslator->needsTranslate())
                         throw MakeStringException(TE_FormatCrcMismatch, "Record layout mismatch detected in keyed fields for file %s", subname);
@@ -694,26 +694,6 @@ void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned he
             }
         }
         prevFormatCrc = dfsCrc;
-
-
-
-        if (!dfsCrc || helperCrc != dfsCrc)
-        {
-            StringBuffer fileStr;
-            if (super) fileStr.append("Superfile: ").append(file->queryLogicalName()).append(", subfile: ");
-            else fileStr.append("File: ");
-            fileStr.append(f->queryLogicalName());
-            Owned<IThorException> e = MakeActivityException(activity, TE_FormatCrcMismatch, "%s: Layout does not match published layout. %s", kindStr.str(), fileStr.str());
-            if (index && !f->queryAttributes().hasProp("_record_layout")) // Cannot verify if _true_ crc mismatch if soft layout missing anymore
-                LOG(MCwarning, thorJob, e);
-            else
-            {
-                if (!activity->queryContainer().queryJob().getWorkUnitValueInt("skipFileFormatCrcCheck", 0))
-                    throw LINK(e);
-                e->setAction(tea_warning);
-                activity->fireException(e);
-            }
-        }
         if (!super||!iter->next())
             break;
         f = &iter->query();
