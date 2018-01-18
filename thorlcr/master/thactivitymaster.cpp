@@ -19,6 +19,8 @@
 
 #include "jprop.hpp"
 #include "jstring.hpp"
+#include "eclhelper_dyn.hpp"
+#include "hqlexpr.hpp"
 
 #include "commonext.hpp"
 
@@ -621,7 +623,8 @@ void checkSuperFileOwnership(IDistributedFile &file)
     }
 }
 
-void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned helperCrc, bool index)
+void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned helperCrc,
+                               IOutputMetaData *projected, IOutputMetaData *expected, RecordTranslationMode mode, bool index)
 {
     IDistributedFile *f = file;
     IDistributedSuperFile *super = f->querySuperFile();
@@ -632,11 +635,69 @@ void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned he
         verifyex(iter->first());
         f = &iter->query();
     }
+    Owned<IOutputMetaData> actualFormat;
+    Owned<const IDynamicTransform> translator;    // Translates rows from actual to projected
+    Owned<const IKeyTranslator> keyedTranslator;  // translate filter conditions from expected to actual
+    int prevFormatCrc = 0;
+    assertex(projected != nullptr);
     StringBuffer kindStr(activityKindStr(activity->queryContainer().getKind()));
     for (;;)
     {
-        unsigned dfsCrc;
-        if (f->getFormatCrc(dfsCrc) && helperCrc != dfsCrc)
+        unsigned dfsCrc = 0;
+        f->getFormatCrc(dfsCrc);
+        if (!dfsCrc || dfsCrc==helperCrc)
+            translator.clear();
+        else
+        {
+            if (dfsCrc != prevFormatCrc)  // Check if same translation as last subfile
+            {
+                IPropertyTree &props = f->queryAttributes();
+                bool isGrouped = props.getPropBool("@grouped", false);
+                if (props.hasProp("_rtlType"))
+                {
+                    MemoryBuffer layoutBin;
+                    props.getPropBin("_rtlType", layoutBin);
+                    actualFormat.setown(createTypeInfoOutputMetaData(layoutBin, isGrouped, nullptr));
+                }
+                else if (props.hasProp("ECL"))
+                {
+                    StringBuffer layoutECL;
+                    props.getProp("ECL", layoutECL);
+                    MultiErrorReceiver errs;
+                    Owned<IHqlExpression> expr = parseQuery(layoutECL.str(), &errs);
+                    if (errs.errCount() == 0)
+                    {
+                        MemoryBuffer layoutBin;
+                        if (exportBinaryType(layoutBin, expr))
+                            actualFormat.setown(createTypeInfoOutputMetaData(layoutBin, isGrouped, nullptr));
+                    }
+                }
+                const char *subname = f->queryLogicalName();
+                translator.clear();
+                keyedTranslator.clear();
+                if (actualFormat)
+                {
+                    translator.setown(createRecordTranslator(projected->queryRecordAccessor(true), actualFormat->queryRecordAccessor(true)));
+                    // translator->describe();
+                }
+                if (!translator || !translator->canTranslate())
+                    throw MakeStringException(TE_FormatCrcMismatch, "Untranslatable record layout mismatch detected for file %s", subname);
+                if (translator->needsTranslate())
+                {
+                    if (mode == RecordTranslationMode::None)
+                        throw MakeStringException(TE_FormatCrcMismatch, "Translatable record layout mismatch detected for file %s, but translation disabled", subname);
+                    keyedTranslator.setown(createKeyTranslator(actualFormat->queryRecordAccessor(true), expected->queryRecordAccessor(true)));
+                    if (index && keyedTranslator->needsTranslate())
+                        throw MakeStringException(TE_FormatCrcMismatch, "Record layout mismatch detected in keyed fields for file %s", subname);
+
+                }
+            }
+        }
+        prevFormatCrc = dfsCrc;
+
+
+
+        if (!dfsCrc || helperCrc != dfsCrc)
         {
             StringBuffer fileStr;
             if (super) fileStr.append("Superfile: ").append(file->queryLogicalName()).append(", subfile: ");

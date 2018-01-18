@@ -219,7 +219,7 @@ public:
                 if (sub && 1 == sub->numParts())
                     nofilter = true;
             }
-            checkFormatCrc(this, index, indexBaseHelper->getFormatCrc(), true);
+            checkFormatCrc(this, index, indexBaseHelper->getFormatCrc(), nullptr, nullptr, RecordTranslationMode::None, true);
             if ((container.queryLocalOrGrouped() || indexBaseHelper->canMatchAny()) && index->numParts())
             {
                 fileDesc.setown(getConfiguredFileDescriptor(*index));
