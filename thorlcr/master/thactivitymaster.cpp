@@ -641,6 +641,20 @@ void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned he
     int prevFormatCrc = 0;
     assertex(projected != nullptr);
     StringBuffer kindStr(activityKindStr(activity->queryContainer().getKind()));
+    StringBuffer val;
+    RecordTranslationMode mode = RecordTranslationMode::None;
+    activity->queryContainer().queryJob().getWorkUnitValue("layoutTranslationEnabled", val);
+    if (val.length())
+    {
+        if (strieq(val.str(), "alwaysDisk"))
+            mode = RecordTranslationMode::AlwaysDisk;
+        else if (strieq(val.str(), "alwaysECL"))
+            mode = RecordTranslationMode::AlwaysECL;
+        else if (strieq(val.str(), "payload") || strToBool(val.str()))
+            mode = RecordTranslationMode::Payload;
+        else
+            mode = RecordTranslationMode::None;
+    }
     for (;;)
     {
         unsigned dfsCrc = 0;
@@ -684,7 +698,7 @@ void checkFormatCrc(CActivityBase *activity, IDistributedFile *file, unsigned he
                     throw MakeStringException(TE_FormatCrcMismatch, "Untranslatable record layout mismatch detected for file %s", subname);
                 if (translator->needsTranslate())
                 {
-                    // if (mode == RecordTranslationMode::None)
+                    if (mode == RecordTranslationMode::None)
                         throw MakeStringException(TE_FormatCrcMismatch, "Translatable record layout mismatch detected for file %s, but translation disabled", subname);
                     keyedTranslator.setown(createKeyTranslator(actualFormat->queryRecordAccessor(true), expected->queryRecordAccessor(true)));
                     if (index && keyedTranslator->needsTranslate())
