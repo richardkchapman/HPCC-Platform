@@ -38,8 +38,21 @@
 #include "thorstep.hpp"
 
 #define ROWAGG_PERROWOVERHEAD (sizeof(AggregateRowBuilder))
+
+#ifdef HASHSIZE_POWER2
+#define InitialTableSize 16
+#else
+#define InitialTableSize 15
+#endif
+
+
 RowAggregator::RowAggregator(IHThorHashAggregateExtra &_extra, IHThorRowAggregator & _helper) : helper(_helper)
 {
+    tablesize = InitialTableSize;
+    tablecount = 0;
+    table = (void * *) checked_malloc(InitialTableSize*sizeof(void *),-601);
+    memset(table,0,InitialTableSize*sizeof(void *));
+    cache = 0;
     comparer = _extra.queryCompareRowElement();
     hasher = _extra.queryHash();
     elementHasher = _extra.queryHashElement();
