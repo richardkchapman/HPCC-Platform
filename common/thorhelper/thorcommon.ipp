@@ -198,15 +198,9 @@ public:
     AggregateRowBuilder &addRow(const void * row);
     void mergeElement(const void * otherElement);
     AggregateRowBuilder *nextResult();
-//    unsigned elementCount() const { return count(); }
- //   memsize_t queryMem() const { return SuperHashTable::queryMem() + totalSize + overhead; };
-
 
 protected:
-    void onAdd(void *et) {}
-    void onRemove(void *et) {}
     unsigned getHashFromElement(const void *et) const { return hashFromElement(et); }
-    unsigned getHashFromFindParam(const void *fp) const { return hasher->hash(fp); }
     const void * getFindParam(const void *et) const;
     bool matchesFindParam(const void *et, const void *key, unsigned fphash) const;
     bool matchesElement(const void *et, const void * searchET) const;
@@ -231,6 +225,7 @@ protected:
     mutable unsigned cache;             // before pointer to improve 64bit packing.
     void * *         table;
     unsigned         tablesize;
+    unsigned         tablelim;
     unsigned         tablecount;
 
 private:

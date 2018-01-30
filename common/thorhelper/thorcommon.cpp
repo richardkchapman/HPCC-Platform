@@ -53,6 +53,7 @@
 RowAggregator::RowAggregator(IHThorHashAggregateExtra &_extra, IHThorRowAggregator & _helper) : helper(_helper)
 {
     tablesize = InitialTableSize;
+    tablelim = getTableLimit(tablesize);
     tablecount = 0;
     table = (void * *) checked_malloc(InitialTableSize*sizeof(void *),-601);
     memset(table,0,InitialTableSize*sizeof(void *));
@@ -77,12 +78,7 @@ void RowAggregator::_releaseAll(void)
     {
         unsigned i;
         for (i = 0; i < tablesize; i++)
-        {
-            void * et = table[i];
             table[i] = NULL;
-            if (et)
-                onRemove(et);
-        }
         tablecount = 0;
         setCache(0);
     }
@@ -137,6 +133,7 @@ void RowAggregator::expand(unsigned newsize)
     free(table);
     table = newtable;
     tablesize = newsize;
+    tablelim = getTableLimit(tablesize);
 }
 
 unsigned RowAggregator::doFindElement(unsigned v, const void * findET) const
@@ -340,7 +337,6 @@ void RowAggregator::addNew(void * donor, unsigned hash)
     unsigned vm = doFindNew(hash);
     tablecount++;
     table[vm] = donor;
-    onAdd(donor);
 }
 
 void *RowAggregator::findElement(const void * findEt) const
