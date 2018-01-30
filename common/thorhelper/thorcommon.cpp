@@ -39,6 +39,10 @@
 
 #define ROWAGG_PERROWOVERHEAD (sizeof(AggregateRowBuilder))
 
+#ifndef HASHSIZE_POWER2
+#define HASHSIZE_POWER2
+#endif
+
 #ifdef HASHSIZE_POWER2
 #define InitialTableSize 16
 #else
