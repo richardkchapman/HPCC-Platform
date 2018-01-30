@@ -54,6 +54,286 @@ RowAggregator::~RowAggregator()
     reset();
 }
 
+void RowAggregator::_releaseAll(void)
+{
+    if (tablecount)
+    {
+        unsigned i;
+        for (i = 0; i < tablesize; i++)
+        {
+            void * et = table[i];
+            table[i] = NULL;
+            if (et)
+                onRemove(et);
+        }
+        tablecount = 0;
+        setCache(0);
+    }
+}
+
+unsigned RowAggregator::getTableLimit(unsigned max)
+{
+    return (max * 3) / 4;
+}
+
+void RowAggregator::expand()
+{
+    unsigned newsize = tablesize;
+#ifdef HASHSIZE_POWER2
+    newsize += newsize;
+#else
+    if (newsize>=0x3FF)
+        newsize += 0x400;
+    else
+        newsize += newsize+1;
+#endif
+    expand(newsize);
+}
+
+void RowAggregator::expand(unsigned newsize)
+{
+    if (newsize < tablesize)
+        throw MakeStringException(0, "HashTable expanded beyond 2^32 items");
+    void * *newtable = (void * *) checked_malloc(newsize*sizeof(void *),-603);
+    memset(newtable,0,newsize*sizeof(void *));
+    void * *oldtable = table;
+    unsigned i;
+    for (i = 0; i < tablesize; i++)
+    {
+        void *et = oldtable[i];
+        if (et)
+        {
+#ifdef HASHSIZE_POWER2
+            unsigned v = getHashFromElement(et) & (newsize - 1);
+#else
+            unsigned v = getHashFromElement(et) % newsize;
+#endif
+            while (newtable[v])
+            {
+                v++;
+                if (v==newsize)
+                    v = 0;
+            }
+            newtable[v] = et;
+        }
+    }
+    free(table);
+    table = newtable;
+    tablesize = newsize;
+}
+
+unsigned RowAggregator::doFindElement(unsigned v, const void * findET) const
+{
+#ifdef HASHSIZE_POWER2
+    v = v & (tablesize - 1);
+#else
+    v = v % tablesize;
+#endif
+    unsigned vs = v;
+#ifdef TRACE_HASH
+    unsigned searchlen = 0;
+#endif
+    while (1)
+    {
+#ifdef MY_TRACE_HASH
+        my_search_tot++;
+#endif
+        void *et = table[v];
+        if (!et)
+            break;
+        if (matchesElement(et, findET))
+            break;
+#ifdef TRACE_HASH
+        searchlen ++;
+#endif
+        v++;
+        if (v==tablesize)
+            v = 0;
+        if (v==vs)
+            break;
+    }
+#ifdef MY_TRACE_HASH
+    my_search_num++;
+    if(my_search_num != 0)
+        printf("Hash table average search length %d\n", (int) (my_search_tot/my_search_num));
+#endif
+#ifdef TRACE_HASH
+    note_searchlen(searchlen);
+#endif
+    setCache(v);
+    return v;
+}
+
+void *RowAggregator::findElement(unsigned hash, const void * findEt) const
+{
+    unsigned vm = doFindElement(hash, findEt);
+    void *et = table[vm];
+    return et;
+}
+
+unsigned RowAggregator::doFindNew(unsigned v) const
+{
+#ifdef HASHSIZE_POWER2
+    v = v & (tablesize - 1);
+#else
+    v = v % tablesize;
+#endif
+    unsigned vs = v;
+#ifdef TRACE_HASH
+    unsigned searchlen = 0;
+#endif
+    while (1)
+    {
+#ifdef MY_TRACE_HASH
+        my_search_tot++;
+#endif
+        void *et = table[v];
+        if (!et)
+            break;
+#ifdef TRACE_HASH
+        searchlen ++;
+#endif
+        v++;
+        if (v==tablesize)
+            v = 0;
+        if (v==vs)
+            break; //table is full, should never occur
+    }
+#ifdef MY_TRACE_HASH
+    my_search_num++;
+    if(my_search_num != 0)
+        printf("Hash table average search length %d\n", (int) (my_search_tot/my_search_num));
+#endif
+#ifdef TRACE_HASH
+    note_searchlen(searchlen);
+#endif
+    setCache(v);
+    return v;
+}
+
+unsigned RowAggregator::doFind(unsigned findHash, const void * findParam) const
+{
+#ifdef HASHSIZE_POWER2
+    unsigned v = findHash & (tablesize - 1);
+#else
+    unsigned v = findHash % tablesize;
+#endif
+    unsigned vs = v;
+#ifdef TRACE_HASH
+    unsigned searchlen = 0;
+#endif
+    while (1)
+    {
+#ifdef MY_TRACE_HASH
+        my_search_tot++;
+#endif
+        void *et = table[v];
+        if (!et)
+            break;
+        if (matchesFindParam(et, findParam, findHash))
+            break;
+#ifdef TRACE_HASH
+        searchlen ++;
+#endif
+        v++;
+        if (v==tablesize)
+            v = 0;
+        if (v==vs)
+            break;
+    }
+#ifdef MY_TRACE_HASH
+    my_search_num++;
+    if(my_search_num != 0)
+        printf("Hash table average search length %d\n", (int) (my_search_tot/my_search_num));
+#endif
+#ifdef TRACE_HASH
+    note_searchlen(searchlen);
+#endif
+    setCache(v);
+    return v;
+}
+
+unsigned RowAggregator::doFindExact(const void *et) const
+{
+    unsigned i = cache;
+    if (i>=tablesize || table[i]!=et)
+    {
+#ifdef HASHSIZE_POWER2
+        i = getHashFromElement(et) & (tablesize - 1);
+#else
+        i = getHashFromElement(et) % tablesize;
+#endif
+        unsigned is = i;
+        for (;;)
+        {
+            const void * cur = table[i];
+            if (!cur || cur == et)
+                break;
+            i++;
+            if (i==tablesize)
+                i = 0;
+            if (i==is)
+                break;
+        }
+        setCache(i);
+    }
+    return i;
+}
+
+
+void *RowAggregator::next(const void *et) const
+{
+    unsigned i;
+    if (!et)
+    {
+        if (!tablecount)
+            return NULL;
+        i = (unsigned) -1;
+    }
+    else
+    {
+        i = doFindExact(et);
+        if (table[i] != et)
+        {
+            assertex(!"SuperHashTable::Next : start item not found");
+            return NULL;
+        }
+    }
+    while (1)
+    {
+        i++;
+        if (i>=tablesize)
+            return NULL;
+        if (table[i])
+            break;
+    }
+    setCache(i);
+    return table[i];
+}
+
+
+
+
+void RowAggregator::addNew(void * donor, unsigned hash)
+{
+    unsigned tablelim = getTableLimit(tablesize);
+    if (tablecount>=tablelim)
+        expand();
+
+    unsigned vm = doFindNew(hash);
+    tablecount++;
+    table[vm] = donor;
+    onAdd(donor);
+}
+
+void *RowAggregator::findElement(const void * findEt) const
+{
+    unsigned vm = doFindElement(getHashFromElement(findEt), findEt);
+    void *et = table[vm];
+    return et;
+}
+
+
 void RowAggregator::start(IEngineRowAllocator *_rowAllocator)
 {
     rowAllocator.set(_rowAllocator);
@@ -67,7 +347,7 @@ void RowAggregator::reset()
         if (n)
             n->Release();
     }
-    SuperHashTable::_releaseAll();
+    _releaseAll();
     eof = false;
     cursor = NULL;
     rowAllocator.clear();

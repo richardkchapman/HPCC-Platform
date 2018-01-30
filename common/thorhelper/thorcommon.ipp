@@ -183,7 +183,7 @@ private:
     size32_t size;
 };
 
-class THORHELPER_API RowAggregator : private SuperHashTable
+class THORHELPER_API RowAggregator : private CInterface // SuperHashTable
 {
     // We have to be careful with ownership of the items in the hashtable. Because we free them as we iterate, we need to make sure
     // that we always do exactly one iteration through the hash table. We therefore DON'T free anything in onRemove.
@@ -198,17 +198,40 @@ public:
     AggregateRowBuilder &addRow(const void * row);
     void mergeElement(const void * otherElement);
     AggregateRowBuilder *nextResult();
-    unsigned elementCount() const { return count(); }
-    memsize_t queryMem() const { return SuperHashTable::queryMem() + totalSize + overhead; };
+//    unsigned elementCount() const { return count(); }
+ //   memsize_t queryMem() const { return SuperHashTable::queryMem() + totalSize + overhead; };
+
 
 protected:
-    virtual void onAdd(void *et) {}
-    virtual void onRemove(void *et) {} 
-    virtual unsigned getHashFromElement(const void *et) const { return hashFromElement(et); }
-    virtual unsigned getHashFromFindParam(const void *fp) const { return hasher->hash(fp); }
-    virtual const void * getFindParam(const void *et) const;
-    virtual bool matchesFindParam(const void *et, const void *key, unsigned fphash) const;
-    virtual bool matchesElement(const void *et, const void * searchET) const;
+    void onAdd(void *et) {}
+    void onRemove(void *et) {}
+    unsigned getHashFromElement(const void *et) const { return hashFromElement(et); }
+    unsigned getHashFromFindParam(const void *fp) const { return hasher->hash(fp); }
+    const void * getFindParam(const void *et) const;
+    bool matchesFindParam(const void *et, const void *key, unsigned fphash) const;
+    bool matchesElement(const void *et, const void * searchET) const;
+    unsigned         doFindElement(unsigned, const void *) const;
+    unsigned         doFindNew(unsigned) const;
+
+    // Copied from superhashtable for now
+    void             _releaseAll(void); // not guaranteed to be thread safe, typically called from destructor
+    inline void *    find(unsigned hashcode, const void * param) const { return table[doFind(hashcode, param)]; }
+    unsigned         doFind(unsigned, const void *) const;
+    void             addNew(void * donor, unsigned hash);
+    void *           findElement(unsigned hashcode, const void * searchE) const;
+    void *           findElement(const void * searchE) const;
+    void *           next(const void *et) const;
+    inline void      setCache(unsigned v) const { cache = v; }
+    unsigned getTableLimit(unsigned max);
+    void             expand();
+    void             expand(unsigned newsize);
+    unsigned         doFindExact(const void *) const;
+
+protected:
+    mutable unsigned cache;             // before pointer to improve 64bit packing.
+    void * *         table;
+    unsigned         tablesize;
+    unsigned         tablecount;
 
 private:
     void releaseAll(void); // No implementation.
