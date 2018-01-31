@@ -357,7 +357,7 @@ static CFixedMeta<AggregateRowBuilder> AggregateRowBuilderMeta;
 void RowAggregator::start(IEngineRowAllocator *_rowAllocator, ICodeContext *ctx, unsigned activityId)
 {
     rowAllocator.set(_rowAllocator);
-    rowBuilderAllocator.setown(ctx->getRowAllocator(&AggregateRowBuilderMeta, activityId));
+    rowBuilderAllocator.setown(ctx->getRowAllocatorEx(&AggregateRowBuilderMeta, activityId, roxiemem::RHFunique|roxiemem::RHFnofragment|roxiemem::RHFdelayrelease));
 }
 
 void RowAggregator::reset()
