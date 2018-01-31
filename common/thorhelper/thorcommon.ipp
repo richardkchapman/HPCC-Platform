@@ -245,6 +245,7 @@ private:
     const void * cursor;
     bool eof;
     Owned<IEngineRowAllocator> rowAllocator;
+    Owned<IEngineRowAllocator> rowBuilderAllocator;
     memsize_t totalSize, overhead;
 };
 

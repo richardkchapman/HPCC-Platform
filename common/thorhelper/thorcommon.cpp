@@ -388,6 +388,7 @@ AggregateRowBuilder &RowAggregator::addRow(const void * row)
         helper.clearAggregate(*rowBuilder);
         size32_t sz = helper.processFirst(*rowBuilder, row);
         rowBuilder->setSize(sz);
+        rowBuilder.getLink();
         result = rowBuilder.getClear();
         addNew(result, hash);
         totalSize += sz;
