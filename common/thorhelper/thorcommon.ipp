@@ -181,7 +181,7 @@ class THORHELPER_API AggregateRowBuilder : public RtlDynamicRowBuilder //, publi
 {
 public:
     inline void Link() const {};
-    inline bool Release() const { return false };
+    inline bool Release() const { return false; };
 
     AggregateRowBuilder(IEngineRowAllocator *_rowAllocator, unsigned _elementHash)
         : RtlDynamicRowBuilder(_rowAllocator, true), elementHash(_elementHash)
