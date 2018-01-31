@@ -11182,7 +11182,7 @@ public:
 
         if (!gathered)
         {
-            aggregated.start(rowAllocator);
+            aggregated.start(rowAllocator, ctx->queryCodeContext(), activityId);
             bool eog = true;
             for (;;)
             {

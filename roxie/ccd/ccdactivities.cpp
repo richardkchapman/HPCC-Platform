@@ -2203,7 +2203,7 @@ public:
         resultAggregator(*helper, *helper)
     {
         onCreate();
-        resultAggregator.start(rowAllocator);
+        resultAggregator.start(rowAllocator, queryContext->queryCodeContext(), basefactory->queryId());
         if (meta.needsSerializeDisk())
         {
             // MORE - avoiding serializing to dummy would be more efficient...

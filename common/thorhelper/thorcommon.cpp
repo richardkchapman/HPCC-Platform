@@ -36,6 +36,7 @@
 #endif
 
 #include "thorstep.hpp"
+#include "roxiemem.hpp"
 
 #define ROWAGG_PERROWOVERHEAD (sizeof(AggregateRowBuilder))
 
@@ -49,6 +50,8 @@
 #define InitialTableSize 15
 #endif
 
+void AggregateRowBuilder::Link() const { LinkRoxieRow(this); }
+bool AggregateRowBuilder::Release() const { ReleaseRoxieRow(this); return false; }  // MORE - return value is iffy
 
 RowAggregator::RowAggregator(IHThorHashAggregateExtra &_extra, IHThorRowAggregator & _helper) : helper(_helper)
 {
@@ -348,10 +351,13 @@ void *RowAggregator::findElement(const void * findEt) const
     return et;
 }
 
+static CFixedMeta<AggregateRowBuilder> AggregateRowBuilderMeta;
 
-void RowAggregator::start(IEngineRowAllocator *_rowAllocator)
+
+void RowAggregator::start(IEngineRowAllocator *_rowAllocator, ICodeContext *ctx, unsigned activityId)
 {
     rowAllocator.set(_rowAllocator);
+    rowBuilderAllocator.setown(ctx->getRowAllocator(&AggregateRowBuilderMeta, activityId));
 }
 
 void RowAggregator::reset()
@@ -360,7 +366,7 @@ void RowAggregator::reset()
     {
         AggregateRowBuilder *n = nextResult();
         if (n)
-            n->Release();
+            ReleaseRoxieRow(n);
     }
     _releaseAll();
     eof = false;
@@ -384,12 +390,10 @@ AggregateRowBuilder &RowAggregator::addRow(const void * row)
     }
     else
     {
-        Owned<AggregateRowBuilder> rowBuilder = new AggregateRowBuilder(rowAllocator, hash);
-        helper.clearAggregate(*rowBuilder);
-        size32_t sz = helper.processFirst(*rowBuilder, row);
-        rowBuilder->setSize(sz);
-        rowBuilder.getLink();
-        result = rowBuilder.getClear();
+        result = new (rowBuilderAllocator->createRow()) AggregateRowBuilder(rowAllocator, hash);
+        helper.clearAggregate(*result);
+        size32_t sz = helper.processFirst(*result, row);
+        result->setSize(sz);
         addNew(result, hash);
         totalSize += sz;
         overhead += ROWAGG_PERROWOVERHEAD;
@@ -411,9 +415,9 @@ void RowAggregator::mergeElement(const void * otherElement)
     }
     else
     {
-        Owned<AggregateRowBuilder> rowBuilder = new AggregateRowBuilder(rowAllocator, hash);
+        AggregateRowBuilder *rowBuilder = new (rowBuilderAllocator->createRow()) AggregateRowBuilder(rowAllocator, hash);
         rowBuilder->setSize(cloneRow(*rowBuilder, otherElement, rowAllocator->queryOutputMeta()));
-        addNew(rowBuilder.getClear(), hash);
+        addNew(rowBuilder, hash);
     }
 }
 
