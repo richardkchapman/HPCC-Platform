@@ -177,7 +177,7 @@ protected:
 
 //------------------------------------------------------------------------------------------------
 
-class AggregateRowBuilder : public RtlDynamicRowBuilder //, public CInterface
+class THORHELPER_API AggregateRowBuilder : public RtlDynamicRowBuilder //, public CInterface
 {
 public:
     void Link() const;
