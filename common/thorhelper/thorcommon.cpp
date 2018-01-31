@@ -50,8 +50,8 @@
 #define InitialTableSize 15
 #endif
 
-void AggregateRowBuilder::Link() const { LinkRoxieRow(this); }
-bool AggregateRowBuilder::Release() const { ReleaseRoxieRow(this); return false; }  // MORE - return value is iffy
+//void AggregateRowBuilder::Link() const { LinkRoxieRow(this); }
+//bool AggregateRowBuilder::Release() const { ReleaseRoxieRow(this); return false; }  // MORE - return value is iffy
 
 RowAggregator::RowAggregator(IHThorHashAggregateExtra &_extra, IHThorRowAggregator & _helper) : helper(_helper)
 {

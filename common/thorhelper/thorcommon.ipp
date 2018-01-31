@@ -180,8 +180,8 @@ protected:
 class THORHELPER_API AggregateRowBuilder : public RtlDynamicRowBuilder //, public CInterface
 {
 public:
-    void Link() const;
-    bool Release() const;
+    inline void Link() const {};
+    inline bool Release() const { return false };
 
     AggregateRowBuilder(IEngineRowAllocator *_rowAllocator, unsigned _elementHash)
         : RtlDynamicRowBuilder(_rowAllocator, true), elementHash(_elementHash)
