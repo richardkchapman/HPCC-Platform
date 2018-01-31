@@ -114,6 +114,8 @@ void RowAggregator::expand(unsigned newsize)
     for (i = 0; i < tablesize; i++)
     {
         void *et = oldtable[i];
+        //if (i+1 < tablesize)
+        //    __builtin_prefetch(oldtable[i+1]);
         if (et)
         {
 #ifdef HASHSIZE_POWER2
