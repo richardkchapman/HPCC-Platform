@@ -205,6 +205,7 @@ CDaliServixFilter *createDaliServixFilter(IPropertyTree &filterProps)
 class CDaliServixIntercept: public CInterface, implements IDaFileSrvHook
 {
     CIArrayOf<CDaliServixFilter> filters;
+    bool forceAllRemote = false;
 
     void addFilter(CDaliServixFilter *filter)
     {
@@ -216,11 +217,17 @@ class CDaliServixIntercept: public CInterface, implements IDaFileSrvHook
     }
 public:
     IMPLEMENT_IINTERFACE;
+    virtual void forceRemote(bool tf)
+    {
+        forceAllRemote = tf;
+    }
     virtual IFile * createIFile(const RemoteFilename & filename)
     {
         SocketEndpoint ep = filename.queryEndpoint();
         bool noport = (ep.port==0);
         setDafsEndpointPort(ep);
+        if (forceAllRemote)
+            return createDaliServixFile(filename);
         if (!filename.isLocal()||(ep.port!=DAFILESRV_PORT && ep.port!=SECURE_DAFILESRV_PORT)) // assume standard port is running on local machine
         {
 #ifdef __linux__

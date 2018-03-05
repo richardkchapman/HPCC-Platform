@@ -25,6 +25,7 @@
 #include "jfile.hpp"
 #include "jlog.hpp"
 #include "jmisc.hpp"
+#include "rmtfile.hpp"
 #include "dalienv.hpp"
 
 #ifdef _MSC_VER
@@ -332,11 +333,17 @@ int initDaemon()
 int main(int argc,char **argv) 
 {
     InitModuleObjects();
+    IDaFileSrvHook *remoteHook = queryDaFileSrvHook();
+    if (remoteHook)
+        removeIFileCreateHook(remoteHook);
+
     EnableSEHtoExceptionMapping();
 #ifndef __64BIT__
     // Restrict stack sizes on 32-bit systems
     Thread::setDefaultStackSize(0x10000);   // 64K stack (also set in windows DSP)
 #endif
+
+
     Owned<IFile> sentinelFile = createSentinelTarget();
     removeSentinelFile(sentinelFile);
 

@@ -1022,6 +1022,10 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
             openMulticastSocket();
 
         setDaliServixSocketCaching(true);  // enable daliservix caching
+        bool forceRemoteFiles = queryEnvironmentConf().getPropBool("forceRemoteFiles");
+        if (forceRemoteFiles)
+            queryDaFileSrvHook()->forceRemote(true);
+
         loadPlugins();
         createDelayedReleaser();
         globalPackageSetManager = createRoxiePackageSetManager(standAloneDll.getClear());

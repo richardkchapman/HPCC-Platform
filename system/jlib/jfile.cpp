@@ -4093,6 +4093,8 @@ size32_t DirectBufferIO::write(offset_t pos, size32_t len, const void * data)
     return len;
 }
 
+
+
 //---------------------------------------------------------------------------
 
 IFile * createIFile(const char * filename)
@@ -4102,21 +4104,24 @@ IFile * createIFile(const char * filename)
     IFile *ret = createContainedIFileByHook(filename);
     if (ret)
         return ret;
+
+    // NB: This is forcing OS path access if url begins "\\"
     bool linremote=(memcmp(filename,"//",2)==0);
     if (!linremote&&(memcmp(filename,"\\\\",2)!=0)) // see if remote looking
         return new CFile(filename);
+
     RemoteFilename rfn;
     rfn.setRemotePath(filename);
+
     if (rfn.isNull())
         throw MakeStringException(-1, "CreateIFile cannot resolve %s", filename);
-    if (rfn.isLocal()) { // ignore dafilesrv request if local and standard port
-        StringBuffer tmplocal;
-        return new CFile(rfn.getLocalPath(tmplocal).str());
-    }
+
+    ret = createIFileByHook(rfn);           // use daliservix in preference
+    if (ret)
+        return ret;
 #ifdef _WIN32
     StringBuffer tmplocal;
     if (linremote||(rfn.queryEndpoint().port!=0)) {
-        ret = createIFileByHook(rfn);           // use daliservix in preference
         if (ret) 
             return ret;             
         while (*filename) {                             // no daliservix so swap '/' for '\' and hope for best
@@ -4127,7 +4132,7 @@ IFile * createIFile(const char * filename)
             filename++;
         }
         filename =tmplocal.str();
-    }   
+    }
     return new CWindowsRemoteFile(filename);
 #else
 #ifdef USE_SAMBA
@@ -4153,16 +4158,12 @@ IFile * createIFile(const char * filename)
 #else
     if (memcmp(filename,"smb://",6)==0)  // don't support samba - try remote
         return createIFile(filename+4);
-    ret = createIFileByHook(rfn);
-    if (!ret) 
-        throw MakeStringException(-1, "CreateIFile::cannot attach to %s. (remote.so not linked?)", filename);
-    return ret;
 #endif
-    return new CFile(filename);
-
+    StringBuffer tmplocal;
+    rfn.getLocalPath(tmplocal);
+    return new CFile(tmplocal);
 #endif
 }
-
 
 
 IFileIOStream * createIOStream(IFileIO * file)

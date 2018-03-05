@@ -41,6 +41,7 @@ extern REMOTE_API void filenameToUrl(StringBuffer & out, const char * filename);
 
 interface IDaFileSrvHook : extends IRemoteFileCreateHook
 {
+    virtual void forceRemote(bool tf) = 0; // NB: forces all files (inc. local) to be remote
     virtual void addSubnetFilter(const char *subnet, const char *mask, const char *dir, const char *sourceRange, bool trace) = 0;
     virtual void addRangeFilter(const char *range, const char *dir, const char *sourceRange, bool trace) = 0;
     virtual IPropertyTree *addFilters(IPropertyTree *filters, const SocketEndpoint *ipAddress) = 0;
