@@ -46,6 +46,8 @@ public:
     void remove(unsigned idx);
     void clear();
     void appendFilters(IConstArrayOf<IFieldFilter> &_filters);
+    void serialize(StringBuffer &ret) const;
+    void serializeBinary(MemoryBuffer &ret) const;
 protected:
     IConstArrayOf<IFieldFilter> filters;
     unsigned numFieldsRequired = 0;
