@@ -1733,16 +1733,16 @@ public:
     : CRemoteBase(ep, filename)
     {
         request.appendf("{\n"
+            "\"format\" : \"binary\",\n"
             " \"node\" : {\n"
             " \"kind\" : \"diskread\",\n"
-            " \"format\" : \"binary\",\n"
             " \"fileName\" : \"%s\",\n"
-            " \"compressed\" : \"%s\",\n", filename, compressed ? "true" : "false");
+            " \"compressed\" : \"%s\"\n", filename, compressed ? "true" : "false");
         if (fieldFilters.numFilterFields())
         {
             StringBuffer filterJson;
             fieldFilters.serialize(filterJson);
-            appendJSONStringValue(request, "keyfilter", filterJson, true, true).newline();
+            appendJSONStringValue(request.append(","), "keyfilter", filterJson, true, true).newline();
         }
         if (actual != projected)
         {
@@ -1753,15 +1753,17 @@ public:
             if (actualTypeInfo.length() != projectedTypeInfo.length() ||
                 memcmp(actualTypeInfo.toByteArray(), projectedTypeInfo.toByteArray(), actualTypeInfo.length()))
             {
-                request.append("\"inputBin\": \"");
+                request.append(",\"inputBin\": \"");
                 JBASE64_Encode(actualTypeInfo.toByteArray(), actualTypeInfo.length(), request, false);
-                request.append("\"\n");
+                request.append("\",\n");
                 request.append("\"outputBin\": \"");
                 JBASE64_Encode(projectedTypeInfo.toByteArray(), projectedTypeInfo.length(), request, false);
                 request.append("\"\n");
             }
         }
+        request.append(" }\n");
         sendRequest(0, nullptr);
+        bufPos = 0;
     }
     virtual size32_t read(offset_t pos, size32_t len, void * data)
     {
@@ -1777,7 +1779,7 @@ public:
         memcpy(data, reply.readDirect(len), len);
         return len;
     }
-    virtual offset_t size() { throwUnexpected(); }
+    virtual offset_t size() { return -1; }
     virtual size32_t write(offset_t pos, size32_t len, const void * data) { throwUnexpected(); }
     virtual offset_t appendFile(IFile *file,offset_t pos=0,offset_t len=(offset_t)-1) { throwUnexpected(); }
     virtual void setSize(offset_t size) { throwUnexpected(); }
@@ -1793,10 +1795,18 @@ public:
 private:
     void refill()
     {
+        size32_t cursorLength;
+        reply.read(cursorLength);
+        if (!cursorLength)
+        {
+            eof = true;
+            return;
+        }
         MemoryBuffer mrequest;
         MemoryBuffer newReply;
         initSendBuffer(mrequest);
-        mrequest.append(handle);
+        VStringBuffer json("{ \"cursor\" : %u, \"format\" : \"binary\" }", handle);
+        mrequest.append(json.length(), json.str());
         sendRemoteCommand(mrequest, newReply);
         unsigned newHandle;
         newReply.read(newHandle);
@@ -1808,9 +1818,7 @@ private:
         }
         else
         {
-            assertex(newHandle == NotFound);
-            size32_t cursorLength;
-            reply.read(cursorLength);
+            assertex(newHandle == 0);
             sendRequest(cursorLength, reply.readDirect(cursorLength));
         }
     }
@@ -1822,16 +1830,16 @@ private:
         if (cursorLen)
         {
             StringBuffer cursorInfo;
-            cursorInfo.append("\"cursorBin\": \"");
+            cursorInfo.append(",\"cursorBin\": \"");
             JBASE64_Encode(cursorData, cursorLen, cursorInfo, false);
             cursorInfo.append("\"\n");
             mrequest.append(cursorInfo.length(), cursorInfo.str());
         }
-        mrequest.append(" }\n}\n");
+        DBGLOG("req = <%s}>", request.str());
+        mrequest.append(3, " \n}");
         sendRemoteCommand(mrequest, reply);
         reply.read(handle);
         reply.read(bufRemaining);
-        bufPos = 0;
         eof = (bufRemaining == 0);
     }
     StringBuffer request;
@@ -3621,7 +3629,9 @@ static IOutputMetaData *getTypeInfoOutputMetaData(IPropertyTree &actNode, const 
     {
         StringBuffer binTypePropName(typePropName);
         MemoryBuffer mb;
-        actNode.getPropBin(binTypePropName.append("Bin").str(), mb);
+
+        JBASE64_Decode(actNode.queryProp(binTypePropName.append("Bin")), mb);
+
         bool grouped = actNode.getPropBool(binTypePropName.append("_grouped").str(), false);
         return createTypeInfoOutputMetaData(mb, grouped, nullptr);
     }
@@ -5600,6 +5610,8 @@ public:
             PROGLOG("Connect from %s",s.str());
         }
 
+        reply.append(RFEnoerror);
+
         Owned<IPropertyTree> requestTree = createPTreeFromJSONString(msg.length(), msg.toByteArray());
 
         /* Example JSON request:
@@ -5891,7 +5903,8 @@ public:
                 MAPCOMMAND(RFCgetinfo, cmdGetInfo);
                 MAPCOMMAND(RFCfirewall, cmdFirewall);
                 MAPCOMMANDCLIENT(RFCunlock, cmdUnlock, *client);
-                MAPCOMMANDCLIENTTESTSOCKET(RFCStreamRead, cmdStreamReadTestSocket, *client);
+                // MAPCOMMANDCLIENTTESTSOCKET(RFCStreamRead, cmdStreamReadTestSocket, *client);
+                MAPCOMMANDCLIENT(RFCStreamRead, cmdStreamRead, *client);
                 MAPCOMMANDCLIENT(RFCcopysection, cmdCopySection, *client);
                 MAPCOMMANDCLIENTTHROTTLE(RFCtreecopy, cmdTreeCopy, *client, &slowCmdThrottler);
                 MAPCOMMANDCLIENTTHROTTLE(RFCtreecopytmp, cmdTreeCopyTmp, *client, &slowCmdThrottler);
