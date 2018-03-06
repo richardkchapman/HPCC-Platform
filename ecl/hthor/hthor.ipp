@@ -2253,7 +2253,6 @@ protected:
     MemoryAttr encryptionkey;
     bool persistent;
     bool grouped;
-    unsigned lastFormatCrc = 0;
     unsigned __int64 localOffset;
     unsigned __int64 offsetOfPart;
     StringBuffer mangledHelperFileName;
@@ -2263,6 +2262,8 @@ protected:
     Owned<const IDynamicTransform> translator;
     Owned<const IKeyTranslator> keyedTranslator;
     IPointerArrayOf<IOutputMetaData> actualLayouts;  // Do we need to keep more than one?
+    IConstArrayOf<IFieldFilter> fieldFilters;  // These refer to the expected layout
+    RowFilter actualFilter;               // This refers to the actual disk layout
     void close();
     virtual void open();
     void resolve();
@@ -2303,8 +2304,6 @@ public:
 class CHThorBinaryDiskReadBase : public CHThorDiskReadBaseActivity, implements IIndexReadContext
 {
 protected:
-    IConstArrayOf<IFieldFilter> fieldFilters;  // These refer to the expected layout
-    RowFilter actualFilter;               // This refers to the actual disk layout
     IHThorCompoundBaseArg & segHelper;
     Owned<ISourceRowPrefetcher> prefetcher;
     Owned<IOutputRowDeserializer> deserializer;

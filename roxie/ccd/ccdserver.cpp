@@ -1016,8 +1016,8 @@ public:
     const IResolvedFile *resolveLFNIndex(const char *filename, bool isOpt)
     {
         const IResolvedFile *ret = resolveLFN(filename, isOpt);
-        if (ret && !ret->isKey())
-            throw MakeStringException(0, "Attempting to read flat file as an index: %s", filename);
+      //  if (ret && !ret->isKey())
+      //      throw MakeStringException(0, "Attempting to read flat file as an index: %s", filename);
         return ret;
     }
 
