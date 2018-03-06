@@ -8200,7 +8200,6 @@ bool CHThorDiskReadBaseActivity::openNext()
 {
     offsetOfPart += localOffset;
     localOffset = 0;
-    bool remoteProjecting = false;
     saveOpenExc.clear();
     actualFilter.clear();
 
@@ -8276,13 +8275,12 @@ bool CHThorDiskReadBaseActivity::openNext()
                     }
                     else
                     {
-                        remoteProjecting = true;
                         // Open a stream from remote file, having passed actual, expected, projected, and filters to it
                         SocketEndpoint ep(rfilename.queryEndpoint());
                         setDafsEndpointPort(ep);
                         StringBuffer path;
                         rfilename.getLocalPath(path);
-                        inputfileio.setown(createRemoteFilteredFile(ep, path, actualDiskMeta, projectedDiskMeta, actualFilter));
+                        inputfileio.setown(createRemoteFilteredFile(ep, path, actualDiskMeta, projectedDiskMeta, actualFilter, compressed));
                         actualDiskMeta.set(projectedDiskMeta);
                         expectedDiskMeta = projectedDiskMeta;
                         actualFilter.clear();

@@ -1754,7 +1754,14 @@ void RowFilter::remapField(unsigned filterIdx, unsigned newFieldNum)
     filters.replace(*filters.item(filterIdx).remap(newFieldNum), filterIdx);
 }
 
-
+void RowFilter::serialize(StringBuffer &ret) const
+{
+    ForEachItemIn(idx, filters)
+    {
+        auto &filter = filters.item(idx);
+        filter.serialize(ret);
+    }
+}
 //---------------------------------------------------------------------------------------------------------------------
 
 bool RowCursor::setRowForward(const byte * row)

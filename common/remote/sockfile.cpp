@@ -1726,16 +1726,55 @@ class CRemoteFilteredFileIO : public CRemoteBase, implements IFileIO
 {
 public:
     IMPLEMENT_IINTERFACE;
-    // Really a stream, but life easier elsewhere if looks like a file
-    CRemoteFilteredFileIO(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters)
+    // Really a stream, but life (maybe) easier elsewhere if looks like a file
+    // Sometime should refactor to be based on ISerialStream instead.
+    CRemoteFilteredFileIO(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters, bool compressed)
     : CRemoteBase(ep, filename)
     {
-        UNIMPLEMENTED;
+        request.appendf("{\n"
+            " \"node\" : {\n"
+            " \"kind\" : \"diskread\",\n"
+            " \"format\" : \"binary\",\n"
+            " \"fileName\" : \"%s\",\n"
+            " \"compressed\" : \"%s\",\n", filename, compressed ? "true" : "false");
+        if (fieldFilters.numFilterFields())
+        {
+            StringBuffer filterJson;
+            fieldFilters.serialize(filterJson);
+            appendJSONStringValue(request, "keyfilter", filterJson, true, true).newline();
+        }
+        if (actual != projected)
+        {
+            MemoryBuffer actualTypeInfo;
+            dumpTypeInfo(actualTypeInfo, actual->querySerializedDiskMeta()->queryTypeInfo());
+            MemoryBuffer projectedTypeInfo;
+            dumpTypeInfo(projectedTypeInfo, projected->querySerializedDiskMeta()->queryTypeInfo());
+            if (actualTypeInfo.length() != projectedTypeInfo.length() ||
+                memcmp(actualTypeInfo.toByteArray(), projectedTypeInfo.toByteArray(), actualTypeInfo.length()))
+            {
+                request.append("\"inputBin\": \"");
+                JBASE64_Encode(actualTypeInfo.toByteArray(), actualTypeInfo.length(), request, false);
+                request.append("\"\n");
+                request.append("\"outputBin\": \"");
+                JBASE64_Encode(projectedTypeInfo.toByteArray(), projectedTypeInfo.length(), request, false);
+                request.append("\"\n");
+            }
+        }
+        sendRequest(0, nullptr);
     }
     virtual size32_t read(offset_t pos, size32_t len, void * data)
     {
-        // Read out of buffer into data.
-        UNIMPLEMENTED;
+        assertex(pos == bufPos);  // Must read sequentially
+        if (!bufRemaining && !eof)
+            refill();
+        if (eof)
+            return 0;
+        if (len > bufRemaining)
+            len = bufRemaining;
+        bufPos += len;
+        bufRemaining -= len;
+        memcpy(data, reply.readDirect(len), len);
+        return len;
     }
     virtual offset_t size() { throwUnexpected(); }
     virtual size32_t write(offset_t pos, size32_t len, const void * data) { throwUnexpected(); }
@@ -1750,11 +1789,61 @@ public:
     {
         UNIMPLEMENTED;
     }
+private:
+    void refill()
+    {
+        MemoryBuffer mrequest;
+        MemoryBuffer newReply;
+        initSendBuffer(mrequest);
+        mrequest.append(handle);
+        sendRemoteCommand(mrequest, newReply);
+        unsigned newHandle;
+        newReply.read(newHandle);
+        if (newHandle == handle)
+        {
+            reply.swapWith(newReply);
+            reply.read(bufRemaining);
+            eof = (bufRemaining == 0);
+        }
+        else
+        {
+            assertex(newHandle == NotFound);
+            size32_t cursorLength;
+            reply.read(cursorLength);
+            sendRequest(cursorLength, reply.readDirect(cursorLength));
+        }
+    }
+    void sendRequest(unsigned cursorLen, const void *cursorData)
+    {
+        MemoryBuffer mrequest;
+        initSendBuffer(mrequest);
+        mrequest.append(request.length(), request.str());
+        if (cursorLen)
+        {
+            StringBuffer cursorInfo;
+            cursorInfo.append("\"cursorBin\": \"");
+            JBASE64_Encode(cursorData, cursorLen, cursorInfo, false);
+            cursorInfo.append("\"\n");
+            mrequest.append(cursorInfo.length(), cursorInfo.str());
+        }
+        mrequest.append(" }\n}\n");
+        sendRemoteCommand(mrequest, reply);
+        reply.read(handle);
+        reply.read(bufRemaining);
+        bufPos = 0;
+        eof = (bufRemaining == 0);
+    }
+    StringBuffer request;
+    MemoryBuffer reply;
+    unsigned handle = 0;
+    size32_t bufRemaining = 0;
+    unsigned bufPos = 0;
+    bool eof = false;
 };
 
-extern IFileIO *createRemoteFilteredFile(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters)
+extern IFileIO *createRemoteFilteredFile(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters, bool compressed)
 {
-    return new CRemoteFilteredFileIO(ep, filename, actual, projected, fieldFilters);
+    return new CRemoteFilteredFileIO(ep, filename, actual, projected, fieldFilters, compressed);
 }
 
 class CRemoteFile : public CRemoteBase, implements IFile

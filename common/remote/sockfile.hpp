@@ -102,7 +102,7 @@ extern void clientAddSocketToCache(SocketEndpoint &ep,ISocket *socket);
 
 class IOutputMetaData;
 class RowFilter;
-extern IFileIO *createRemoteFilteredFile(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters);
+extern IFileIO *createRemoteFilteredFile(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters, bool compressed);
 
 
 #endif
