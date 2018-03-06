@@ -1722,6 +1722,41 @@ void CEndpointCS::beforeDispose()
     table.removeExact(this);
 }
 
+class CRemoteFilteredFileIO : public CRemoteBase, implements IFileIO
+{
+public:
+    IMPLEMENT_IINTERFACE;
+    // Really a stream, but life easier elsewhere if looks like a file
+    CRemoteFilteredFileIO(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters)
+    : CRemoteBase(ep, filename)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual size32_t read(offset_t pos, size32_t len, void * data)
+    {
+        // Read out of buffer into data.
+        UNIMPLEMENTED;
+    }
+    virtual offset_t size() { throwUnexpected(); }
+    virtual size32_t write(offset_t pos, size32_t len, const void * data) { throwUnexpected(); }
+    virtual offset_t appendFile(IFile *file,offset_t pos=0,offset_t len=(offset_t)-1) { throwUnexpected(); }
+    virtual void setSize(offset_t size) { throwUnexpected(); }
+    virtual void flush() { throwUnexpected(); }
+    virtual void close()
+    {
+        UNIMPLEMENTED;
+    }
+    virtual unsigned __int64 getStatistic(StatisticKind kind)
+    {
+        UNIMPLEMENTED;
+    }
+};
+
+extern IFileIO *createRemoteFilteredFile(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters)
+{
+    return new CRemoteFilteredFileIO(ep, filename, actual, projected, fieldFilters);
+}
+
 class CRemoteFile : public CRemoteBase, implements IFile
 {
     StringAttr remotefilename;

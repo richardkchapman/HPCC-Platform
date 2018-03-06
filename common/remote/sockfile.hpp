@@ -100,4 +100,9 @@ extern bool clientAsyncCopyFileSection(const char *uuid,    // from genUUID - mu
 extern void clientSetRemoteFileTimeouts(unsigned maxconnecttime,unsigned maxreadtime);
 extern void clientAddSocketToCache(SocketEndpoint &ep,ISocket *socket);
 
+class IOutputMetaData;
+class RowFilter;
+extern IFileIO *createRemoteFilteredFile(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters);
+
+
 #endif
