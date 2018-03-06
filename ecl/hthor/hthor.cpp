@@ -8410,7 +8410,7 @@ bool CHThorDiskReadBaseActivity::checkOpenedFile(char const * filename, char con
     saveOpenExc.clear();
     if (filesize)
     {
-        if (!compressed && fixedDiskRecordSize && (filesize % fixedDiskRecordSize) != 0)
+        if (!compressed && fixedDiskRecordSize && ((offset_t)-1 != filesize) && (filesize % fixedDiskRecordSize) != 0)
         {
             StringBuffer s;
             s.append("File ").append(filename).append(" size is ").append(filesize).append(" which is not a multiple of ").append(fixedDiskRecordSize);

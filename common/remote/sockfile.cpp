@@ -68,7 +68,7 @@ static const unsigned __int64 defaultFileStreamChooseN = I64C(0x7fffffffffffffff
 static const unsigned __int64 defaultFileStreamSkipN = 0;
 static const unsigned __int64 defaultFileStreamRowLimit = (unsigned __int64) -1;
 static const unsigned __int64 defaultDaFSNumRecs = 100;
-enum OutputFormat { outFmt_Binary, outFmt_Xml, outFmt_Json };
+enum OutputFormat:byte { outFmt_Binary, outFmt_Xml, outFmt_Json };
 
 
 #if SIMULATE_PACKETLOSS
@@ -1765,7 +1765,7 @@ public:
         sendRequest(0, nullptr);
         bufPos = 0;
     }
-    virtual size32_t read(offset_t pos, size32_t len, void * data)
+    virtual size32_t read(offset_t pos, size32_t len, void * data) override
     {
         assertex(pos == bufPos);  // Must read sequentially
         if (!bufRemaining && !eof)
@@ -1779,14 +1779,30 @@ public:
         memcpy(data, reply.readDirect(len), len);
         return len;
     }
-    virtual offset_t size() { return -1; }
-    virtual size32_t write(offset_t pos, size32_t len, const void * data) { throwUnexpected(); }
-    virtual offset_t appendFile(IFile *file,offset_t pos=0,offset_t len=(offset_t)-1) { throwUnexpected(); }
-    virtual void setSize(offset_t size) { throwUnexpected(); }
-    virtual void flush() { throwUnexpected(); }
-    virtual void close()
+    virtual offset_t size() override { return -1; }
+    virtual size32_t write(offset_t pos, size32_t len, const void * data) override { throwUnexpected(); }
+    virtual offset_t appendFile(IFile *file,offset_t pos=0,offset_t len=(offset_t)-1) override { throwUnexpected(); }
+    virtual void setSize(offset_t size) override { throwUnexpected(); }
+    virtual void flush() override { throwUnexpected(); }
+    virtual void close() override
     {
-        UNIMPLEMENTED;
+        if (handle)
+        {
+            try
+            {
+                MemoryBuffer sendBuffer;
+                initSendBuffer(sendBuffer);
+                sendBuffer.append((RemoteFileCommandType)RFCcloseIO).append(handle);
+                sendRemoteCommand(sendBuffer,false);
+            }
+            catch (IDAFS_Exception *e)
+            {
+                if ((e->errorCode()!=RFSERR_InvalidFileIOHandle)&&(e->errorCode()!=RFSERR_NullFileIOHandle))
+                    throw;
+                e->Release();
+            }
+            handle = 0;
+        }
     }
     virtual unsigned __int64 getStatistic(StatisticKind kind)
     {
@@ -1805,7 +1821,7 @@ private:
         MemoryBuffer mrequest;
         MemoryBuffer newReply;
         initSendBuffer(mrequest);
-        VStringBuffer json("{ \"cursor\" : %u, \"format\" : \"binary\" }", handle);
+        VStringBuffer json("{ \"cursor\" : %u }", handle);
         mrequest.append(json.length(), json.str());
         sendRemoteCommand(mrequest, newReply);
         unsigned newHandle;
@@ -3610,12 +3626,14 @@ struct OpenFileInfo
 {
     OpenFileInfo() { }
     OpenFileInfo(int _handle, IFileIO *_fileIO, StringAttrItem *_filename) : handle(_handle), fileIO(_fileIO), filename(_filename) { }
-    OpenFileInfo(int _handle, IRemoteActivity *_activity, StringAttrItem *_filename) : handle(_handle), activity(_activity), filename(_filename) { }
+    OpenFileInfo(int _handle, IRemoteActivity *_activity, StringAttrItem *_filename, OutputFormat _format)
+        : handle(_handle), activity(_activity), filename(_filename), format(_format) { }
     Linked<IFileIO> fileIO;
     Linked<IRemoteActivity> activity;
     Linked<StringAttrItem> filename; // for debug
     int handle = 0;
     unsigned flags = 0;
+    OutputFormat format = outFmt_Xml;
 };
 
 
@@ -5637,24 +5655,24 @@ public:
          *
          */
 
-        const char *outputFmtStr = requestTree->queryProp("format");
         int cursorHandle = requestTree->getPropInt("cursor");
-        OutputFormat outputFormat;
-        if (nullptr == outputFmtStr)
-            outputFormat = outFmt_Xml; // default
-        else if (strieq("xml", outputFmtStr))
-            outputFormat = outFmt_Xml;
-        else if (strieq("json", outputFmtStr))
-            outputFormat = outFmt_Json;
-        else if (strieq("binary", outputFmtStr))
-            outputFormat = outFmt_Binary;
-        else
-            throw MakeStringException(0, "Unrecognised output format: %s", outputFmtStr);
+        OutputFormat outputFormat = outFmt_Xml;
 
         Owned<IRemoteActivity> outputActivity;
         OpenFileInfo fileInfo;
         if (!cursorHandle)
         {
+            const char *outputFmtStr = requestTree->queryProp("format");
+            if (nullptr == outputFmtStr)
+                outputFormat = outFmt_Xml; // default
+            else if (strieq("xml", outputFmtStr))
+                outputFormat = outFmt_Xml;
+            else if (strieq("json", outputFmtStr))
+                outputFormat = outFmt_Json;
+            else if (strieq("binary", outputFmtStr))
+                outputFormat = outFmt_Binary;
+            else
+                throw MakeStringException(0, "Unrecognised output format: %s", outputFmtStr);
             // In future this may be passed the request and build a chain of activities and return sink.
             outputActivity.setown(createOutputActivity(*requestTree));
 
@@ -5665,12 +5683,15 @@ public:
             CriticalBlock block(sect);
             cursorHandle = getNextHandle();
             client.previdx = client.openFiles.ordinality();
-            client.openFiles.append(OpenFileInfo(cursorHandle, outputActivity, name));
+            client.openFiles.append(OpenFileInfo(cursorHandle, outputActivity, name, outputFormat));
         }
         else if (!lookupFileIOHandle(cursorHandle, fileInfo))
             cursorHandle = 0; // challenge response ..
         else // known handle, continuation
+        {
             outputActivity.set(fileInfo.activity);
+            outputFormat = fileInfo.format;
+        }
 
         if (outputActivity && requestTree->hasProp("cursorBin")) // use handle if one provided
         {
