@@ -345,7 +345,8 @@ enum {
     RFCreadfilteredindexcount,
     RFCreadfilteredindexblob,
     RFCmaxnormal,
-    RFCStreamRead = '{',
+    RFCStreamReadTestSocket = '{',
+    RFCStreamRead,
     RFCmax,
     RFCunknown = 255 // 0 would have been more sensible, but can't break backward compatibility
 };
@@ -401,8 +402,8 @@ const char *RFCStrings[] =
 };
 static const char *getRFCText(RemoteFileCommandType cmd)
 {
-    if (cmd==RFCStreamRead)
-        return "RFCStreamRead";
+    if (cmd==RFCStreamReadTestSocket)
+        return "RFCStreamReadTestSocket";
     else
     {
         if (cmd > RFCmaxnormal)
@@ -1821,7 +1822,7 @@ private:
         MemoryBuffer mrequest;
         MemoryBuffer newReply;
         initSendBuffer(mrequest);
-        VStringBuffer json("{ \"cursor\" : %u }", handle);
+        VStringBuffer json("{ \"handle\" : %u }", handle);
         mrequest.append(json.length(), json.str());
         sendRemoteCommand(mrequest, newReply);
         unsigned newHandle;
@@ -5635,13 +5636,12 @@ public:
         /* Example JSON request:
          * {
          *  "format" : "xml",
-         *  "cursor" : "1234",
+         *  "handle" : "1234",
          *  "node" : {
          *   "kind" : "diskread",
          *   "fileName": "examplefilename",
          *   "keyfilter" : "f1='1    '",
          *   "choosen" : "5",
-         *   "cursor" : "12345", // cursor handle
          *   "input" : {
          *    "f1" : "string5",
          *    "f2" : "string5"
@@ -5655,7 +5655,7 @@ public:
          *
          */
 
-        int cursorHandle = requestTree->getPropInt("cursor");
+        int cursorHandle = requestTree->getPropInt("handle");
         OutputFormat outputFormat = outFmt_Xml;
 
         Owned<IRemoteActivity> outputActivity;
@@ -5708,7 +5708,7 @@ public:
         {
             responseWriter.setown(createIXmlWriterExt(0, 0, nullptr, outFmt_Xml == outputFormat ? WTStandard : WTJSON));
             responseWriter->outputBeginNested("Response", true);
-            responseWriter->outputUInt(cursorHandle, sizeof(cursorHandle), "cursor");
+            responseWriter->outputUInt(cursorHandle, sizeof(cursorHandle), "handle");
         }
         if (cursorHandle)
         {
@@ -5811,7 +5811,7 @@ public:
                 if (peer)
                     err.append(peer);
             }
-            if (reply.getPos()<reply.length())
+            if (e&&(reply.getPos()<reply.length()))
             {
                 StringAttr es;
                 reply.read(es);
@@ -5869,6 +5869,7 @@ public:
             case RFCfirewall:
             case RFCunlock:
             case RFCStreamRead:
+            case RFCStreamReadTestSocket:
                 stdCmdThrottler.addCommand(cmd, msg, client);
                 return;
             // NB: The following commands are still bound by the the thread pool
@@ -5924,7 +5925,7 @@ public:
                 MAPCOMMAND(RFCgetinfo, cmdGetInfo);
                 MAPCOMMAND(RFCfirewall, cmdFirewall);
                 MAPCOMMANDCLIENT(RFCunlock, cmdUnlock, *client);
-                // MAPCOMMANDCLIENTTESTSOCKET(RFCStreamRead, cmdStreamReadTestSocket, *client);
+                MAPCOMMANDCLIENTTESTSOCKET(RFCStreamReadTestSocket, cmdStreamReadTestSocket, *client);
                 MAPCOMMANDCLIENT(RFCStreamRead, cmdStreamRead, *client);
                 MAPCOMMANDCLIENT(RFCcopysection, cmdCopySection, *client);
                 MAPCOMMANDCLIENTTHROTTLE(RFCtreecopy, cmdTreeCopy, *client, &slowCmdThrottler);
