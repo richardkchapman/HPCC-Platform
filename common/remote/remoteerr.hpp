@@ -54,6 +54,7 @@
 #define RFSERR_AuthenticateFailed               8025
 #define RFSERR_CopySectionFailed                8026
 #define RFSERR_TreeCopyFailed                   8027
+#define RFSERR_StreamReadFailed                 8028
 
 
 #define RAERR_InvalidUsernamePassword           8040

@@ -3816,7 +3816,7 @@ IRemoteActivity *createRemoteDiskRead(IPropertyTree &actNode)
     bool compressed = actNode.getPropBool("compressed");
     Owned<IOutputMetaData> inMeta = getTypeInfoOutputMetaData(actNode, "input");
     Owned<IOutputMetaData> outMeta = getTypeInfoOutputMetaData(actNode, "output");
-    Owned<IHThorDiskReadArg> helper = createDiskReadArg(fileName, inMeta.getClear(), outMeta.getClear(), chooseN, skipN, rowLimit);
+    Owned<IHThorDiskReadArg> helper = createDiskReadArg(fileName, inMeta.getClear(), outMeta.getClear(), chooseN, skipN, rowLimit, filters.ordinality(), filters.getArray());
     return new CRemoteDiskReadActivity(*helper, compressed);
 }
 
@@ -5811,7 +5811,7 @@ public:
                 if (peer)
                     err.append(peer);
             }
-            if (e&&(reply.getPos()<reply.length()))
+            if (reply.getPos()<reply.length())
             {
                 StringAttr es;
                 reply.read(es);
@@ -5939,9 +5939,10 @@ public:
         catch (IException *e)
         {
             ret = false;
+            reply.clear();
             StringBuffer s;
             e->errorMessage(s);
-            appendCmdErr(reply, cmd, e->errorCode(), s.str());
+            appendErr3(reply, RFSERR_StreamReadFailed, e->errorCode(), s.str());
             e->Release();
         }
         if (!ret) // append error string

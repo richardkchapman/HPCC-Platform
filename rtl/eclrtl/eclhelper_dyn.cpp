@@ -375,9 +375,12 @@ extern ECLRTL_API IHThorDiskReadArg *createDiskReadArg(IPropertyTree &xgmml)
     return ret.getClear();
 }
 
-extern ECLRTL_API IHThorDiskReadArg *createDiskReadArg(const char *fileName, IOutputMetaData *in, IOutputMetaData *out, unsigned __int64 chooseN, unsigned __int64 skipN, unsigned __int64 rowLimit)
+extern ECLRTL_API IHThorDiskReadArg *createDiskReadArg(const char *fileName, IOutputMetaData *in, IOutputMetaData *out, unsigned __int64 chooseN, unsigned __int64 skipN, unsigned __int64 rowLimit, unsigned numFilters, const char **filters)
 {
-    return new CDynamicDiskReadArg(fileName, in, out, chooseN, skipN, rowLimit);
+    Owned<CDynamicDiskReadArg> ret = new CDynamicDiskReadArg(fileName, in, out, chooseN, skipN, rowLimit);
+    for (unsigned f=0; f<numFilters; f++)
+        ret->addFilter(filters[f]);
+    return ret.getClear();
 }
 
 extern ECLRTL_API IHThorIndexReadArg *createIndexReadArg(const char *fileName, IOutputMetaData *in, IOutputMetaData *out, unsigned __int64 chooseN, unsigned __int64 skipN, unsigned __int64 rowLimit)
