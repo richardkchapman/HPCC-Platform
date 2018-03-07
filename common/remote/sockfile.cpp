@@ -1745,10 +1745,19 @@ public:
             " \"compressed\" : \"%s\"\n", filename, compressed ? "true" : "false");
         if (fieldFilters.numFilterFields())
         {
-            StringBuffer filterJson;
-            fieldFilters.serialize(filterJson);
-            appendJSONStringValue(request.append(","), "keyfilter", filterJson, true, true).newline();
-        }
+            request.append(" \"keyfilter\" : [\n  ");
+            for (unsigned idx=0; idx < fieldFilters.numFilterFields(); idx++)
+            {
+                auto &filter = fieldFilters.queryFilter(idx);
+                StringBuffer filterString;
+                filterString.append(filter.queryFieldIndex());
+                filter.serialize(filterString);
+                if (idx)
+                    request.append(",\n  ");
+                encodeJSON(request, filterString.length(), filterString.str());
+            }
+            request.append("\n ]\n");
+       }
         if (actual != projected)
         {
             MemoryBuffer actualTypeInfo;
