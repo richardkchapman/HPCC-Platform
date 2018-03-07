@@ -492,6 +492,10 @@ static const char *getRFSERRText(unsigned err)
             return "RFSERR_MaxQueueRequests";
         case RFSERR_KeyIndexFailed:
             return "RFSERR_MaxQueueRequests";
+        case RFSERR_StreamReadFailed:
+            return "RFSERR_StreamReadFailed";
+        case RFSERR_InternalError:
+            return "Internal Error";
     }
     return "RFSERR_Unknown";
 }
@@ -3712,7 +3716,7 @@ class CRemoteDiskReadActivity : public CSimpleInterfaceOf<IRemoteActivity>
             {
                 iFileIO.setown(iFile->open(IFOread));
                 if (!iFileIO)
-                    throw MakeStringException(0, "Failed to open: '%s'", fileName);
+                    throw MakeStringException(1, "Failed to open: '%s'", fileName);
             }
 
             inputStream.setown(createFileSerialStream(iFileIO, startPos));
@@ -5889,6 +5893,7 @@ public:
         Owned<CClientStats> stats = clientStatsTable.getClientReference(cmd, client->queryPeerName());
         bool ret = true;
         bool testSocketFlag = false;
+        unsigned posOfErr = reply.length();
         try
         {
             switch(cmd)
@@ -5940,10 +5945,10 @@ public:
         catch (IException *e)
         {
             ret = false;
-            reply.clear();
+            reply.setWritePos(posOfErr);
             StringBuffer s;
             e->errorMessage(s);
-            appendErr3(reply, RFSERR_StreamReadFailed, e->errorCode(), s.str());
+            appendErr3(reply, RFSERR_InternalError, e->errorCode(), s.str());
             e->Release();
         }
         if (!ret) // append error string
