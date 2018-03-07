@@ -1847,6 +1847,7 @@ private:
     {
         MemoryBuffer mrequest;
         initSendBuffer(mrequest);
+        mrequest.append((RemoteFileCommandType)RFCStreamRead);
         mrequest.append(request.length(), request.str());
         if (cursorLen)
         {
@@ -5613,6 +5614,11 @@ public:
         unsigned replyPos = reply.length();
         try
         {
+            /* testsocket is not actually passing in a command, and is interpreting '{' as the cmd to get here.
+             * so rewind so it can be read/parsed as JSON by cmdStreamRead
+             */
+            msg.reset(msg.getPos()-sizeof(RemoteFileCommandType));
+
             reply.append('J');
             return cmdStreamRead(msg, reply, client);
         }
@@ -5635,7 +5641,8 @@ public:
 
         reply.append(RFEnoerror);
 
-        Owned<IPropertyTree> requestTree = createPTreeFromJSONString(msg.length(), msg.toByteArray());
+        size32_t jsonSz = msg.remaining();
+        Owned<IPropertyTree> requestTree = createPTreeFromJSONString(jsonSz, (const char *)msg.readDirect(jsonSz));
 
         /* Example JSON request:
          * {
