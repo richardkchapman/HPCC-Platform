@@ -1837,6 +1837,7 @@ private:
         MemoryBuffer mrequest;
         MemoryBuffer newReply;
         initSendBuffer(mrequest);
+        mrequest.append((RemoteFileCommandType)RFCStreamRead);
         VStringBuffer json("{ \"handle\" : %u }", handle);
         mrequest.append(json.length(), json.str());
         sendRemoteCommand(mrequest, newReply);
