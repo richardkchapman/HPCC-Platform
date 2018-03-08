@@ -1733,19 +1733,19 @@ class CRemoteFilteredFileIO : public CRemoteBase, implements IFileIO
 public:
     IMPLEMENT_IINTERFACE;
     // Really a stream, but life (maybe) easier elsewhere if looks like a file
-    // Sometime should refactor to be based on ISerialStream instead.
+    // Sometime should refactor to be based on ISerialStream instead - or maybe IRowStream.
     CRemoteFilteredFileIO(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters, bool compressed)
     : CRemoteBase(ep, filename)
     {
         request.appendf("{\n"
             "\"format\" : \"binary\",\n"
-            " \"node\" : {\n"
+            "\"node\" : {\n"
             " \"kind\" : \"diskread\",\n"
             " \"fileName\" : \"%s\",\n"
-            " \"compressed\" : \"%s\"\n", filename, compressed ? "true" : "false");
+            " \"compressed\" : \"%s\"", filename, compressed ? "true" : "false");
         if (fieldFilters.numFilterFields())
         {
-            request.append(", \"keyfilter\" : [\n  ");
+            request.append(",\n \"keyfilter\" : [\n  ");
             for (unsigned idx=0; idx < fieldFilters.numFilterFields(); idx++)
             {
                 auto &filter = fieldFilters.queryFilter(idx);
@@ -1758,26 +1758,26 @@ public:
                 encodeJSON(request, filterString.length(), filterString.str());
                 request.append("\"");
             }
-            request.append("\n ]\n");
-       }
+            request.append("\n ]");
+        }
+        MemoryBuffer actualTypeInfo;
+        dumpTypeInfo(actualTypeInfo, actual->querySerializedDiskMeta()->queryTypeInfo());
+        request.append(",\n \"inputBin\": \"");
+        JBASE64_Encode(actualTypeInfo.toByteArray(), actualTypeInfo.length(), request, false);
+        request.append("\"");
         if (actual != projected)
         {
-            MemoryBuffer actualTypeInfo;
-            dumpTypeInfo(actualTypeInfo, actual->querySerializedDiskMeta()->queryTypeInfo());
             MemoryBuffer projectedTypeInfo;
             dumpTypeInfo(projectedTypeInfo, projected->querySerializedDiskMeta()->queryTypeInfo());
             if (actualTypeInfo.length() != projectedTypeInfo.length() ||
                 memcmp(actualTypeInfo.toByteArray(), projectedTypeInfo.toByteArray(), actualTypeInfo.length()))
             {
-                request.append(",\"inputBin\": \"");
-                JBASE64_Encode(actualTypeInfo.toByteArray(), actualTypeInfo.length(), request, false);
-                request.append("\",\n");
-                request.append("\"outputBin\": \"");
+                request.append(",\n \"outputBin\": \"");
                 JBASE64_Encode(projectedTypeInfo.toByteArray(), projectedTypeInfo.length(), request, false);
-                request.append("\"\n");
+                request.append("\"");
             }
         }
-        request.append(" }\n");
+        request.append("\n }\n");
         sendRequest(0, nullptr);
         bufPos = 0;
     }
@@ -1824,7 +1824,7 @@ public:
     {
         UNIMPLEMENTED;
     }
-private:
+protected:
     void refill()
     {
         size32_t cursorLength;
@@ -1882,6 +1882,32 @@ private:
     size32_t bufRemaining = 0;
     unsigned bufPos = 0;
     bool eof = false;
+};
+
+class CRemoteFilteredRowStream : public CRemoteFilteredFileIO, implements IRowStream
+{
+public:
+    CRemoteFilteredRowStream(const RtlRecord &_recInfo, SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters, bool compressed)
+    : CRemoteFilteredFileIO(ep, filename, actual, projected, fieldFilters, compressed), recInfo(_recInfo)
+    {}
+    virtual const byte *queryNextRow()  // NOTE - rows returned must NOT be freed
+    {
+        if (!bufRemaining && !eof)
+            refill();
+        if (eof)
+            return nullptr;
+        unsigned len = recInfo.getRecordSize(reply.readDirect(0));
+        bufPos += len;
+        bufRemaining -= len;
+        return reply.readDirect(len);
+    }
+    virtual void stop() override
+    {
+        close();
+        eof = true;
+    }
+protected:
+    const RtlRecord &recInfo;
 };
 
 extern IFileIO *createRemoteFilteredFile(SocketEndpoint &ep, const char * filename, IOutputMetaData *actual, IOutputMetaData *projected, const RowFilter &fieldFilters, bool compressed)
