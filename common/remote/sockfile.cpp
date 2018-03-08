@@ -3681,19 +3681,19 @@ struct OpenFileInfo
 
 
 
-static IOutputMetaData *getTypeInfoOutputMetaData(IPropertyTree &actNode, const char *typePropName)
+static IOutputMetaData *getTypeInfoOutputMetaData(IPropertyTree &actNode, const char *typePropName, bool grouped)
 {
-    IPropertyTree *inputJson = actNode.queryPropTree(typePropName);
-    if (inputJson)
-        return createTypeInfoOutputMetaData(*inputJson, nullptr);
+    IPropertyTree *json = actNode.queryPropTree(typePropName);
+    if (json)
+        return createTypeInfoOutputMetaData(*json, nullptr);
     else
     {
         StringBuffer binTypePropName(typePropName);
+        const char *jsonBin = actNode.queryProp(binTypePropName.append("Bin"));
+        if (!jsonBin)
+            return nullptr;
         MemoryBuffer mb;
-
-        JBASE64_Decode(actNode.queryProp(binTypePropName.append("Bin")), mb);
-
-        bool grouped = actNode.getPropBool(binTypePropName.append("_grouped").str(), false);
+        JBASE64_Decode(jsonBin, mb);
         return createTypeInfoOutputMetaData(mb, grouped, nullptr);
     }
 }
@@ -3876,8 +3876,13 @@ IRemoteActivity *createRemoteDiskRead(IPropertyTree &actNode)
     unsigned __int64 skipN = actNode.getPropInt64("skipN", defaultFileStreamSkipN);
     unsigned __int64 rowLimit = actNode.getPropInt64("rowLimit", defaultFileStreamRowLimit);
     bool compressed = actNode.getPropBool("compressed");
-    Owned<IOutputMetaData> inMeta = getTypeInfoOutputMetaData(actNode, "input");
-    Owned<IOutputMetaData> outMeta = getTypeInfoOutputMetaData(actNode, "output");
+
+    bool inputGrouped = actNode.getPropBool("input_grouped", false);
+    bool outputGrouped = actNode.getPropBool("output_grouped", false);
+    Owned<IOutputMetaData> inMeta = getTypeInfoOutputMetaData(actNode, "input", inputGrouped);
+    Owned<IOutputMetaData> outMeta = getTypeInfoOutputMetaData(actNode, "output", outputGrouped);
+    if (!outMeta)
+        outMeta.set(inMeta);
     Owned<IHThorDiskReadArg> helper = createDiskReadArg(fileName, inMeta.getClear(), outMeta.getClear(), chooseN, skipN, rowLimit);
     Owned<CRemoteDiskReadActivity> ret = new CRemoteDiskReadActivity(*helper, compressed);
     Owned<IPropertyTreeIterator> filterIter = actNode.getElements("keyfilter");
