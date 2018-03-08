@@ -3695,6 +3695,9 @@ class CRemoteDiskReadActivity : public CSimpleInterfaceOf<IRemoteActivity>
     bool cursorDirty = false;
     bool canMatchAny = false;
     bool needTransform = true;
+    const RtlRecord *record = nullptr;
+    RtlDynRow *filterRow = nullptr;
+    RowFilter actualFilter;
 
     void checkOpen()
     {
@@ -3748,18 +3751,34 @@ class CRemoteDiskReadActivity : public CSimpleInterfaceOf<IRemoteActivity>
         iFileIO.clear();
         opened = false;
     }
-    bool segMonitorsMatch(const void *row) { return true; }
+    inline bool fieldFilterMatch(const void * buffer)
+    {
+        if (actualFilter.numFilterFields())
+        {
+            filterRow->setRow(buffer, 0);
+            return actualFilter.matches(*filterRow);
+        }
+        else
+            return true;
+    }
 public:
     CRemoteDiskReadActivity(IHThorDiskReadArg &_helper, bool _compressed)
         : compressed(_compressed), helper(&_helper), prefetchBuffer(nullptr)
     {
         outMeta.set(helper->queryOutputMeta());
         canMatchAny = helper->canMatchAny();
+        record = &helper->queryDiskRecordSize()->queryRecordAccessor(true);
     }
     ~CRemoteDiskReadActivity()
     {
         if (outBuilder)
             delete outBuilder;
+    }
+    void addFilter(const char *filter)
+    {
+        actualFilter.addFilter(*record, filter);
+        if (!filterRow)
+            filterRow = new RtlDynRow(*record);
     }
     virtual const void *nextRow(size32_t &retSz) override
     {
@@ -3773,7 +3792,7 @@ public:
                     prefetcher->readAhead(prefetchBuffer);
                     const byte * next = prefetchBuffer.queryRow();
                     size32_t rowSz; // use local var instead of reference param for efficiency
-                    if (segMonitorsMatch(next))
+                    if (fieldFilterMatch(next))
                         rowSz = helper->transform(*outBuilder, next);
                     else
                         rowSz = 0;
@@ -3834,8 +3853,12 @@ IRemoteActivity *createRemoteDiskRead(IPropertyTree &actNode)
     bool compressed = actNode.getPropBool("compressed");
     Owned<IOutputMetaData> inMeta = getTypeInfoOutputMetaData(actNode, "input");
     Owned<IOutputMetaData> outMeta = getTypeInfoOutputMetaData(actNode, "output");
-    Owned<IHThorDiskReadArg> helper = createDiskReadArg(fileName, inMeta.getClear(), outMeta.getClear(), chooseN, skipN, rowLimit, filters.ordinality(), filters.getArray());
-    return new CRemoteDiskReadActivity(*helper, compressed);
+    Owned<IHThorDiskReadArg> helper = createDiskReadArg(fileName, inMeta.getClear(), outMeta.getClear(), chooseN, skipN, rowLimit);
+    Owned<CRemoteDiskReadActivity> ret = new CRemoteDiskReadActivity(*helper, compressed);
+    Owned<IPropertyTreeIterator> filterIter = actNode.getElements("keyfilter");
+    ForEach(*filterIter)
+        ret->addFilter(filterIter->query().queryProp(nullptr));
+    return ret.getClear();
 }
 
 IRemoteActivity *createRemoteActivity(IPropertyTree &actNode)
