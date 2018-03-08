@@ -288,7 +288,7 @@ void SegMonitorList::append(IKeySegmentMonitor *segment)
     segMonitors.append(*segment);
 }
 
-void SegMonitorList::append(FFoption option, IFieldFilter * filter)
+void SegMonitorList::append(FFoption option, const IFieldFilter * filter)
 {
     UNIMPLEMENTED;
 }
@@ -587,7 +587,7 @@ public:
     }
 
 
-    virtual void append(FFoption option, IFieldFilter * filter)
+    virtual void append(FFoption option, const IFieldFilter * filter)
     {
         UNIMPLEMENTED;
     }

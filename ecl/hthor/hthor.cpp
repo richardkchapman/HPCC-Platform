@@ -8454,7 +8454,7 @@ void CHThorBinaryDiskReadBase::calcFixedDiskRecordSize()
     fixedDiskRecordSize = actualDiskMeta->getFixedSize();
 }
 
-void CHThorBinaryDiskReadBase::append(FFoption option, IFieldFilter * filter)
+void CHThorBinaryDiskReadBase::append(FFoption option, const IFieldFilter * filter)
 {
     if (filter->isWild())
         filter->Release();

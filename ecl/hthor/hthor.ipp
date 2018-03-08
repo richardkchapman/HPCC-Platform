@@ -2318,7 +2318,7 @@ public:
     virtual void append(IKeySegmentMonitor *segment) override { throwUnexpected(); }
     virtual unsigned ordinality() const override { throwUnexpected(); }
     virtual IKeySegmentMonitor *item(unsigned idx) const override { throwUnexpected();  }
-    virtual void append(FFoption option, IFieldFilter * filter) override;
+    virtual void append(FFoption option, const IFieldFilter * filter) override;
 
 protected:
     virtual void verifyRecordFormatCrc() { ::verifyFormatCrcSuper(helper.getFormatCrc(), ldFile?ldFile->queryDistributedFile():NULL, false, true); }
