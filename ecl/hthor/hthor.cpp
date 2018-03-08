@@ -8202,6 +8202,7 @@ bool CHThorDiskReadBaseActivity::openNext()
     localOffset = 0;
     saveOpenExc.clear();
     actualFilter.clear();
+    unsigned projectedCrc = helper.getFormatCrc();
 
     bool forceRemoteFiles = queryEnvironmentConf().getPropBool("forceRemoteFiles");
 
@@ -8229,10 +8230,12 @@ bool CHThorDiskReadBaseActivity::openNext()
                 }
             }
 
+            unsigned actualCrc = 0;
             if (dFile)
             {
                 IPropertyTree &props = dFile->queryAttributes();
                 actualDiskMeta.setown(getDaliLayoutInfo(props));
+                actualCrc = props.getPropInt("@formatCrc");
             }
             if (!actualDiskMeta)
                 actualDiskMeta.set(expectedDiskMeta->querySerializedDiskMeta());
@@ -8300,8 +8303,9 @@ bool CHThorDiskReadBaseActivity::openNext()
                 closepart();
             }
 
-            translator.setown(createRecordTranslator(projectedDiskMeta->queryRecordAccessor(true), actualDiskMeta->queryRecordAccessor(true)));
-            if (translator->needsTranslate())
+            if (actualCrc != projectedCrc)
+                translator.setown(createRecordTranslator(projectedDiskMeta->queryRecordAccessor(true), actualDiskMeta->queryRecordAccessor(true)));
+            if (translator && translator->needsTranslate())
             {
                 if (translator->canTranslate())
                 {
