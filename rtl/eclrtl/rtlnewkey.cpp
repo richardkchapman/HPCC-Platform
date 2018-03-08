@@ -1225,12 +1225,12 @@ unsigned SetFieldFilter::queryScore() const
 
 StringBuffer & SetFieldFilter::serialize(StringBuffer & out) const
 {
-    out.append('=');
+    out.append(field).append('=');
     return values->serialize(out);
 }
 MemoryBuffer & SetFieldFilter::serialize(MemoryBuffer & out) const
 {
-    out.append('=');
+    out.append(field).append('=');
     return values->serialize(out);
 }
 
@@ -1287,13 +1287,13 @@ protected:
 
 StringBuffer & SubStringFieldFilter::serialize(StringBuffer & out) const
 {
-    out.append(':').append(subLength).append("=");
+    out.append(field).append(':').append(subLength).append("=");
     return values->serialize(out);
 }
 
 MemoryBuffer & SubStringFieldFilter::serialize(MemoryBuffer & out) const
 {
-    out.append(':').append(subLength);
+    out.append(field).append(':').append(subLength);
     return values->serialize(out);
 }
 
@@ -1510,12 +1510,12 @@ public:
 
     virtual StringBuffer & serialize(StringBuffer & out) const override
     {
-        return out.append('*');
+        return out.append(field).append('*');
     }
 
     virtual MemoryBuffer & serialize(MemoryBuffer & out) const override
     {
-        return out.append('*');
+        return out.append(field).append('*');
     }
 };
 
@@ -1782,14 +1782,6 @@ void RowFilter::remapField(unsigned filterIdx, unsigned newFieldNum)
     filters.replace(*filters.item(filterIdx).remap(newFieldNum), filterIdx);
 }
 
-void RowFilter::serialize(StringBuffer &ret) const
-{
-    ForEachItemIn(idx, filters)
-    {
-        auto &filter = filters.item(idx);
-        filter.serialize(ret);
-    }
-}
 //---------------------------------------------------------------------------------------------------------------------
 
 bool RowCursor::setRowForward(const byte * row)

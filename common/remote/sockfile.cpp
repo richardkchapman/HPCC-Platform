@@ -1750,7 +1750,6 @@ public:
             {
                 auto &filter = fieldFilters.queryFilter(idx);
                 StringBuffer filterString;
-                filterString.append(filter.queryFieldIndex());
                 filter.serialize(filterString);
                 if (idx)
                     request.append(",\n  ");
