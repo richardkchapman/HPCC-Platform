@@ -70,7 +70,7 @@ ADD_DEFINITIONS( -D_USRDLL -DECLRTL_EXPORTS )
 
 if (USE_BOOST_REGEX)
     if ((CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANGXX) AND NOT ICU_REQUIRES_CPP11)
-        set_source_files_properties(eclregex.cpp PROPERTIES COMPILE_FLAGS -std=c++98)
+     #   set_source_files_properties(eclregex.cpp PROPERTIES COMPILE_FLAGS -std=c++98)
     endif ()
 
     if (WIN32)
