@@ -30,16 +30,11 @@
 #define UNICODELIB_API DECL_IMPORT
 #endif
 
-#ifndef CHEAP_UCHAR_DEF
+#ifdef _USE_ICU
 #ifndef U_OVERRIDE_CXX_ALLOCATION
 #define U_OVERRIDE_CXX_ALLOCATION 0 // Enabling this forces all allocation of ICU objects to ICU's heap, but is incompatible with jmemleak
 #endif //U_OVERRIDE_CXX_ALLOCATION
-#ifdef _USE_ICU
 #include "unicode/utf.h"
-#else
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-#endif
 #endif
 
 #include "hqlplugins.hpp"

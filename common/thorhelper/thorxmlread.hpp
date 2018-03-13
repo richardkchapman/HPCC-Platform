@@ -186,14 +186,8 @@ protected:
 extern thorhelper_decl IXmlToRawTransformer * createXmlRawTransformer(IXmlToRowTransformer * xmlTransformer, PTreeReaderOptions xmlReadFlags=ptr_ignoreWhiteSpace);
 extern thorhelper_decl ICsvToRawTransformer * createCsvRawTransformer(ICsvToRowTransformer * csvTransformer);
 
-
-#ifndef CHEAP_UCHAR_DEF
 #ifdef _USE_ICU
 #include "unicode/utf.h"
-#else
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-#endif
 #endif
 
 interface IXMLSelect : extends IInterface

@@ -17,15 +17,6 @@
 #ifndef __HQLPREGEX_HPP_
 #define __HQLPREGEX_HPP_
 
-#ifndef CHEAP_UCHAR_DEF
-#ifdef _USE_ICU
-#include "unicode/utf.h"
-#else
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-#endif
-#endif
-
 IHqlExpression * convertPatternToExpression(unsigned len, const char * text);
 IHqlExpression * convertUtf8PatternToExpression(unsigned len, const char * text);
 IHqlExpression * convertPatternToExpression(unsigned len, const UChar * text);

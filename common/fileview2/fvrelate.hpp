@@ -20,9 +20,6 @@
 
 #include "fileview.hpp"
 
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-
 typedef void (*stringFieldTransformerFunction)(unsigned & tgtLen, char * & tgt, unsigned srcLen, const char * src);
 typedef void (*utf8FieldTransformerFunction)(unsigned & tgtLen, char * & tgt, unsigned srcLen, const char * src);
 typedef void (*unicodeFieldTransformerFunction)(unsigned & tgtLen, UChar * & tgt, unsigned srcLen, const UChar * src);

@@ -38,9 +38,6 @@
 
 #define GLOBAL_SCOPE "workunit"
 
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-
 // error codes
 #define QUERRREG_ADD_NAMEDQUERY     QUERYREGISTRY_ERROR_START
 #define QUERRREG_REMOVE_NAMEDQUERY  QUERYREGISTRY_ERROR_START+1

@@ -45,20 +45,7 @@
 #include <ctype.h>
 #include <math.h>
 
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-
-#ifdef _WIN32
-typedef unsigned int size32_t; // avoid pulling in platform.h (which pulls in windows.h etc) just for this...
-typedef unsigned __int64 hash64_t;
-#define DECL_EXPORT __declspec(dllexport)
-#define DECL_IMPORT __declspec(dllimport)
-#define DECL_LOCAL
-#define DECL_EXCEPTION
-#else
 #include "platform.h"
-#endif
-
 #include "eclrtl.hpp"
 #include "eclhelper.hpp"
 #include "rtlkey.hpp"

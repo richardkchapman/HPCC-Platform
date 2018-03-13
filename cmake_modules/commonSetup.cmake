@@ -247,11 +247,6 @@ IF ("${COMMONSETUP_DONE}" STREQUAL "")
     set( PORTALURL "http://hpccsystems.com/download" )
   endif()
 
-  option(CHEAP_UCHAR_T "Type to use for cheap uchars")
-  if (CHEAP_UCHAR_T)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCHEAP_UCHAR_T=${CHEAP_UCHAR_T}")
-  endif()
-
   option(ICU_REQUIRES_CPP11 "Require C++11 for ICU support" OFF)
 
   set(CMAKE_MODULE_PATH "${HPCC_SOURCE_DIR}/cmake_modules/")

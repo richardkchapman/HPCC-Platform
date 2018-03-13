@@ -532,13 +532,12 @@ typedef __int64 cycle_t;
  #define DECL_EXCEPTION
 #endif
 
-#if defined (CHEAP_UCHAR_T)
-    typedef CHEAP_UCHAR_T cheap_uchar_t;
+#ifdef _USE_ICU
+ #include <unicode/umachine.h>
 #elif defined(_WIN32)
-    typedef wchar_t cheap_uchar_t;
+ typedef wchar_t UChar;
 #else
-    typedef unsigned short cheap_uchar_t;
+ typedef unsigned short UChar;
 #endif //_WIN32
-
 
 #endif

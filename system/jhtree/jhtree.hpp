@@ -145,9 +145,6 @@ extern jhtree_decl bool flushJHtreeCacheOnOOM;
 extern jhtree_decl bool useMemoryMappedIndexes;
 extern jhtree_decl void clearNodeStats();
 
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-
 #include "rtlkey.hpp"
 #include "jmisc.hpp"
 

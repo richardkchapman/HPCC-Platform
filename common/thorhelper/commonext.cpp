@@ -16,8 +16,6 @@
 ############################################################################## */
 
 #include "platform.h"
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
 #include "eclhelper.hpp"
 
 #include "jmisc.hpp"

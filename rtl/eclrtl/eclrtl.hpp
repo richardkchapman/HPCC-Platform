@@ -20,22 +20,6 @@
 
 #include "jscm.hpp"
 
-// Define CHEAP_UCHAR_DEF and typedef UChar yourself, before including this file, to avoid including ICU's headers
-// This is cheaper when only unicode support used is through these interfaces, esp. in generated code
-// Will not work if you're including any other ICU libraries in this module!
-
-#ifndef CHEAP_UCHAR_DEF
-#ifndef U_OVERRIDE_CXX_ALLOCATION
-#define U_OVERRIDE_CXX_ALLOCATION 0 // Enabling this forces all allocation of ICU objects to ICU's heap, but is incompatible with jmemleak
-#endif //U_OVERRIDE_CXX_ALLOCATION
-#ifdef _USE_ICU
-#include "unicode/utf.h"
-#else
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-#endif
-#endif
-
 #if !defined(ECLRTL_LOCAL)
 #ifdef ECLRTL_EXPORTS
 #define ECLRTL_API DECL_EXPORT

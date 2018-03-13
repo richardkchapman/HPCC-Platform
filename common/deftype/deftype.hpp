@@ -26,9 +26,6 @@
 #define DEFTYPE_API DECL_IMPORT
 #endif
 
-#define CHEAP_UCHAR_DEF
-typedef cheap_uchar_t UChar;
-
 interface ITypeInfo;
 interface IValue;
 interface IHqlExpression;
