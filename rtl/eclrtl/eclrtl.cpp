@@ -4765,14 +4765,6 @@ void rtlUtf8ToCodepageX(unsigned & outlen, char * & out, unsigned inlen, char co
     rtlCodepageToCodepageX(outlen, out, inlen, insize, in, codepage, UTF8_CODEPAGE);
 }
 
-
-#if defined (_USE_ICU) && (U_ICU_VERSION_MAJOR_NUM>=60)
-extern ECLRTL_API void rtlUnicodeToUtf8X(unsigned & outlen, char * & out, unsigned inlen, const unsigned short * in)
-{
-    rtlUnicodeToUtf8X(outlen, out, inlen, (const UChar *) in);
-}
-#endif
-
 void rtlUnicodeToUtf8X(unsigned & outlen, char * & out, unsigned inlen, const UChar * in)
 {
     unsigned outsize;
