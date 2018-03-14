@@ -195,7 +195,11 @@ int doUnicodeCompareAtStrength(unsigned src1Len, UChar const * src1, unsigned sr
     UErrorCode error = U_ZERO_ERROR;
     Collator * coll = Collator::createInstance(error);
     coll->setStrength(strength);
+#if U_ICU_VERSION_MAJOR_NUM>=58
+    Collator::EComparisonResult ret = coll->compare((char16_t *)src1, src1Len, (char16_t *)src2, src2Len);
+#else
     Collator::EComparisonResult ret = coll->compare(src1, src1Len, src2, src2Len);
+#endif
     delete coll;
     return ret;
 }
@@ -206,7 +210,11 @@ int doUnicodeLocaleCompareAtStrength(unsigned src1Len, UChar const * src1, unsig
     Locale locale(localename);
     Collator * coll = Collator::createInstance(locale, error);
     coll->setStrength(strength);
+#if U_ICU_VERSION_MAJOR_NUM>=58
+    Collator::EComparisonResult ret = coll->compare((char16_t *)src1, src1Len, (char16_t *)src2, src2Len);
+#else
     Collator::EComparisonResult ret = coll->compare(src1, src1Len, src2, src2Len);
+#endif
     delete coll;
     return ret;
 }
