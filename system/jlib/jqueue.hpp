@@ -43,6 +43,7 @@ public:
 typedef IQueueOf<const void *> IRowQueue;
 
 extern jlib_decl IRowQueue * createRowQueue(unsigned numReaders, unsigned numWriters, unsigned maxItems, unsigned maxSlots);
+extern jlib_decl unsigned getQueueStructSize();
 
 /*
  * The ReaderWriterQueue is a bounded inter-thread queue that aims to be lock free when adding an item to the queue

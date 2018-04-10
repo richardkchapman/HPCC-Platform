@@ -911,6 +911,7 @@ public:
         unsigned queueElements = (numElements != 0) ? numElements : (numProducers + numConsumers) * 2;
         Owned<IRowQueue> queue = createRowQueue(numConsumers, numProducers, queueElements, 0);
         testQueue(*queue, numProducers, numConsumers, queueElements, readWork, writeWork);
+        printf("Queue structure size is %u bytes", getQueueStructSize());
     }
 
     void testWorkQueue(unsigned numProducers, unsigned numConsumers, unsigned numElements)

@@ -92,6 +92,10 @@ IRowQueue * createRowQueue(unsigned numReaders, unsigned numWriters, unsigned ma
     return new CRowQueue<unsigned __int64, 12, 10, 16, 0>(maxItems, numWriters, numReaders);
 }
 
+unsigned getQueueStructSize()
+{
+    return sizeof(CRowQueue<unsigned, 1, 1, 8, 8>(10, 1, 1));
+}
 //MORE:
 //use likely()/unlikely() - they might improve the code
 //Adaptive spin counts - separate variables for reader/writer.  reduce number of spins if a producer/consumer blocks.
