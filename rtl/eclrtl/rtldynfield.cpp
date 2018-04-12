@@ -264,7 +264,10 @@ private:
                 // initializer is tricky - it's not (in general) a null-terminated string but the actual length is not easily available
                 if (child->initializer)
                 {
-                    addProp("init", child->type->size(child->initializer, nullptr), child->initializer);
+                    if (isVirtualInitializer(child->initializer))
+                        addProp("vinit", getVirtualInitializer(child->initializer));
+                    else
+                        addProp("init", child->type->size(child->initializer, nullptr), child->initializer);
                 }
                 closeCurly();
                 fields++;
@@ -457,16 +460,23 @@ private:
                 if (child->xpath)
                     flags |= RFTMhasXpath;
                 if (child->initializer)
-                    flags |= RFTMhasInitializer;
+                {
+                    if (isVirtualInitializer(child->initializer))
+                        flags |= RFTMhasVirtualInitializer;
+                    else
+                        flags |= RFTMhasInitializer;
+                }
                 out.append(flags);
                 if (child->xpath)
                     out.append(child->xpath);
                 // initializer is tricky - it's not (in general) a null-terminated string but the actual length is not easily available
-                if (child->initializer)
+                if (flags & RFTMhasInitializer)
                 {
                     unsigned initLength = child->type->size(child->initializer, nullptr);
                     out.appendPacked(initLength).append(initLength, child->initializer);
                 }
+                else if (flags &RFTMhasVirtualInitializer)
+                    out.append(getVirtualInitializer(child->initializer));
                 fields++;
             }
         }
@@ -680,7 +690,8 @@ private:
                         break;
                     // We don't need to delete other strings - they are owned by atom table.
                     // But the initializer is decoded and thus owned by me
-                    free((void *)child->initializer);
+                    if (!isVirtualInitializer(child->initializer))
+                        free((void *)child->initializer);
                     delete child;
                     cur++;
                 }
@@ -750,11 +761,16 @@ private:
                 const char *fieldXpath = keep(field.queryProp("xpath"));
                 unsigned flags = field.getPropInt("flags");
                 const char *fieldInit = field.queryProp("init");
+                const char *fieldVInit = field.queryProp("vinit");
                 if (fieldInit)
                 {
                     StringBuffer decoded;
                     JBASE64_Decode(fieldInit, decoded);
                     fieldInit = decoded.detach(); // NOTE - this gets freed in cleanupType()
+                }
+                else if (fieldVInit)
+                {
+                    fieldInit = (const char  *)(memsize_t)atoi(fieldVInit);
                 }
                 info.fieldsArray[n] = new RtlFieldStrInfo(fieldName, fieldXpath, lookupType(fieldTypeName, all), flags, fieldInit);
                 n++;
@@ -833,6 +849,12 @@ private:
                     type.readPacked(initLength);
                     init = malloc(initLength);
                     memcpy(init, type.readDirect(initLength), initLength);
+                }
+                if (fieldFlags & RFTMhasVirtualInitializer)
+                {
+                    byte virtualKind;
+                    type.read(virtualKind);
+                    init = (void *)(memsize_t)virtualKind;
                 }
                 fieldFlags &= ~RFTMserializerFlags;
                 info.fieldsArray[n] = new RtlFieldStrInfo(keep(fieldName), keep(xpath), lookupType(fieldType), fieldFlags, (const char *) init);
@@ -990,6 +1012,7 @@ enum FieldMatchType {
     match_recurse     = 0x80,    // Use recursive translator for child records/datasets
     match_fail        = 0x100,   // no translation possible
     match_keychange   = 0x200,   // at least one affected field not marked as payload (set on translator)
+    match_virtual     = 0x800,   // at least one affected field not marked as payload (set on translator)
 
     // This flag may be set in conjunction with the others
     match_inifblock   = 0x400,   // matching to a field in an ifblock - may not be present
@@ -1011,6 +1034,7 @@ StringBuffer &describeFlags(StringBuffer &out, FieldMatchType flags)
     if (flags & match_inifblock) out.append("|ifblock");
     if (flags & match_keychange) out.append("|keychange");
     if (flags & match_fail) out.append("|fail");
+    if (flags & match_virtual) out.append("|virtual");
     assertex(out.length() > origlen);
     return out.remove(origlen, 1);
 }
@@ -1065,6 +1089,8 @@ private:
             const MatchInfo &match = matchInfo[idx];
             if (match.matchType == match_none)
                 DBGLOG("%*sNo match for field %s - default value will be used", indent, "", source);
+            else if (match.matchType == match_virtual)
+                DBGLOG("%*sUse virtual value for field %s", indent, "", source);
             else
             {
                 StringBuffer matchStr;
@@ -1110,7 +1136,30 @@ private:
             const RtlTypeInfo *type = field->type;
             const MatchInfo &match = matchInfo[idx];
             if (match.matchType == match_none || match.matchType==match_fail)
+            {
                 offset = type->buildNull(builder, offset, field);
+            }
+            else if (match.matchType == match_virtual)
+            {
+                NullVirtualFieldCallback callback;
+                switch (getVirtualInitializer(field->initializer))
+                {
+                case FVirtualFilePosition:
+                    offset = type->buildInt(builder, offset, field, callback.getFilePosition(sourceRow.queryRow()));
+                    break;
+                case FVirtualLocalFilePosition:
+                    offset = type->buildInt(builder, offset, field, callback.getLocalFilePosition(sourceRow.queryRow()));
+                    break;
+                case FVirtualFilename:
+                    {
+                        const char * filename = callback.queryLogicalFilename(sourceRow.queryRow());
+                        offset = type->buildString(builder, offset, field, strlen(filename), filename);
+                        break;
+                    }
+                default:
+                    throwUnexpected();
+                }
+            }
             else
             {
                 unsigned matchField = match.matchIdx;
@@ -1309,7 +1358,7 @@ private:
             expectedSize -= sourceRow.getSize(fieldNo);
             //DBGLOG("Reducing estimated size by %d to %d for omitted field %d (%s)", (int) sourceRow.getSize(fieldNo), expectedSize, fieldNo, sourceRecInfo.queryName(fieldNo));
         }
-        if (matchFlags & ~(match_perfect|match_link|match_none|match_extend|match_truncate))
+        if (matchFlags & ~(match_perfect|match_link|match_none|match_virtual|match_extend|match_truncate))
         {
             for (unsigned idx = 0; idx < destRecInfo.getNumFields(); idx++)
             {
@@ -1321,6 +1370,7 @@ private:
                 case match_perfect:
                 case match_link:
                 case match_none:
+                case match_virtual:
                 case match_extend:
                 case match_truncate:
                     // These ones were already included in fixedDelta
@@ -1349,8 +1399,9 @@ private:
             info.matchIdx = sourceRecInfo.getFieldNum(destRecInfo.queryName(idx));
             if (info.matchIdx == -1)
             {
-                info.matchType = match_none;
-                size32_t defaultSize = field->initializer ? type->size(field->initializer, nullptr) : type->getMinSize();
+                const byte * initializer = field->initializer;
+                info.matchType = isVirtualInitializer(initializer) ? match_virtual : match_none;
+                size32_t defaultSize = (initializer && !isVirtualInitializer(initializer)) ? type->size(initializer, nullptr) : type->getMinSize();
                 fixedDelta -= defaultSize;
                 if ((field->flags & RFTMispayloadfield) == 0)
                     matchFlags |= match_keychange;
@@ -1669,4 +1720,36 @@ extern ECLRTL_API const IKeyTranslator *createKeyTranslator(const RtlRecord &_de
     return new CKeyTranslator(_destRecInfo, _srcRecInfo);
 }
 
+
+//---------------------------------------------------------------------------------------------------------------------
+
+const char * NullVirtualFieldCallback::queryLogicalFilename(const void * row)
+{
+    return "";
+}
+
+unsigned __int64 NullVirtualFieldCallback::getFilePosition(const void * row)
+{
+    return 0;
+}
+
+unsigned __int64 NullVirtualFieldCallback::getLocalFilePosition(const void * row)
+{
+    return 0;
+}
+
+const char * UnexpectedVirtualFieldCallback::queryLogicalFilename(const void * row)
+{
+    throwUnexpectedX("VIRTUAL(LOGICALFILENAME)");
+}
+
+unsigned __int64 UnexpectedVirtualFieldCallback::getFilePosition(const void * row)
+{
+    throwUnexpectedX("VIRTUAL(FILEPOSITION)");
+}
+
+unsigned __int64 UnexpectedVirtualFieldCallback::getLocalFilePosition(const void * row)
+{
+    throwUnexpectedX("VIRTUAL(LOCALFILEPOSITION)");
+}
 

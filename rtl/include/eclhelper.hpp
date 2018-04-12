@@ -65,6 +65,8 @@ interface ICodeContext;
 interface IAtom;
 interface IException;
 interface IFieldFilter;
+interface IThorDiskCallback;
+
 class MemoryBuffer;
 class StringBuffer;
 class rtlRowBuilder;
@@ -359,7 +361,8 @@ enum RtlFieldTypeMask
     RFTMhasLocale           = 0x00200000,                   // type has locale
     RFTMhasFields           = 0x00400000,                   // type has fields
     RFTMhasXpath            = 0x00800000,                   // field has xpath
-    RFTMhasInitializer      = 0x01000000,                   // field has initialzer
+    RFTMhasInitializer      = 0x01000000,                   // field has initializer
+    RFTMhasVirtualInitializer= 0x02000000,                   // field has virtual value for the initializer
 
     RFTMcontainsunknown     = 0x10000000,                   // contains a field of unknown type that we can't process properly
     RFTMinvalidxml          = 0x20000000,                   // cannot be called to generate xml
@@ -441,6 +444,22 @@ public:
 protected:
     ~RtlTypeInfo() = default;
 };
+
+
+//These values are used as special values for the initializer to implement different functionality
+enum RtlVirtualType
+{
+    FVirtualFilePosition,
+    FVirtualLocalFilePosition,
+    FVirtualFilename,
+    FVirtualMax,
+    FVirtualLimit = 256
+};
+
+inline bool isVirtualInitializer(const byte * initializer) { return (memsize_t)initializer < FVirtualLimit; }
+inline byte getVirtualInitializer(const byte * initializer) { return (byte)(memsize_t)initializer; }
+
+typedef IThorDiskCallback IVirtualFieldCallback;
 
 //Core struct used for representing meta for a field.  Effectively used as an interface.
 struct RtlFieldInfo

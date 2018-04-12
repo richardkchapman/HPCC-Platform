@@ -633,7 +633,7 @@ __int64 RtlRow::getInt(unsigned field) const
     const RtlTypeInfo * type = fieldInfo->type;
     if (!fieldInfo->omitable() || getSize(field))
         return type->getInt(self + getOffset(field));
-    else if (fieldInfo->initializer)
+    else if (fieldInfo->initializer && !isVirtualInitializer(fieldInfo->initializer))
         return type->getInt(fieldInfo->initializer);
     else
         return 0;
@@ -646,7 +646,7 @@ double RtlRow::getReal(unsigned field) const
     const RtlTypeInfo * type = fieldInfo->type;
     if (!fieldInfo->omitable() || getSize(field))
         return type->getReal(self + getOffset(field));
-    else if (fieldInfo->initializer)
+    else if (fieldInfo->initializer && !isVirtualInitializer(fieldInfo->initializer))
         return type->getReal(fieldInfo->initializer);
     else
         return 0;
@@ -659,7 +659,7 @@ void RtlRow::getString(size32_t & resultLen, char * & result, unsigned field) co
     const RtlTypeInfo * type = fieldInfo->type;
     if (!fieldInfo->omitable() || getSize(field))
         type->getString(resultLen, result, self + getOffset(field));
-    else if (fieldInfo->initializer)
+    else if (fieldInfo->initializer && !isVirtualInitializer(fieldInfo->initializer))
         type->getString(resultLen, result, fieldInfo->initializer);
     else
     {
@@ -675,7 +675,7 @@ void RtlRow::getUtf8(size32_t & resultLen, char * & result, unsigned field) cons
     const RtlTypeInfo * type = fieldInfo->type;
     if (!fieldInfo->omitable() || getSize(field))
         type->getUtf8(resultLen, result, self + getOffset(field));
-    else if (fieldInfo->initializer)
+    else if (fieldInfo->initializer && !isVirtualInitializer(fieldInfo->initializer))
         type->getUtf8(resultLen, result, fieldInfo->initializer);
     else
     {

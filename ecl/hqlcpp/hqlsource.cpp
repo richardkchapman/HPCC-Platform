@@ -2815,9 +2815,14 @@ void DiskReadBuilderBase::buildMembers(IHqlExpression * expr)
 
     if (includeFormatCrc)
     {
-        //Spill files can still have virtual attributes in their physical records => remove them.
-        OwnedHqlExpr noVirtualRecord = removeVirtualAttributes(physicalRecord);
-        translator.buildFormatCrcFunction(instance->classctx, "getFormatCrc", false, noVirtualRecord, NULL, 0);
+        if (translator.queryOptions().newDiskReadMapping)
+            translator.buildFormatCrcFunction(instance->classctx, "getFormatCrc", false, tableExpr->queryRecord(), NULL, 0);
+        else
+        {
+            //Spill files can still have virtual attributes in their physical records => remove them.
+            OwnedHqlExpr noVirtualRecord = removeVirtualAttributes(physicalRecord);
+            translator.buildFormatCrcFunction(instance->classctx, "getFormatCrc", false, noVirtualRecord, NULL, 0);
+        }
     }
 
     buildLimits(instance->startctx, expr, instance->activityId); 

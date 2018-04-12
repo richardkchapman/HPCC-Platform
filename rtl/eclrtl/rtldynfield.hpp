@@ -182,4 +182,23 @@ extern ECLRTL_API int getFieldNum(const char *fieldName, IOutputMetaData &  meta
 
 extern ECLRTL_API IRowStream * transformRecord(IEngineRowAllocator * resultAllocator,IOutputMetaData &  metaInput,IRowStream * input);
 
+//---------------------------------------------------------------------------------------------------------------------
+
+//Default implementations of the virtual field callbacks
+class ECLRTL_API NullVirtualFieldCallback : public CInterfaceOf<IVirtualFieldCallback>
+{
+public:
+    virtual const char * queryLogicalFilename(const void * row) override;
+    virtual unsigned __int64 getFilePosition(const void * row) override;
+    virtual unsigned __int64 getLocalFilePosition(const void * row) override;
+};
+
+class ECLRTL_API UnexpectedVirtualFieldCallback : public CInterfaceOf<IVirtualFieldCallback>
+{
+public:
+    virtual const char * queryLogicalFilename(const void * row) override;
+    virtual unsigned __int64 getFilePosition(const void * row) override;
+    virtual unsigned __int64 getLocalFilePosition(const void * row) override;
+};
+
 #endif
