@@ -1059,14 +1059,14 @@ public:
     {
         doDescribe(0);
     }
-    virtual size32_t translate(ARowBuilder &builder, const byte *sourceRec) const override
+    virtual size32_t translate(ARowBuilder &builder, IVirtualFieldCallback & callback, const byte *sourceRec) const override
     {
-        return doTranslate(builder, 0, sourceRec);
+        return doTranslate(builder, callback, 0, sourceRec);
     }
-    virtual size32_t translate(ARowBuilder &builder, const RtlRow &sourceRow) const override
+    virtual size32_t translate(ARowBuilder &builder, IVirtualFieldCallback & callback, const RtlRow &sourceRow) const override
     {
         sourceRow.lazyCalcOffsets(-1);  // MORE - could save the max one we actually need...
-        return doTranslate(builder, 0, sourceRow);
+        return doTranslate(builder, callback, 0, sourceRow);
     }
     virtual bool canTranslate() const override
     {
@@ -1075,6 +1075,10 @@ public:
     virtual bool needsTranslate() const override
     {
         return (matchFlags & ~match_link) != 0;
+    }
+    virtual bool needsNonVirtualTranslate() const override
+    {
+        return (matchFlags & ~(match_link|match_virtual|match_keychange|match_inifblock)) != 0;
     }
     virtual bool keyedTranslated() const override
     {
@@ -1109,14 +1113,14 @@ private:
         else
             DBGLOG("%*sTranslation is not necessary", indent, "");
     }
-    size32_t doTranslate(ARowBuilder &builder, size32_t offset, const byte *sourceRec) const
+    size32_t doTranslate(ARowBuilder &builder, IVirtualFieldCallback & callback, size32_t offset, const byte *sourceRec) const
     {
         unsigned numOffsets = sourceRecInfo.getNumVarFields() + 1;
         size_t * variableOffsets = (size_t *)alloca(numOffsets * sizeof(size_t));
         RtlRow sourceRow(sourceRecInfo, sourceRec, numOffsets, variableOffsets);  // MORE - could save the max source offset we actually need, and only set up that many...
-        return doTranslate(builder, offset, sourceRow);
+        return doTranslate(builder, callback, offset, sourceRow);
     }
-    size32_t doTranslate(ARowBuilder &builder, size32_t offset, const RtlRow &sourceRow) const
+    size32_t doTranslate(ARowBuilder &builder, IVirtualFieldCallback & callback, size32_t offset, const RtlRow &sourceRow) const
     {
         dbgassertex(canTranslate());
         byte * destConditions = (byte *)alloca(destRecInfo.getNumIfBlocks() * sizeof(byte));
@@ -1141,7 +1145,6 @@ private:
             }
             else if (match.matchType == match_virtual)
             {
-                NullVirtualFieldCallback callback;
                 switch (getVirtualInitializer(field->initializer))
                 {
                 case FVirtualFilePosition:
@@ -1230,7 +1233,7 @@ private:
                     }
                     case match_recurse:
                         if (type->getType()==type_record)
-                            offset = match.subTrans->doTranslate(builder, offset, source);
+                            offset = match.subTrans->doTranslate(builder, callback, offset, source);
                         else if (type->isLinkCounted())
                         {
                             // a 32-bit record count, and a pointer to an array of record pointers
@@ -1250,7 +1253,7 @@ private:
                                 for (size32_t childRow = 0; childRow < childCount; childRow++)
                                 {
                                     RtlDynamicRowBuilder childBuilder(*childAllocator);
-                                    size32_t childLen = match.subTrans->doTranslate(childBuilder, 0, sourceRows[childRow]);
+                                    size32_t childLen = match.subTrans->doTranslate(childBuilder, callback, 0, sourceRows[childRow]);
                                     childRows = childAllocator->appendRowOwn(childRows, ++numRows, (void *) childBuilder.finalizeRowClear(childLen));
                                 }
                             }
@@ -1263,7 +1266,7 @@ private:
                                 while ((size_t)(source - initialSource) < childSize)
                                 {
                                     RtlDynamicRowBuilder childBuilder(*childAllocator);
-                                    size32_t childLen = match.subTrans->doTranslate(childBuilder, 0, source);
+                                    size32_t childLen = match.subTrans->doTranslate(childBuilder, callback, 0, source);
                                     childRows = childAllocator->appendRowOwn(childRows, ++numRows, (void *) childBuilder.finalizeRowClear(childLen));
                                     source += sourceType->queryChildType()->size(source, nullptr); // MORE - shame to repeat a calculation that the translate above almost certainly just did
                                 }
@@ -1288,7 +1291,7 @@ private:
                                 const byte ** sourceRows = *(const byte***) source;
                                 for (size32_t childRow = 0; childRow < childCount; childRow++)
                                 {
-                                    offset = match.subTrans->doTranslate(builder, offset, sourceRows[childRow]);
+                                    offset = match.subTrans->doTranslate(builder, callback, offset, sourceRows[childRow]);
                                 }
                             }
                             else
@@ -1299,7 +1302,7 @@ private:
                                 const byte *initialSource = source;
                                 while ((size_t)(source - initialSource) < childSize)
                                 {
-                                    offset = match.subTrans->doTranslate(builder, offset, source);
+                                    offset = match.subTrans->doTranslate(builder, callback, offset, source);
                                     source += sourceType->queryChildType()->size(source, nullptr); // MORE - shame to repeat a calculation that the translate above almost certainly just did
                                 }
                             }
@@ -1556,7 +1559,7 @@ public:
     {
         translator->describe();
     }
-    virtual const void *nextRow()
+    virtual const void *nextRow() override
     {
         if (eof)
             return NULL;
@@ -1572,7 +1575,7 @@ public:
         else
             eogSeen = false;
         RtlDynamicRowBuilder rowBuilder(resultAllocator);
-        size32_t len = translator->translate(rowBuilder, (const byte *) inRow);
+        size32_t len = translator->translate(rowBuilder, fieldCallback, (const byte *) inRow);
         rtlReleaseRow(inRow);
         return rowBuilder.finalizeRowClear(len);
     }
@@ -1588,6 +1591,9 @@ public:
     {
         return translator->needsTranslate();
     }
+
+    UnexpectedVirtualFieldCallback fieldCallback; // I'm not sure if an non unexpected callback can be implemented
+
 protected:
     Linked<IRowStream> inputStream;
     Linked<IEngineRowAllocator> resultAllocator;
@@ -1751,5 +1757,25 @@ unsigned __int64 UnexpectedVirtualFieldCallback::getFilePosition(const void * ro
 unsigned __int64 UnexpectedVirtualFieldCallback::getLocalFilePosition(const void * row)
 {
     throwUnexpectedX("VIRTUAL(LOCALFILEPOSITION)");
+}
+
+unsigned __int64 FetchVirtualFieldCallback::getFilePosition(const void * row)
+{
+    return filepos;
+}
+
+const char * LocalVirtualFieldCallback::queryLogicalFilename(const void * row)
+{
+    return filename;
+}
+
+unsigned __int64 LocalVirtualFieldCallback::getFilePosition(const void * row)
+{
+    return filepos;
+}
+
+unsigned __int64 LocalVirtualFieldCallback::getLocalFilePosition(const void * row)
+{
+    return localfilepos;
 }
 

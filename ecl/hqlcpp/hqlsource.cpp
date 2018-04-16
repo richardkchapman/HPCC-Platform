@@ -1169,6 +1169,14 @@ void SourceBuilder::buildFilenameMember()
 void SourceBuilder::buildReadMembers(IHqlExpression * expr)
 {
     buildFilenameMember();
+
+    //Sanity check to ensure that the projected row is only in the in memory format if it from a spill file, or no transform needs to be called.
+    if (needToCallTransform || transformCanFilter)
+    {
+        if (!tableExpr->hasAttribute(_spill_Atom) && recordRequiresSerialization(tableExpr->queryRecord(), diskAtom))
+            throwUnexpectedX("Projected dataset should have been serialized");
+    }
+
     //---- virtual bool needTransform() { return <bool>; } ----
     if (needToCallTransform || transformCanFilter)
         translator.doBuildBoolFunction(instance->classctx, "needTransform", true);
@@ -2067,8 +2075,7 @@ ABoundActivity * SourceBuilder::buildActivity(BuildCtx & ctx, IHqlExpression * e
                 if (translator.queryOptions().newDiskReadMapping)
                 {
                     projected.set(tableExpr->queryRecord());
-                    expected.setown(getSerializedForm(projected, diskAtom));
-
+                    expected.setown(getSerializedForm(physicalRecord, diskAtom));
                     //MORE: Reduce projected to the fields that are actually required by the dataset, and will need to remap field references.
                 }
                 else
@@ -3074,7 +3081,9 @@ ABoundActivity * HqlCppTranslator::doBuildActivityDiskRead(BuildCtx & ctx, IHqlE
         // - The disk read is a trivial slimming transform (so no transform needs calling on the projected disk format.
         // Otherwise the table is converted to the serialized format.
 
-        if (!tableExpr->hasAttribute(_spill_Atom) && !isSimpleProjectingDiskRead(expr))
+        //MORE: This shouldn't always need to be serialized - but engines crash at the moment if not
+        const bool forceAllProjectedSerialized = true;
+        if ((!tableExpr->hasAttribute(_spill_Atom) && !isSimpleProjectingDiskRead(expr)) || forceAllProjectedSerialized)
         {
             //else if the the table isn't serialized, then map to a serialized table, and then project to the real format
             if (recordRequiresSerialization(tableExpr->queryRecord(), diskAtom))

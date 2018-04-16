@@ -956,7 +956,7 @@ IRowInterfaces *createRowInterfaces(IOutputMetaData *meta, unsigned actid, unsig
     return new cRowInterfaces(meta,actid,heapFlags,context);
 };
 
-class CRowStreamReader : public CSimpleInterfaceOf<IExtRowStream>
+class CRowStreamReader : public CSimpleInterfaceOf<IExtRowStream>, implements IVirtualFieldCallback
 {
 protected:
     Linked<IFileIO> fileio;
@@ -1134,6 +1134,8 @@ public:
         delete filterRow;
     }
 
+    IMPLEMENT_IINTERFACE_USING(CSimpleInterfaceOf<IExtRowStream>)
+
     virtual void reinit(offset_t _ofs,offset_t _len,unsigned __int64 _maxrows) override
     {
         assertex(_maxrows == 0);
@@ -1166,7 +1168,7 @@ public:
                     if (row)
                     {
                         RtlDynamicRowBuilder rowBuilder(*allocator);
-                        size32_t size = translator->translate(rowBuilder, row);
+                        size32_t size = translator->translate(rowBuilder, *this, row);
                         prefetchBuffer.finishedRow();
                         return rowBuilder.finalizeRowClear(size);
                     }
@@ -1199,7 +1201,7 @@ public:
                     {
                         translateBuf.setLength(0);
                         MemoryBufferBuilder rowBuilder(translateBuf, 0);
-                        translator->translate(rowBuilder, row);
+                        translator->translate(rowBuilder, *this, row);
                         row = reinterpret_cast<const byte *>(translateBuf.toByteArray());
                     }
                     return row;
@@ -1277,6 +1279,24 @@ public:
             filterRow = new RtlDynRow(*actual);
         }
     }
+
+    //interface IVirtualFieldCallback
+    virtual const char * queryLogicalFilename(const void * row) override
+    {
+        const char * filename = nullptr; // MORE
+        return filename ? filename : "";
+    }
+    virtual unsigned __int64 getFilePosition(const void * row) override
+    {
+        unsigned __int64 baseOffset = 0; // MORE
+        return prefetchBuffer.tell() + baseOffset;
+    }
+    virtual unsigned __int64 getLocalFilePosition(const void * row) override
+    {
+        unsigned part = 0; //MORE
+        return makeLocalFposOffset(part, prefetchBuffer.tell());
+    }
+
 };
 
 class CLimitedRowStreamReader : public CRowStreamReader
@@ -2016,7 +2036,7 @@ bool getTranslators(Owned<const IDynamicTransform> &translator, Owned<const IKey
                 throw MakeStringException(0, "Untranslatable record layout mismatch detected for file %s", tracing);
             if (translator->needsTranslate())
             {
-                if (RecordTranslationMode::None == mode)
+                if ((RecordTranslationMode::None == mode) && translator->needsNonVirtualTranslate())
                     throw MakeStringException(0, "Translatable record layout mismatch detected for file %s, but translation disabled", tracing);
                 if (keyedTranslator)
                     keyedTranslator->setown(createKeyTranslator(publishedFormat->queryRecordAccessor(true), expectedFormat->queryRecordAccessor(true)));

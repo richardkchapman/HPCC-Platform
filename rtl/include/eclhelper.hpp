@@ -449,14 +449,20 @@ protected:
 //These values are used as special values for the initializer to implement different functionality
 enum RtlVirtualType
 {
+    FNoInitializer,                 // 0 means no initialiser - not a special virtual initialiser
     FVirtualFilePosition,
     FVirtualLocalFilePosition,
     FVirtualFilename,
-    FVirtualMax,
+    FVirtualRowSize,
     FVirtualLimit = 256
 };
 
-inline bool isVirtualInitializer(const byte * initializer) { return (memsize_t)initializer < FVirtualLimit; }
+static const char * const PVirtualFilePosition = (const char *)(memsize_t)FVirtualFilePosition;
+static const char * const PVirtualLocalFilePosition = (const char *)(memsize_t)FVirtualLocalFilePosition;
+static const char * const PVirtualFilename = (const char *)(memsize_t)FVirtualFilename;
+static const char * const PVirtualRowSize = (const char *)(memsize_t)FVirtualRowSize;
+
+inline bool isVirtualInitializer(const byte * initializer) { return initializer && (memsize_t)initializer < FVirtualLimit; }
 inline byte getVirtualInitializer(const byte * initializer) { return (byte)(memsize_t)initializer; }
 
 typedef IThorDiskCallback IVirtualFieldCallback;

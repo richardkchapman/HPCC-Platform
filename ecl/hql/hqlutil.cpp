@@ -9952,8 +9952,24 @@ unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned 
                 xpath = nullptr;
 
             MemoryBuffer defaultInitializer;
+            const char * initializer = nullptr;
+            IHqlExpression * virtualAttr = queryAttributeChild(field, virtualAtom, 0);
             IHqlExpression *defaultValue = queryAttributeChild(field, defaultAtom, 0);
-            if (defaultValue)
+            if (virtualAttr)
+            {
+                IAtom * virtualKind = virtualAttr->queryName();
+                if (virtualKind == filepositionAtom)
+                    initializer = (const char *)(memsize_t)FVirtualFilePosition;
+                else if (virtualKind == localFilePositionAtom)
+                    initializer = (const char *)(memsize_t)FVirtualLocalFilePosition;
+                else if (virtualKind == sizeofAtom)
+                    initializer = (const char *)(memsize_t)FVirtualRowSize;
+                else if (virtualKind == logicalFilenameAtom)
+                    initializer = (const char *)(memsize_t)FVirtualFilename;
+                else
+                    throwUnexpected();
+            }
+            else if (defaultValue)
             {
                 LinkedHqlExpr targetField = field;
                 if (fieldType->getTypeCode() == type_bitfield)
@@ -9961,8 +9977,9 @@ unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned 
 
                 if (!createConstantField(defaultInitializer, targetField, defaultValue))
                     UNIMPLEMENTED;  // MORE - fail more gracefully!
+                initializer = (const char *) defaultInitializer.detach();
             }
-            fieldsArray[idx] = deserializer.addFieldInfo(lowerName, xpath, type, fieldFlags, (const char *) defaultInitializer.detach());
+            fieldsArray[idx] = deserializer.addFieldInfo(lowerName, xpath, type, fieldFlags, initializer);
             typeFlags |= fieldFlags & RFTMinherited;
             idx++;
             break;

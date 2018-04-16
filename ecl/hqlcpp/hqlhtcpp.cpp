@@ -3770,8 +3770,23 @@ unsigned HqlCppTranslator::buildRtlField(StringBuffer & instanceName, IHqlExpres
             xpathCppText.append("NULL");
 
         StringBuffer defaultInitializer;
+        IHqlExpression * virtualAttr = queryAttributeChild(field, virtualAtom, 0);
         IHqlExpression *defaultValue = queryAttributeChild(field, defaultAtom, 0);
-        if (defaultValue)
+        if (virtualAttr)
+        {
+            IAtom * virtualKind = virtualAttr->queryName();
+            if (virtualKind == filepositionAtom)
+                defaultInitializer.append("PVirtualFilePosition");
+            else if (virtualKind == localFilePositionAtom)
+                defaultInitializer.append("PVirtualLocalFilePosition");
+            else if (virtualKind == sizeofAtom)
+                defaultInitializer.append("PVirtualRowSize");
+            else if (virtualKind == logicalFilenameAtom)
+                defaultInitializer.append("PVirtualFilename");
+            else
+                throwUnexpected();
+        }
+        else if (defaultValue)
         {
             LinkedHqlExpr targetField = field;
             if (fieldType->getTypeCode() == type_bitfield)

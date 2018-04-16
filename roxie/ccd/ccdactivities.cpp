@@ -3739,7 +3739,8 @@ public:
         {
             MemoryBuffer buf;
             MemoryBufferBuilder aBuilder(buf, 0);
-            translator->translate(aBuilder, diskRow);
+            FetchVirtualFieldCallback fieldCallback(rawpos);
+            translator->translate(aBuilder, fieldCallback, diskRow);
             //  note the swapped parameters - left and right map to input and raw differently for JOIN vs FETCH
             IHThorFetchArg *h = (IHThorFetchArg *) helper;
             return h->transform(rowBuilder, buf.toByteArray(), inputData, rawpos);
@@ -4428,15 +4429,17 @@ IMessagePacker *CRoxieKeyedJoinFetchActivity::process()
         prefetchSource.reset(pos);
         prefetcher->readAhead(prefetchSource);
         const byte *rawRHS = prefetchSource.queryRow();
+        const KeyedJoinHeader *headerPtr = (KeyedJoinHeader *) inputData;
+
         MemoryBuffer buf;
         if (translator)
         {
             MemoryBufferBuilder aBuilder(buf, 0);
-            translator->translate(aBuilder, rawRHS);
+            FetchVirtualFieldCallback fieldCallback(headerPtr->fpos);
+            translator->translate(aBuilder, fieldCallback, rawRHS);
             rawRHS = (const byte *) buf.toByteArray();
         }
 
-        const KeyedJoinHeader *headerPtr = (KeyedJoinHeader *) inputData;
         inputData = &headerPtr->rhsdata[0];
         if (inputFields.isVariableSize())
         {
