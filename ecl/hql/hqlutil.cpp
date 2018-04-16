@@ -6486,8 +6486,15 @@ IHqlExpression *notePayloadFields(IHqlExpression *record, unsigned payloadCount)
             throwUnexpected();
             break;
         case no_field:
+            fields.replace(*appendOwnedOperand(cur, createAttribute(_payload_Atom)), idx);
+            payloadCount--;
+            break;
         case no_ifblock:
-            fields.replace(*appendOwnedOperand(cur, createAttribute(_payload_Atom)), idx); // MORE - should we mark contained fields too?
+            HqlExprArray args;
+            unwindChildren(args, cur);
+            args.replace(*notePayloadFields(cur->queryChild(1), (unsigned)-1), 1); // Mark all contained fields as being in the payload
+            args.append(*createAttribute(_payload_Atom));
+            fields.replace(*cur->clone(args), idx);
             payloadCount--;
             break;
         }
@@ -9855,7 +9862,7 @@ static IFieldFilter * createIfBlockFilter(IRtlFieldTypeDeserializer &deserialize
 }
 
 
-unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned &idx, const RtlFieldInfo * * fieldsArray, IHqlExpression *record, IHqlExpression *rowRecord)
+unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned &idx, const RtlFieldInfo * * fieldsArray, IHqlExpression *record, IHqlExpression *rowRecord, bool forcePayload=false)
 {
     unsigned typeFlags = 0;
     unsigned numPayload = 0;
@@ -9869,7 +9876,7 @@ unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned 
     ForEachChild(i, record)
     {
         unsigned fieldFlags = 0;
-        if (numPayload && i >= firstPayload)
+        if (forcePayload || (numPayload && i >= firstPayload))
             fieldFlags |= RFTMispayloadfield;
         IHqlExpression * field = record->queryChild(i);
         switch (field->getOperator())
@@ -9888,7 +9895,7 @@ unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned 
                 unsigned numFields = getFlatFieldCount(record);
                 info.fieldsArray = new const RtlFieldInfo * [numFields+1];
                 unsigned idx = 0;
-                info.fieldType |= buildRtlRecordFields(deserializer, idx, info.fieldsArray, record, record);
+                info.fieldType |= buildRtlRecordFields(deserializer, idx, info.fieldsArray, record, record, (fieldFlags & RFTMispayloadfield) != 0);
                 info.fieldsArray[idx] = nullptr;
 
                 info.filter = createIfBlockFilter(deserializer, rowRecord, field);
@@ -9985,7 +9992,7 @@ unsigned buildRtlRecordFields(IRtlFieldTypeDeserializer &deserializer, unsigned 
             break;
         }
         case no_record:
-            typeFlags |= buildRtlRecordFields(deserializer, idx, fieldsArray, field, rowRecord);
+            typeFlags |= buildRtlRecordFields(deserializer, idx, fieldsArray, field, rowRecord, (fieldFlags & RFTMispayloadfield) != 0);
             break;
         }
     }
