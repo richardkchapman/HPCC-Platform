@@ -2607,7 +2607,7 @@ public:
                         else
                             lnullSkips++;
                     }
-                    found = lookup(true);
+                    found = keyCursor->lookup(true);
                     if (!found || !seek || memcmp(keyCursor->queryKeyBuffer() + seekOffset, seek, seeklen) >= 0)
                         break;
                 }
