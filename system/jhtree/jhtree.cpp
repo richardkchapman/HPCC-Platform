@@ -99,7 +99,7 @@ SegMonitorList::SegMonitorList(const SegMonitorList &from, const char *fixedVals
 {
     ForEachItemIn(idx, from.segMonitors)
     {
-        IKeySegmentMonitor &seg = segMonitors.item(idx);
+        IKeySegmentMonitor &seg = from.segMonitors.item(idx);
         unsigned offset = seg.getOffset();
         if (offset < sortFieldOffset)
             segMonitors.append(*createSingleKeySegmentMonitor(seg.isOptional(), seg.getFieldIdx(), offset, seg.getSize(), fixedVals+offset));
@@ -2399,6 +2399,25 @@ class CKeyMerger : public CKeyLevelManager
             cursor->reset(sortFromSeg);
     }
 
+    void calculateSortSeg()
+    {
+        // Make sure that sortFromSeg is properly set
+        sortFromSeg = (unsigned) -1;
+        ForEachItemIn(idx, segs.segMonitors)
+        {
+            IKeySegmentMonitor &seg = segs.segMonitors.item(idx);
+            unsigned offset = seg.getOffset();
+            if (offset == sortFieldOffset)
+            {
+                sortFromSeg = idx;
+                break;
+            }
+        }
+        if (sortFromSeg == -1)
+            assertex(!"Attempting to sort from offset that is not on a segment boundary");
+        assertex(resetPending == true);
+    }
+
 public:
     CKeyMerger(const RtlRecord &_recInfo, IKeyIndexSet *_keyset, unsigned _sortFieldOffset, IContextLogger *_ctx) : CKeyLevelManager(_recInfo, NULL, _ctx), sortFieldOffset(_sortFieldOffset)
     {
@@ -2811,6 +2830,16 @@ public:
         }
         cursors = cursorArray.getArray();
         mergeheap = mergeHeapArray.getArray();
+    }
+
+    virtual void finishSegmentMonitors()
+    {
+        CKeyLevelManager::finishSegmentMonitors();
+        if (sortFieldOffset)
+        {
+            segs.checkSize(keyedSize, "[merger]"); // Ensures trailing KSM is setup
+            calculateSortSeg();
+        }
     }
 };
 
