@@ -222,8 +222,6 @@ public:
     virtual bool nextRange(unsigned groupSegCount) override;
     virtual const byte *queryKeyBuffer() override;
 protected:
-    CKeyCursor(const CKeyCursor &_from, char *_keyBuffer);
-
     void reportExcessiveSeeks(unsigned numSeeks, unsigned lastSeg);
     void noteSeeks(unsigned lseeks, unsigned lscans, unsigned lwildseeks);
     void noteSkips(unsigned lskips, unsigned lnullSkips);

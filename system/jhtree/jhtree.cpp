@@ -1380,19 +1380,9 @@ IPropertyTree * CKeyIndex::getMetadata()
 CKeyCursor::CKeyCursor(CKeyIndex &_key, const SegMonitorList *_segs, IContextLogger *_ctx)
     : key(OLINK(_key)), segs(_segs), ctx(_ctx), keyedSize(_key.keyedSize())
 {
-    key.Link();
     nodeKey = 0;
     keySize = key.keySize();
     keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually
-}
-
-CKeyCursor::CKeyCursor(const CKeyCursor &from, char *_keyBuffer)
-: key(OLINK(from.key)), segs(from.segs), ctx(from.ctx), keyedSize(from.keyedSize)
-{
-    nodeKey = 0;
-    keySize = key.keySize();
-    keyBuffer = _keyBuffer;
-
 }
 
 CKeyCursor::~CKeyCursor()
@@ -2612,7 +2602,7 @@ public:
                 noteSkips(lskips, lnullSkips);
                 if (found)
                 {
-                    IKeyCursor *mergeCursor = keyCursor;
+                    IKeyCursor *mergeCursor = LINK(keyCursor);
                     if (sortFromSeg)
                         mergeCursor = keyCursor->fixSortSegs(sortFieldOffset);
                     keyNoArray.append(i);
