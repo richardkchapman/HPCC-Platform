@@ -54,7 +54,9 @@ interface jhtree_decl IKeyCursor : public IInterface
     virtual const byte *loadBlob(unsigned __int64 blobid, size32_t &blobsize) = 0;
     virtual void releaseBlobs() = 0;
     virtual void reset(unsigned sortFromSeg = 0) = 0;
-    virtual bool lookup(bool exact, unsigned lastSeg) = 0;
+    virtual bool lookup(bool exact) = 0;
+//    virtual bool lookup(bool exact, unsigned lastSeg) = 0;
+
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen) = 0;
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) = 0;
     virtual IKeyCursor *fixSortSegs(unsigned sortFieldOffset) = 0;

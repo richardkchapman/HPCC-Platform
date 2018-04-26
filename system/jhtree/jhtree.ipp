@@ -211,7 +211,7 @@ public:
     virtual const byte *loadBlob(unsigned __int64 blobid, size32_t &blobsize);
     virtual void releaseBlobs();
     virtual void reset(unsigned sortFromSeg = 0);
-    virtual bool lookup(bool exact, unsigned lastSeg) override;
+    virtual bool lookup(bool exact) override;
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen) override;
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) override;
     virtual IKeyCursor *fixSortSegs(unsigned sortFieldOffset) override;
@@ -224,6 +224,7 @@ public:
 protected:
     CKeyCursor(const CKeyCursor &from, const SegMonitorList *segs);
 
+    bool _lookup(bool exact, unsigned lastSeg);
     void reportExcessiveSeeks(unsigned numSeeks, unsigned lastSeg);
     void noteSeeks(unsigned lseeks, unsigned lscans, unsigned lwildseeks);
     void noteSkips(unsigned lskips, unsigned lnullSkips);

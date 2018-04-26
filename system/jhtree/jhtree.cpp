@@ -542,15 +542,10 @@ public:
         return keyCursor ? keyCursor->getSequence() : 0;
     }
 
-    bool _lookup(bool exact, unsigned lastSeg)
-    {
-        return keyCursor->lookup(exact, lastSeg);
-    }
-
     virtual bool lookup(bool exact)
     {
         if (keyCursor)
-            return _lookup(exact, segs.lastRealSeg());
+            return keyCursor->lookup(exact);
         else
             return false;
     }
@@ -1395,6 +1390,8 @@ CKeyCursor::CKeyCursor(const CKeyCursor &from, const SegMonitorList *_segs)
     keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually
     memcpy(keyBuffer, from.keyBuffer, keySize);
     // MORE - activeBlobs?
+    eof = from.eof;
+    matched = from.matched;
 }
 
 
@@ -1727,7 +1724,12 @@ void CKeyCursor::releaseBlobs()
     activeBlobs.kill();
 }
 
-bool CKeyCursor::lookup(bool exact, unsigned lastSeg)
+bool CKeyCursor::lookup(bool exact)
+{
+    return _lookup(exact, segs->lastRealSeg());
+}
+
+bool CKeyCursor::_lookup(bool exact, unsigned lastSeg)
 {
     bool ret = false;
     unsigned lwildseeks = 0;
@@ -1792,7 +1794,7 @@ bool CKeyCursor::lookupSkip(const void *seek, size32_t seekOffset, size32_t seek
         noteSkips(1, 0);
     else
         noteSkips(0, 1);
-    bool ret = lookup(true, segs->lastRealSeg());
+    bool ret = lookup(true);
 #ifdef _DEBUG
     if (traceSmartStepping)
     {
@@ -1823,7 +1825,7 @@ unsigned __int64 CKeyCursor::getCount()
     unsigned lastRealSeg = segs->lastRealSeg();
     for (;;)
     {
-        if (lookup(true, lastRealSeg))
+        if (_lookup(true, lastRealSeg))
         {
             unsigned __int64 locount = getSequence();
             endRange(lastRealSeg);
@@ -1857,7 +1859,7 @@ unsigned __int64 CKeyCursor::checkCount(unsigned __int64 max)
     }
     for (;;)
     {
-        if (lookup(true, lastFullSeg))
+        if (_lookup(true, lastFullSeg))
         {
             unsigned __int64 locount = getSequence();
             endRange(lastFullSeg);
@@ -2605,7 +2607,7 @@ public:
                         else
                             lnullSkips++;
                     }
-                    found = _lookup(true, segs.lastRealSeg());
+                    found = lookup(true);
                     if (!found || !seek || memcmp(keyCursor->queryKeyBuffer() + seekOffset, seek, seeklen) >= 0)
                         break;
                 }
@@ -2696,7 +2698,7 @@ public:
             if (!activekeys)
                 return false;
             unsigned key = mergeheap[0];
-            if (!CKeyLevelManager::lookup(exact)) 
+            if (!keyCursor->lookup(exact))
             {
                 activekeys--;
                 if (!activekeys)
