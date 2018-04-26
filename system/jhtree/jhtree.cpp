@@ -1385,6 +1385,19 @@ CKeyCursor::CKeyCursor(CKeyIndex &_key, const SegMonitorList *_segs, IContextLog
     keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually
 }
 
+CKeyCursor::CKeyCursor(const CKeyCursor &from, const SegMonitorList *_segs)
+: key(OLINK(from.key)), segs(_segs), ctx(from.ctx), keyedSize(from.keyedSize)
+{
+    ownSegs = true;
+    nodeKey = from.nodeKey;
+    node.set(from.node);
+    keySize = from.keySize;
+    keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually
+    memcpy(keyBuffer, from.keyBuffer, keySize);
+    // MORE - activeBlobs?
+}
+
+
 CKeyCursor::~CKeyCursor()
 {
     key.Release();
@@ -1995,11 +2008,7 @@ IKeyCursor * CKeyCursor::fixSortSegs(unsigned sortFieldOffset)
 {
     // Replace leading segmonitors with fixed ones
     const SegMonitorList *newsegs = new SegMonitorList(*segs, keyBuffer, sortFieldOffset);
-    CKeyCursor *ret = new CKeyCursor(key, newsegs, ctx);
-    ret->ownSegs = true;
-    ret->setLow(0);
-    ret->reset();
-    return ret;
+    return new CKeyCursor(*this, newsegs);
 }
 
 
