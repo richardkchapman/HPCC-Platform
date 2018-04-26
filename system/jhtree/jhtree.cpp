@@ -1997,6 +1997,7 @@ IKeyCursor * CKeyCursor::fixSortSegs(unsigned sortFieldOffset)
     const SegMonitorList *newsegs = new SegMonitorList(*segs, keyBuffer, sortFieldOffset);
     CKeyCursor *ret = new CKeyCursor(key, newsegs, ctx);
     ret->ownSegs = true;
+    ret->setLow(0);
     ret->reset();
     return ret;
 }
