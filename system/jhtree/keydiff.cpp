@@ -24,8 +24,6 @@
 #include "keybuild.hpp"
 #include "limits.h"
 #include "keydiff.hpp"
-#include "rtlrecord.hpp"
-#include "eclhelper_dyn.hpp"
 
 #define SMALL_ENOUGH_RATIO 20
 
@@ -214,16 +212,6 @@ private:
     offset_t * fpos;
 };
 
-static class DummyIndexCallback : public CInterfaceOf<IThorIndexCallback>
-{
-public:
-    DummyIndexCallback() {}
-    virtual byte * lookupBlob(unsigned __int64 id) override
-    {
-        UNIMPLEMENTED;
-    }
-} dummyCallback;
-
 class CKeyReader: public CInterface
 {
 public:
@@ -256,6 +244,8 @@ public:
             WARNLOG("Index part %s does not declare blob status: if it contains blobs, they will be lost", filename);
         else if(blobHead != 0)
             throw MakeStringException(0, "Index contains BLOBs, which are currently not supported by keydiff/patch");
+        if(keyIndex->queryMetadataHead())
+            WARNLOG("Index contains metadata, which will be ignored by keydiff/patch");
         keyCursor.setown(keyIndex->getCursor(NULL, NULL));
         if(keyIndex->hasPayload())
             keyedsize = keyIndex->keyedSize();

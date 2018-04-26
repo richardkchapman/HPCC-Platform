@@ -57,15 +57,13 @@ interface jhtree_decl IKeyCursor : public IInterface
     virtual bool lookup(bool exact, unsigned lastSeg) = 0;
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen) = 0;
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) = 0;
-    virtual void fixSortSegs(unsigned sortFieldOffset) = 0;
+    virtual IKeyCursor *fixSortSegs(unsigned sortFieldOffset) = 0;
 
     virtual unsigned __int64 getCount() = 0;
     virtual unsigned __int64 checkCount(unsigned __int64 max) = 0;
     virtual unsigned __int64 getCurrentRangeCount(unsigned groupSegCount) = 0;
     virtual bool nextRange(unsigned groupSegCount) = 0;
     virtual const byte *queryKeyBuffer() = 0;
-
-    virtual IKeyCursor *cloneForNextRange(unsigned sortFromSeg) const = 0;
 };
 
 interface IKeyIndex;

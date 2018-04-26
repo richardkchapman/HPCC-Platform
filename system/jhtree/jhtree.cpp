@@ -102,12 +102,12 @@ SegMonitorList::SegMonitorList(const SegMonitorList &from, const char *fixedVals
         IKeySegmentMonitor &seg = from.segMonitors.item(idx);
         unsigned offset = seg.getOffset();
         if (offset < sortFieldOffset)
-            segMonitors.append(*createSingleKeySegmentMonitor(seg.isOptional(), seg.getFieldIdx(), offset, seg.getSize(), fixedVals+offset));
+            segMonitors.append(*createSingleKeySegmentMonitor(false, seg.getFieldIdx(), offset, seg.getSize(), fixedVals+offset));
         else
             segMonitors.append(OLINK(seg));
     }
-    modified = false;
     recalculateCache();
+    modified = false;
 }
 
 unsigned SegMonitorList::ordinality() const
@@ -1884,23 +1884,11 @@ unsigned __int64 CKeyCursor::getCurrentRangeCount(unsigned groupSegCount)
 
 bool CKeyCursor::nextRange(unsigned groupSegCount)
 {
+    matched = false;
     if (!incrementKey(groupSegCount-1))
         return false;
     return true;
 }
-
-IKeyCursor *CKeyCursor::cloneForNextRange(unsigned sortFromSeg) const
-{
-    // Create a new cursor covering values where segments 0 through sortFromSeg-1 have next legal value...
-    assertex(keySize);
-    char *nextBuffer = (char *) malloc(keySize);
-    memcpy(nextBuffer, keyBuffer, keySize);
-    dbgassertex(segs->segMonitors.item(sortFromSeg-1).matchesBuffer(keyBuffer));
-    if (!segs->incrementKey(sortFromSeg-1, nextBuffer))
-        return nullptr;
-    return new CKeyCursor(*this, nextBuffer);
-}
-
 
 void CKeyCursor::reportExcessiveSeeks(unsigned numSeeks, unsigned lastSeg)
 {
@@ -2013,13 +2001,14 @@ bool CKeyCursor::skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen
     return true;
 }
 
-void CKeyCursor::fixSortSegs(unsigned sortFieldOffset)
+IKeyCursor * CKeyCursor::fixSortSegs(unsigned sortFieldOffset)
 {
     // Replace leading segmonitors with fixed ones
-    Owned<SegMonitorList> newsegs = new SegMonitorList(*segs, keyBuffer, sortFieldOffset);
-    if (ownSegs)
-        ::Release(segs);
-    segs = newsegs.getClear();
+    const SegMonitorList *newsegs = new SegMonitorList(*segs, keyBuffer, sortFieldOffset);
+    CKeyCursor *ret = new CKeyCursor(key, newsegs, ctx);
+    ret->ownSegs = true;
+    ret->reset();
+    return ret;
 }
 
 
@@ -2596,7 +2585,6 @@ public:
     void resetSort(const void *seek, size32_t seekOffset, size32_t seeklen)
     {
         activekeys = 0;
-        void *fixedValue = NULL;
         segs.recalculateCache();
         unsigned i;
         for (i = 0; i < numkeys; i++)
@@ -2624,37 +2612,13 @@ public:
                 noteSkips(lskips, lnullSkips);
                 if (found)
                 {
+                    IKeyCursor *mergeCursor = keyCursor;
+                    if (sortFromSeg)
+                        mergeCursor = keyCursor->fixSortSegs(sortFieldOffset);
                     keyNoArray.append(i);
-                    cursorArray.append(*keyCursor);
+                    cursorArray.append(*mergeCursor);
                     mergeHeapArray.append(activekeys++);
-                    if (!sortFromSeg)
-                    {
-                        fixedValue = NULL;
-                        break;
-                    }
-                    assertex(sortFieldOffset);
-                    keyCursor->fixSortSegs(sortFieldOffset);
-#ifdef _DEBUG
-                    if (traceSmartStepping)
-                    {
-                        const byte *keyBuffer = keyCursor->queryKeyBuffer();
-                        StringBuffer recstr;
-                        unsigned i;
-                        for (i = 0; i < sortFieldOffset; i++)
-                        {
-                            unsigned char c = ((unsigned char *) keyBuffer)[i];
-                            recstr.appendf("%c", isprint(c) ? c : '.');
-                        }
-                        recstr.append ("    ");
-                        for (i = 0; i < keyCursor->getSize(); i++)
-                        {
-                            recstr.appendf("%02x ", ((unsigned char *) keyBuffer)[i]);
-                        }
-                        DBGLOG("Adding key cursor info for %s", recstr.str());
-                    }
-#endif
-                    keyCursor = keyCursor->cloneForNextRange(sortFromSeg);
-                    if (!keyCursor)
+                    if (!sortFromSeg || !keyCursor->nextRange(sortFromSeg))
                         break;
                 }
                 else
@@ -2664,6 +2628,7 @@ public:
                 }
             }
         }
+        printf("Active keys=%d\n", activekeys);
         if (activekeys>0) 
         {
             if (ctx)

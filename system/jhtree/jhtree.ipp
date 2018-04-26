@@ -214,15 +214,13 @@ public:
     virtual bool lookup(bool exact, unsigned lastSeg) override;
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen) override;
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) override;
-    virtual void fixSortSegs(unsigned sortFieldOffset) override;
+    virtual IKeyCursor *fixSortSegs(unsigned sortFieldOffset) override;
 
     virtual unsigned __int64 getCount() override;
     virtual unsigned __int64 checkCount(unsigned __int64 max) override;
     virtual unsigned __int64 getCurrentRangeCount(unsigned groupSegCount) override;
     virtual bool nextRange(unsigned groupSegCount) override;
     virtual const byte *queryKeyBuffer() override;
-
-    virtual IKeyCursor *cloneForNextRange(unsigned sortFromSeg) const override;
 protected:
     CKeyCursor(const CKeyCursor &_from, char *_keyBuffer);
 
