@@ -104,7 +104,7 @@ public:
     virtual bool IsShared() const { return CInterface::IsShared(); }
 
 // IKeyIndex impl.
-    virtual IKeyCursor *getCursor(const SegMonitorList &segs, IContextLogger *ctx);
+    virtual IKeyCursor *getCursor(const SegMonitorList *segs, IContextLogger *ctx) override;
 
     virtual size32_t keySize();
     virtual bool hasPayload();
@@ -193,7 +193,7 @@ private:
 
 public:
     IMPLEMENT_IINTERFACE;
-    CKeyCursor(CKeyIndex &_key, const SegMonitorList &segs, IContextLogger *ctx);
+    CKeyCursor(CKeyIndex &_key, const SegMonitorList *segs, IContextLogger *ctx);
     ~CKeyCursor();
 
     virtual bool next(char *dst);

@@ -256,17 +256,7 @@ public:
             WARNLOG("Index part %s does not declare blob status: if it contains blobs, they will be lost", filename);
         else if(blobHead != 0)
             throw MakeStringException(0, "Index contains BLOBs, which are currently not supported by keydiff/patch");
-        Owned<IPropertyTree> metadata = keyIndex->getMetadata();
-        if (metadata && metadata->hasProp("_rtlType"))
-        {
-            MemoryBuffer layoutBin;
-            metadata->getPropBin("_rtlType", layoutBin);
-            diskmeta.setown(createTypeInfoOutputMetaData(layoutBin, false, &dummyCallback));
-        }
-        if (!diskmeta)
-            throw MakeStringException(0, "Index has no layout information");
-        segs.setown(new SegMonitorList(diskmeta->queryRecordAccessor(true), false));
-        keyCursor.setown(keyIndex->getCursor(*segs, NULL));
+        keyCursor.setown(keyIndex->getCursor(NULL, NULL));
         if(keyIndex->hasPayload())
             keyedsize = keyIndex->keyedSize();
         else
@@ -348,8 +338,6 @@ private:
 private:
     Owned<IFile> keyFile;
     Owned<IFileIO> keyFileIO;
-    Owned<IOutputMetaData> diskmeta;
-    Owned<SegMonitorList> segs;
     Owned<IKeyIndex> keyIndex;
     Owned<IKeyCursor> keyCursor;
     CRC32 crc;

@@ -445,7 +445,7 @@ public:
         {
             assertex(_key->numParts()==1);
             IKeyIndex *ki = _key->queryPart(0);
-            keyCursor = ki->getCursor(segs, ctx);
+            keyCursor = ki->getCursor(&segs, ctx);
             if (keyedSize)
                 assertex(keyedSize == ki->keyedSize());
             else
@@ -1199,7 +1199,7 @@ unsigned CKeyIndex::numPartitions()
 }
 
 
-IKeyCursor *CKeyIndex::getCursor(const SegMonitorList &segs, IContextLogger *ctx)
+IKeyCursor *CKeyIndex::getCursor(const SegMonitorList *segs, IContextLogger *ctx)
 {
     return new CKeyCursor(*this, segs, ctx);
 }
@@ -1377,8 +1377,8 @@ IPropertyTree * CKeyIndex::getMetadata()
     return ret;
 }
 
-CKeyCursor::CKeyCursor(CKeyIndex &_key, const SegMonitorList &_segs, IContextLogger *_ctx)
-    : key(OLINK(_key)), segs(&_segs), ctx(_ctx), keyedSize(_key.keyedSize())
+CKeyCursor::CKeyCursor(CKeyIndex &_key, const SegMonitorList *_segs, IContextLogger *_ctx)
+    : key(OLINK(_key)), segs(_segs), ctx(_ctx), keyedSize(_key.keyedSize())
 {
     key.Link();
     nodeKey = 0;
@@ -1401,7 +1401,7 @@ CKeyCursor::~CKeyCursor()
     free(keyBuffer);
     releaseBlobs();
     if (ownSegs)
-        segs->Release();
+        ::Release(segs);
 }
 
 void CKeyCursor::reset(unsigned sortFromSeg)
@@ -2064,7 +2064,7 @@ public:
 
     virtual bool IsShared() const { return CInterface::IsShared(); }
 
-    virtual IKeyCursor *getCursor(const SegMonitorList &segs, IContextLogger *ctx) { return checkOpen().getCursor(segs, ctx); }
+    virtual IKeyCursor *getCursor(const SegMonitorList *segs, IContextLogger *ctx) override { return checkOpen().getCursor(segs, ctx); }
     virtual size32_t keySize() { return checkOpen().keySize(); }
     virtual size32_t keyedSize() { return checkOpen().keyedSize(); }
     virtual bool hasPayload() { return checkOpen().hasPayload(); }
@@ -2582,7 +2582,7 @@ public:
         unsigned i;
         for (i = 0; i < numkeys; i++)
         {
-            keyCursor = keyset->queryPart(i)->getCursor(segs, ctx);
+            keyCursor = keyset->queryPart(i)->getCursor(&segs, ctx);
             keyCursor->reset();
             for (;;)
             {
@@ -2804,7 +2804,7 @@ public:
             unsigned keyno;
             mb.read(keyno);
             keyNoArray.append(keyno);
-            keyCursor = keyset->queryPart(keyno)->getCursor(segs, ctx);
+            keyCursor = keyset->queryPart(keyno)->getCursor(&segs, ctx);
             cursorArray.append(*keyCursor);
             keyCursor->deserializeCursorPos(mb);
             mergeHeapArray.append(i);

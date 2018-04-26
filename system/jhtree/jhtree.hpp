@@ -79,7 +79,7 @@ interface jhtree_decl IKeyIndexBase : public IInterface
 
 interface jhtree_decl IKeyIndex : public IKeyIndexBase
 {
-    virtual IKeyCursor *getCursor(const SegMonitorList &segs, IContextLogger *ctx) = 0;
+    virtual IKeyCursor *getCursor(const SegMonitorList *segs, IContextLogger *ctx) = 0;
     virtual size32_t keySize() = 0;
     virtual bool isFullySorted() = 0;
     virtual bool isTopLevelKey() = 0;
