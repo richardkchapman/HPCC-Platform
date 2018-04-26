@@ -57,6 +57,7 @@ interface jhtree_decl IKeyCursor : public IInterface
     virtual bool lookup(bool exact, unsigned lastSeg) = 0;
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen) = 0;
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) = 0;
+    virtual void fixSortSegs(unsigned sortFieldOffset) = 0;
 
     virtual unsigned __int64 getCount() = 0;
     virtual unsigned __int64 checkCount(unsigned __int64 max) = 0;
@@ -188,6 +189,7 @@ class jhtree_decl SegMonitorList : implements IInterface, implements IIndexReadC
 public:
     IMPLEMENT_IINTERFACE_O;
     SegMonitorList(const RtlRecord &_recInfo, bool _needWild);
+    SegMonitorList(const SegMonitorList &_from, const char *fixedVals, unsigned sortFieldOffset);
     IArrayOf<IKeySegmentMonitor> segMonitors;
 
     void reset();

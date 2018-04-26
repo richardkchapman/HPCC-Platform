@@ -170,7 +170,7 @@ class jhtree_decl CKeyCursor : public IKeyCursor, public CInterface
 private:
     IContextLogger *ctx;
     CKeyIndex &key;
-    const SegMonitorList &segs;
+    const SegMonitorList *segs;
     Owned<CJHTreeNode> node;
     unsigned int nodeKey;
     ConstPointerArray activeBlobs;
@@ -182,6 +182,7 @@ private:
 
     bool eof=false;
     bool matched=false;
+    bool ownSegs = false;
 
     unsigned keySize = 0;
     const unsigned keyedSize = 0;
@@ -213,6 +214,8 @@ public:
     virtual bool lookup(bool exact, unsigned lastSeg) override;
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen) override;
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) override;
+    virtual void fixSortSegs(unsigned sortFieldOffset) override;
+
     virtual unsigned __int64 getCount() override;
     virtual unsigned __int64 checkCount(unsigned __int64 max) override;
     virtual unsigned __int64 getCurrentRangeCount(unsigned groupSegCount) override;
@@ -230,19 +233,19 @@ protected:
 
     inline void setLow(unsigned segNo)
     {
-        segs.setLow(segNo, keyBuffer);
+        segs->setLow(segNo, keyBuffer);
     }
     inline unsigned setLowAfter(size32_t offset)
     {
-        return segs.setLowAfter(offset, keyBuffer);
+        return segs->setLowAfter(offset, keyBuffer);
     }
     inline bool incrementKey(unsigned segno) const
     {
-        return segs.incrementKey(segno, keyBuffer);
+        return segs->incrementKey(segno, keyBuffer);
     }
     inline void endRange(unsigned segno)
     {
-        segs.endRange(segno, keyBuffer);
+        segs->endRange(segno, keyBuffer);
     }
 };
 
