@@ -2399,28 +2399,6 @@ class CKeyMerger : public CKeyLevelManager
             cursor->reset(sortFromSeg);
     }
 
-    void replicateForTrailingSort()
-    {
-        // For each key that is present, we need to repeat it for each distinct value of leading segmonitor fields that is present in the index.
-        // We also need to make sure that sortFromSeg is properly set
-        sortFromSeg = (unsigned) -1;
-        ForEachItemIn(idx, segs.segMonitors)
-        {
-            IKeySegmentMonitor &seg = segs.segMonitors.item(idx);
-            unsigned offset = seg.getOffset();
-            if (offset == sortFieldOffset)
-            {
-                sortFromSeg = idx;
-                break;
-            }
-            IKeySegmentMonitor *override = createOverrideableKeySegmentMonitor(LINK(&seg));
-            segs.segMonitors.replace(*override, idx);
-        }
-        if (sortFromSeg == -1)
-            assertex(!"Attempting to sort from offset that is not on a segment boundary"); // MORE - can use the information that we have earlier to make sure not merged
-        assertex(resetPending == true); // we do the actual replication in reset
-    }
-
 public:
     CKeyMerger(const RtlRecord &_recInfo, IKeyIndexSet *_keyset, unsigned _sortFieldOffset, IContextLogger *_ctx) : CKeyLevelManager(_recInfo, NULL, _ctx), sortFieldOffset(_sortFieldOffset)
     {
@@ -2600,13 +2578,6 @@ public:
     {
         activekeys = 0;
         void *fixedValue = NULL;
-        unsigned segno;
-        for (segno = 0; segno < sortFromSeg; segno++)
-        {
-            IOverrideableKeySegmentMonitor *sm = QUERYINTERFACE(&segs.segMonitors.item(segno), IOverrideableKeySegmentMonitor);
-            assertex(sm);
-            sm->setOverrideBuffer(NULL);
-        }
         segs.recalculateCache();
         unsigned i;
         for (i = 0; i < numkeys; i++)
@@ -2840,16 +2811,6 @@ public:
         }
         cursors = cursorArray.getArray();
         mergeheap = mergeHeapArray.getArray();
-    }
-
-    virtual void finishSegmentMonitors()
-    {
-        CKeyLevelManager::finishSegmentMonitors();
-        if (sortFieldOffset)
-        {
-            segs.checkSize(keyedSize, "[merger]"); // Ensures trailing KSM is setup
-            replicateForTrailingSort();
-        }
     }
 };
 
