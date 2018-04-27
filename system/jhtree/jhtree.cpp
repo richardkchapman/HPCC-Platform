@@ -1380,14 +1380,13 @@ CKeyCursor::CKeyCursor(CKeyIndex &_key, const SegMonitorList *_segs, IContextLog
     keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually
 }
 
-CKeyCursor::CKeyCursor(const CKeyCursor &from, const SegMonitorList *_segs)
-: key(OLINK(from.key)), segs(_segs), ctx(from.ctx), keyedSize(from.keyedSize)
+CKeyCursor::CKeyCursor(const CKeyCursor &from)
+: key(OLINK(from.key)), segs(from.segs), ctx(from.ctx), keyedSize(from.keyedSize)
 {
-    ownSegs = true;
     nodeKey = from.nodeKey;
     node.set(from.node);
     keySize = from.keySize;
-    keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually
+    keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually. And we may not even need all of that in the derived case
     memcpy(keyBuffer, from.keyBuffer, keySize);
     // MORE - activeBlobs?
     eof = from.eof;
@@ -1400,8 +1399,6 @@ CKeyCursor::~CKeyCursor()
     key.Release();
     free(keyBuffer);
     releaseBlobs();
-    if (ownSegs)
-        ::Release(segs);
 }
 
 void CKeyCursor::reset(unsigned sortFromSeg)
@@ -1480,7 +1477,7 @@ size32_t CKeyCursor::getKeyedSize() const
     return keyedSize;
 }
 
-const byte *CKeyCursor::queryKeyBuffer()
+const byte *CKeyCursor::queryKeyBuffer() const
 {
     return (const byte *) keyBuffer;
 }
@@ -2008,11 +2005,22 @@ bool CKeyCursor::skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen
 
 IKeyCursor * CKeyCursor::fixSortSegs(unsigned sortFieldOffset)
 {
-    // Replace leading segmonitors with fixed ones
-    const SegMonitorList *newsegs = new SegMonitorList(*segs, keyBuffer, sortFieldOffset);
-    return new CKeyCursor(*this, newsegs);
+    return new CPartialKeyCursor(*this, sortFieldOffset);
 }
 
+CPartialKeyCursor::CPartialKeyCursor(const CKeyCursor &from, unsigned _sortFieldOffset)
+: CKeyCursor(from), sortFieldOffset(_sortFieldOffset)
+{
+    char *_fixed = (char *) malloc(sortFieldOffset);
+    memcpy(_fixed, from.queryKeyBuffer(), sortFieldOffset);
+    segs = new SegMonitorList(*segs, keyBuffer, sortFieldOffset);
+    fixed = _fixed;
+}
+
+CPartialKeyCursor::~CPartialKeyCursor()
+{
+    ::Release(segs);
+}
 
 class CLazyKeyIndex : implements IKeyIndex, public CInterface
 {
@@ -2630,7 +2638,6 @@ public:
                 }
             }
         }
-        printf("Active keys=%d\n", activekeys);
         if (activekeys>0) 
         {
             if (ctx)
@@ -2679,6 +2686,13 @@ public:
         }
         else
         {
+            if (sortFieldOffset)
+            {
+                ForEachItemIn(idx, cursorArray)
+                {
+                    cursorArray.replace(*cursorArray.item(idx).fixSortSegs(sortFieldOffset), idx);
+                }
+            }
             keyCursor = cursors[mergeheap[0]];
             resetPending = false;
         }
@@ -2791,8 +2805,8 @@ public:
             mb.read(keyno);
             keyNoArray.append(keyno);
             keyCursor = keyset->queryPart(keyno)->getCursor(&segs, ctx);
-            cursorArray.append(*keyCursor);
             keyCursor->deserializeCursorPos(mb);
+            cursorArray.append(*keyCursor);
             mergeHeapArray.append(i);
         }
         cursors = cursorArray.getArray();

@@ -64,7 +64,7 @@ interface jhtree_decl IKeyCursor : public IInterface
     virtual unsigned __int64 checkCount(unsigned __int64 max) = 0;
     virtual unsigned __int64 getCurrentRangeCount(unsigned groupSegCount) = 0;
     virtual bool nextRange(unsigned groupSegCount) = 0;
-    virtual const byte *queryKeyBuffer() = 0;
+    virtual const byte *queryKeyBuffer() const = 0;
 };
 
 interface IKeyIndex;

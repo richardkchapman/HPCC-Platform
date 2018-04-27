@@ -167,7 +167,7 @@ public:
 
 class jhtree_decl CKeyCursor : public IKeyCursor, public CInterface
 {
-private:
+protected:
     IContextLogger *ctx;
     CKeyIndex &key;
     const SegMonitorList *segs;
@@ -182,7 +182,6 @@ private:
 
     bool eof=false;
     bool matched=false;
-    bool ownSegs = false;
 
     unsigned keySize = 0;
     const unsigned keyedSize = 0;
@@ -220,9 +219,9 @@ public:
     virtual unsigned __int64 checkCount(unsigned __int64 max) override;
     virtual unsigned __int64 getCurrentRangeCount(unsigned groupSegCount) override;
     virtual bool nextRange(unsigned groupSegCount) override;
-    virtual const byte *queryKeyBuffer() override;
+    virtual const byte *queryKeyBuffer() const override;
 protected:
-    CKeyCursor(const CKeyCursor &from, const SegMonitorList *segs);
+    CKeyCursor(const CKeyCursor &from);
 
     bool _lookup(bool exact, unsigned lastSeg);
     void reportExcessiveSeeks(unsigned numSeeks, unsigned lastSeg);
@@ -248,5 +247,13 @@ protected:
     }
 };
 
-
+class CPartialKeyCursor : public CKeyCursor
+{
+public:
+    CPartialKeyCursor(const CKeyCursor &from, unsigned sortFieldOffset);
+    ~CPartialKeyCursor();
+protected:
+    unsigned sortFieldOffset;
+    const char *fixed;
+};
 #endif
