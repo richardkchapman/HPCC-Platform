@@ -350,6 +350,7 @@ protected:
     IKeyCursor *keyCursor;
     Linked<IKeyIndex> key;
     ConstPointerArray activeBlobs;
+    const RtlRecord &recInfo;
 
     __uint64 partitionFieldMask = 0;
     unsigned indexParts = 0;
@@ -363,7 +364,7 @@ protected:
 public:
     IMPLEMENT_IINTERFACE;
 
-    CKeyLevelManager(const RtlRecord &_recInfo, IKeyIndex * _key, IContextLogger *_ctx) : stats(_ctx), segs(_recInfo, true)
+    CKeyLevelManager(const RtlRecord &_recInfo, IKeyIndex * _key, IContextLogger *_ctx) : stats(_ctx), recInfo(_recInfo), segs(_recInfo, true)
     {
         numsegs = 0;
         keyCursor = NULL;
@@ -582,7 +583,7 @@ public:
     virtual void finishSegmentMonitors()
     {
         segs.finish(keyedSize);
-        keyCursor = filters.numFilterFields() ? key->getNewCursor(&filters) : key->getCursor(&segs);
+        keyCursor = filters.numFilterFields() ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);
     }
 };
 
@@ -1164,9 +1165,9 @@ IKeyCursor *CKeyIndex::getCursor(const SegMonitorList *segs)
     return new CKeyCursor(*this, segs);
 }
 
-IKeyCursor *CKeyIndex::getNewCursor(const RowFilter *filters)
+IKeyCursor *CKeyIndex::getNewCursor(const RtlRecord &recInfo, const RowFilter *filters)
 {
-    return new CNewKeyCursor(*this, filters);
+    return new CNewKeyCursor(*this, recInfo, filters);
 }
 
 CJHTreeNode *CKeyIndex::getNode(offset_t offset, IContextLogger *ctx) 
@@ -1210,6 +1211,11 @@ void CKeyIndex::dumpNode(FILE *out, offset_t pos, unsigned count, bool isRaw)
 bool CKeyIndex::hasSpecialFileposition() const
 {
     return keyHdr->hasSpecialFileposition();
+}
+
+bool CKeyIndex::needsRowBuffer() const
+{
+    return keyHdr->hasSpecialFileposition() || keyHdr->isRowCompressed();
 }
 
 size32_t CKeyIndex::keySize()
@@ -1457,7 +1463,11 @@ void CKeyCursor::reset()
 bool CKeyCursor::next(char *dst, KeyStatsCollector &stats)
 {
     if (!node)
-        return first(dst, stats);
+    {
+        node.setown(key.locateFirstNode(stats));
+        nodeKey = 0;
+        return node && node->getValueAt(nodeKey, dst);
+    }
     else
     {
         key.keyScans++;
@@ -1513,13 +1523,6 @@ unsigned __int64 CKeyCursor::getSequence()
 {
     assertex(node);
     return node->getSequence(nodeKey);
-}
-
-bool CKeyCursor::first(char *dst, KeyStatsCollector &stats)
-{
-    node.setown(key.locateFirstNode(stats));
-    nodeKey = 0;
-    return node->getValueAt(nodeKey, dst);
 }
 
 bool CKeyCursor::last(char *dst, KeyStatsCollector &stats)
@@ -1979,31 +1982,136 @@ CPartialKeyCursor::~CPartialKeyCursor()
 
 //---------------------------------------------------------------------------------------
 
-CNewKeyCursor::CNewKeyCursor(CKeyIndex &_key, const RowFilter *_filters)
-    : key(OLINK(_key)), filters(_filters)
+CHTreeSourceRowCursor::CHTreeSourceRowCursor(CKeyIndex &_key, const RtlRecord &recInfo)
+: key(OLINK(_key)), rowInfo(recInfo)
 {
+    if (key.needsRowBuffer())
+        rowBuffer = (char *) malloc(key.keySize());   // Needed because we can't point directly into node memory (stupid fileposition issue)
+    else
+        rowBuffer = nullptr;
+}
+
+CHTreeSourceRowCursor::~CHTreeSourceRowCursor()
+{
+    key.Release();
+    free(rowBuffer);
+}
+
+const byte * CHTreeSourceRowCursor::findNext(const RowCursor & current)
+{
+    key.keySeeks++;
+    unsigned lwm = 0;
+    if (node)
+    {
+        // When seeking forward, there are two cases worth optimizing:
+        // 1. the next record is actually the one we want
+        // 2. The record we want is on the current page
+        unsigned numKeys = node->getNumKeys();
+        if (nodeKey < numKeys-1)
+        {
+            int rc = compareRow(++nodeKey, current);
+            if (rc <= 0)
+                return rowInfo.queryRow();
+            if (nodeKey < numKeys-1)
+            {
+                int rc = compareRow(numKeys-1, current);
+                if (rc <= 0)
+                    lwm = nodeKey+1;
+            }
+        }
+    }
+    if (!lwm)
+        node.set(key.rootNode);
+    for (;;)
+    {
+        unsigned int a = lwm;
+        int b = node->getNumKeys();
+        // first search for first GTE entry (result in b(<),a(>=))
+        while ((int)a<b)
+        {
+            int i = a+(b-a)/2;
+            int rc = compareRow(i, current);
+            if (rc>0)
+                a = i+1;
+            else
+                b = i;
+        }
+        if (node->isLeaf())
+        {
+            if (a<node->getNumKeys())
+                nodeKey = a;
+            else
+            {
+                offset_t nextPos = node->nextNodeFpos();  // This can happen at eof because of key peculiarity where level above reports ffff as last
+                node.setown(key.getNode(nextPos, ctx));
+                nodeKey = 0;
+            }
+            if (node)
+                return (const byte *) node->queryValueAt(nodeKey, rowBuffer);
+            else
+                return nullptr;
+        }
+        else
+        {
+            if (a<node->getNumKeys())
+            {
+                offset_t npos = node->getFPosAt(a);
+                node.setown(key.getNode(npos, ctx));
+            }
+            else
+                return nullptr;
+        }
+    }
+    return nullptr;
+}
+
+const byte * CHTreeSourceRowCursor::next()
+{
+    assertex(node);
+    key.keyScans++;
+    bool ok = node->getValueAt( ++nodeKey, rowBuffer);
+    if (!ok)
+    {
+        offset_t rsib = node->getRightSib();
+        node.clear();
+        if (rsib != 0)
+        {
+            node.setown(key.getNode(rsib, nullptr));   // MORE - context needs thinking about
+            if (node != NULL)
+            {
+                nodeKey = 0;
+                ok = node->getValueAt(0, rowBuffer);
+            }
+        }
+    }
+    return ok ? (const byte *) rowBuffer : nullptr;
+}
+
+void CHTreeSourceRowCursor::reset()
+{
+    node.clear();
     nodeKey = 0;
 }
 
-CNewKeyCursor::~CNewKeyCursor()
+CNewKeyCursor::CNewKeyCursor(CKeyIndex &_key, const RtlRecord &recInfo, const RowFilter *_filters)
+    : key(_key, recInfo), filters(_filters)
 {
-    key.Release();
 }
 
 void CNewKeyCursor::reset()
 {
-    node.clear();
-    eof = key.bloomFilterReject(*filters);
+    key.reset();
+    eof = key.key.bloomFilterReject(*filters);
 }
 
 const char *CNewKeyCursor::queryName() const
 {
-    return key.queryFileName();
+    return key.key.queryFileName();
 }
 
 size32_t CNewKeyCursor::getKeyedSize() const
 {
-    return key.keyedSize();
+    return key.key.keyedSize();
 }
 
 const byte *CNewKeyCursor::queryKeyBuffer() const
@@ -2013,39 +2121,22 @@ const byte *CNewKeyCursor::queryKeyBuffer() const
 
 size32_t CNewKeyCursor::getSize()
 {
-    assertex(node);
-    return node->getSizeAt(nodeKey);
+    UNIMPLEMENTED;
 }
 
 offset_t CNewKeyCursor::getFPos()
 {
-    assertex(node);
-    return node->getFPosAt(nodeKey);
+    UNIMPLEMENTED;
 }
 
 unsigned __int64 CNewKeyCursor::getSequence()
 {
-    assertex(node);
-    return node->getSequence(nodeKey);
-}
-
-bool CNewKeyCursor::first(char *dst, KeyStatsCollector &stats)
-{
-    node.setown(key.locateFirstNode(stats));
-    nodeKey = 0;
-    return node->getValueAt(nodeKey, dst);
-}
-
-bool CNewKeyCursor::last(char *dst, KeyStatsCollector &stats)
-{
-    node.setown(key.locateLastNode(stats));
-    nodeKey = node->getNumKeys()-1;
-    return node->getValueAt( nodeKey, dst );
+    UNIMPLEMENTED;
 }
 
 const byte *CNewKeyCursor::loadBlob(unsigned __int64 blobid, size32_t &blobsize)
 {
-    return key.loadBlob(blobid, blobsize);
+    return key.key.loadBlob(blobid, blobsize);
 }
 
 bool CNewKeyCursor::lookup(bool exact, KeyStatsCollector &stats)
@@ -2061,13 +2152,13 @@ class CLazyKeyIndex : implements IKeyIndex, public CInterface
     StringAttr keyfile;
     unsigned crc; 
     Linked<IDelayedFile> delayedFile;
-    Owned<IFileIO> iFileIO;
-    Owned<IKeyIndex> realKey;
-    CriticalSection c;
+    mutable Owned<IFileIO> iFileIO;
+    mutable Owned<IKeyIndex> realKey;
+    mutable CriticalSection c;
     bool isTLK;
     bool preloadAllowed;
 
-    inline IKeyIndex &checkOpen()
+    inline IKeyIndex &checkOpen() const
     {
         CriticalBlock b(c);
         if (!realKey)
@@ -2098,7 +2189,7 @@ public:
     virtual bool IsShared() const { return CInterface::IsShared(); }
 
     virtual IKeyCursor *getCursor(const SegMonitorList *segs) override { return checkOpen().getCursor(segs); }
-    virtual IKeyCursor *getNewCursor(const RowFilter *filters) override { return checkOpen().getNewCursor(filters); }
+    virtual IKeyCursor *getNewCursor(const RtlRecord &recInfo, const RowFilter *filters) override { return checkOpen().getNewCursor(recInfo, filters); }
     virtual size32_t keySize() { return checkOpen().keySize(); }
     virtual size32_t keyedSize() { return checkOpen().keyedSize(); }
     virtual bool hasPayload() { return checkOpen().hasPayload(); }
@@ -2120,7 +2211,8 @@ public:
     virtual IPropertyTree * getMetadata() { return checkOpen().getMetadata(); }
     virtual unsigned getNodeSize() { return checkOpen().getNodeSize(); }
     virtual const IFileIO *queryFileIO() const override { return iFileIO; } // NB: if not yet opened, will be null
-    virtual bool hasSpecialFileposition() const { return realKey ? realKey->hasSpecialFileposition() : false; }
+    virtual bool hasSpecialFileposition() const { return checkOpen().hasSpecialFileposition(); }
+    virtual bool needsRowBuffer() const { return checkOpen().needsRowBuffer(); }
 };
 
 extern jhtree_decl IKeyIndex *createKeyIndex(const char *keyfile, unsigned crc, IFileIO &iFileIO, bool isTLK, bool preloadAllowed)

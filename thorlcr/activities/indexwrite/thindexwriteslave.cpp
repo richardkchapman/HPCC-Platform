@@ -176,6 +176,8 @@ public:
             flags |= HTREE_VARSIZE;
         if (isTlk)
             flags |= HTREE_TOPLEVEL_KEY;
+        else if (!hasTrailingFileposition(helper->queryDiskRecordSize()->queryTypeInfo()))
+            flags |= UNUSED_FILE_POSITION;
         buildUserMetadata(metadata);                
         buildLayoutMetadata(metadata);
         unsigned nodeSize = metadata ? metadata->getPropInt("_nodeSize", NODESIZE) : NODESIZE;

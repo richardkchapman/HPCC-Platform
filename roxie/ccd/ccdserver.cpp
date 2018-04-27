@@ -12175,6 +12175,9 @@ public:
                 flags |= HTREE_COMPRESSED_KEY;
             if (isVariable)
                 flags |= HTREE_VARSIZE;
+            if (!fileposSize)
+                flags |= UNUSED_FILE_POSITION;
+
             Owned<IPropertyTree> metadata;
             buildUserMetadata(metadata);
             buildLayoutMetadata(metadata);

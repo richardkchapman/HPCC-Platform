@@ -34,7 +34,7 @@
 #define COL_SUFFIX          0x08 // Obsolete, not supported
 #define HTREE_VARSIZE       0x10
 #define HTREE_FULLSORT_KEY  0x20
-#define INDAR_TRAILING_SEG  0x80 // Obsolete, not supported
+#define UNUSED_FILE_POSITION 0x80 // File positions do not need to be tacked onto end of returned rows
 #define HTREE_COMPRESSED_KEY 0x40
 #define HTREE_QUICK_COMPRESSED_KEY 0x48
 #define KEYBUILD_VERSION 1 // unsigned short. NB: This should upped if a change would make existing keys incompatible with current build.
@@ -152,7 +152,8 @@ public:
     inline KeyHdr *getHdrStruct() { return &hdr; }
     inline static size32_t getSize() { return sizeof(KeyHdr); }
     inline unsigned getNodeSize() { return hdr.nodeSize; }
-    inline bool hasSpecialFileposition() const { return true; }
+    inline bool hasSpecialFileposition() const { return (hdr.ktype & UNUSED_FILE_POSITION) == 0; }
+    inline bool isRowCompressed() const { return (hdr.ktype & HTREE_QUICK_COMPRESSED_KEY) == HTREE_QUICK_COMPRESSED_KEY; }
     __uint64 getPartitionFieldMask()
     {
         if (hdr.partitionFieldMask == (__uint64) -1)
@@ -223,6 +224,8 @@ public:
     offset_t prevNodeFpos() const;
     offset_t nextNodeFpos() const ;
     virtual bool getValueAt(unsigned int num, char *key) const;
+    virtual const char *queryValueAt(unsigned int index, char *scratchBuffer) const;
+    virtual const char *queryKeyAt(unsigned int index, char *scratchBuffer) const;
     virtual size32_t getSizeAt(unsigned int num) const;
     virtual offset_t getFPosAt(unsigned int num) const;
     virtual int compareValueAt(const char *src, unsigned int index) const;
@@ -243,6 +246,8 @@ public:
     ~CJHVarTreeNode();
     virtual void load(CKeyHdr *keyHdr, const void *rawData, offset_t pos, bool needCopy);
     virtual bool getValueAt(unsigned int num, char *key) const;
+    virtual const char *queryValueAt(unsigned int index, char *scratchBuffer) const;
+    virtual const char *queryKeyAt(unsigned int index, char *scratchBuffer) const;
     virtual size32_t getSizeAt(unsigned int num) const;
     virtual offset_t getFPosAt(unsigned int num) const;
     virtual int compareValueAt(const char *src, unsigned int index) const;
@@ -255,6 +260,8 @@ public:
     CJHTreeBlobNode ();
     ~CJHTreeBlobNode ();
     virtual bool getValueAt(unsigned int num, char *key) const {throwUnexpected();}
+    virtual const char *queryValueAt(unsigned int index, char *scratchBuffer) const {throwUnexpected();}
+    virtual const char *queryKeyAt(unsigned int index, char *scratchBuffer) const {throwUnexpected();}
     virtual offset_t getFPosAt(unsigned int num) const {throwUnexpected();}
     virtual size32_t getSizeAt(unsigned int num) const {throwUnexpected();}
     virtual int compareValueAt(const char *src, unsigned int index) const {throwUnexpected();}
@@ -268,6 +275,8 @@ class CJHTreeMetadataNode : public CJHTreeNode
 {
 public:
     virtual bool getValueAt(unsigned int num, char *key) const {throwUnexpected();}
+    virtual const char *queryValueAt(unsigned int index, char *scratchBuffer) const {throwUnexpected();}
+    virtual const char *queryKeyAt(unsigned int index, char *scratchBuffer) const {throwUnexpected();}
     virtual offset_t getFPosAt(unsigned int num) const {throwUnexpected();}
     virtual size32_t getSizeAt(unsigned int num) const {throwUnexpected();}
     virtual int compareValueAt(const char *src, unsigned int index) const {throwUnexpected();}
@@ -279,6 +288,8 @@ class CJHTreeBloomTableNode : public CJHTreeNode
 {
 public:
     virtual bool getValueAt(unsigned int num, char *key) const {throwUnexpected();}
+    virtual const char *queryValueAt(unsigned int index, char *scratchBuffer) const {throwUnexpected();}
+    virtual const char *queryKeyAt(unsigned int index, char *scratchBuffer) const {throwUnexpected();}
     virtual offset_t getFPosAt(unsigned int num) const {throwUnexpected();}
     virtual size32_t getSizeAt(unsigned int num) const {throwUnexpected();}
     virtual int compareValueAt(const char *src, unsigned int index) const {throwUnexpected();}

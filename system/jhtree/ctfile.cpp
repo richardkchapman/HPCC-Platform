@@ -817,7 +817,7 @@ bool CJHTreeNode::getValueAt(unsigned int index, char *dst) const
     {
         if (keyHdr->hasSpecialFileposition())
         {
-            //It would make sense to have the fileposition at the start of the row from he perspective of the
+            //It would make sense to have the fileposition at the start of the row from the perspective of the
             //internal representation, but that would complicate everything else which assumes the keyed
             //fields start at the beginning of the row.
             if (rowexp.get())
@@ -847,6 +847,33 @@ bool CJHTreeNode::getValueAt(unsigned int index, char *dst) const
     }
     return true;
 }
+
+const char * CJHTreeNode::queryValueAt(unsigned int index, char *scratchBuffer) const
+{
+    if (index >= hdr.numKeys)
+        return nullptr;
+    else if (scratchBuffer && (keyHdr->hasSpecialFileposition() || rowexp))
+    {
+        getValueAt(index, scratchBuffer);
+        return scratchBuffer;
+    }
+    else
+        return keyBuf + index*keyRecLen;
+}
+
+const char * CJHTreeNode::queryKeyAt(unsigned int index, char *scratchBuffer) const
+{
+    if (index >= hdr.numKeys)
+        return nullptr;
+    else if (rowexp)
+    {
+        getValueAt(index, scratchBuffer);
+        return scratchBuffer;
+    }
+    else
+        return keyBuf + index*keyRecLen;
+}
+
 
 size32_t CJHTreeNode::getSizeAt(unsigned int index) const
 {
@@ -1020,6 +1047,32 @@ bool CJHVarTreeNode::getValueAt(unsigned int num, char *dst) const
             memcpy(dst, p, reclen);
     }
     return true;
+}
+
+const char *CJHVarTreeNode::queryValueAt(unsigned int index, char *scratchBuffer) const
+{
+    if (index >= hdr.numKeys)
+        return nullptr;
+    else if (keyHdr->hasSpecialFileposition() || rowexp)
+    {
+        getValueAt(index, scratchBuffer);
+        return scratchBuffer;
+    }
+    else
+        return recArray[index];
+}
+
+const char *CJHVarTreeNode::queryKeyAt(unsigned int index, char *scratchBuffer) const
+{
+    if (index >= hdr.numKeys)
+        return nullptr;
+    else if (rowexp)
+    {
+        getValueAt(index, scratchBuffer);
+        return scratchBuffer;
+    }
+    else
+        return recArray[index];
 }
 
 size32_t CJHVarTreeNode::getSizeAt(unsigned int num) const

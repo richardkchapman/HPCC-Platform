@@ -71,6 +71,7 @@ class jhtree_decl CKeyIndex : implements IKeyIndex, implements INodeLoader, publ
 {
     friend class CKeyStore;
     friend class CKeyCursor;
+    friend class CHTreeSourceRowCursor;
 
 private:
     CKeyIndex(CKeyIndex &);
@@ -107,7 +108,7 @@ public:
 
 // IKeyIndex impl.
     virtual IKeyCursor *getCursor(const SegMonitorList *segs) override;
-    virtual IKeyCursor *getNewCursor(const RowFilter *filters) override;
+    virtual IKeyCursor *getNewCursor(const RtlRecord &recInfo, const RowFilter *filters) override;
 
     virtual size32_t keySize();
     virtual bool hasPayload();
@@ -136,6 +137,7 @@ public:
 
     virtual unsigned getNodeSize() { return keyHdr->getNodeSize(); }
     virtual bool hasSpecialFileposition() const;
+    virtual bool needsRowBuffer() const;
  
  // INodeLoader impl.
     virtual CJHTreeNode *loadNode(offset_t offset) = 0;
@@ -189,10 +191,6 @@ public:
     ~CKeyCursor();
 
     virtual bool next(char *dst, KeyStatsCollector &stats) override;
-    virtual bool first(char *dst, KeyStatsCollector &stats) override;
-    virtual bool last(char *dst, KeyStatsCollector &stats) override;
-    virtual bool gtEqual(const char *src, char *dst, KeyStatsCollector &stats) override;
-    virtual bool ltEqual(const char *src, KeyStatsCollector &stats) override;
     virtual const char *queryName() const override;
     virtual size32_t getSize();
     virtual size32_t getKeyedSize() const;
@@ -215,9 +213,11 @@ public:
 protected:
     CKeyCursor(const CKeyCursor &from);
 
+    bool last(char *dst, KeyStatsCollector &stats);
+    bool gtEqual(const char *src, char *dst, KeyStatsCollector &stats);
+    bool ltEqual(const char *src, KeyStatsCollector &stats);
     bool _lookup(bool exact, unsigned lastSeg, KeyStatsCollector &stats);
     void reportExcessiveSeeks(unsigned numSeeks, unsigned lastSeg, KeyStatsCollector &stats);
-
 
     inline void setLow(unsigned segNo)
     {
@@ -244,24 +244,42 @@ public:
     ~CPartialKeyCursor();
 };
 
+class CHTreeSourceRowCursor : public ISourceRowCursor
+{
+public:
+    CHTreeSourceRowCursor(CKeyIndex &_key, const RtlRecord &recInfo);
+    ~CHTreeSourceRowCursor();
+    virtual const byte * findNext(const RowCursor & current) override;
+    virtual const byte * next() override;
+    virtual void reset() override;
+public:
+    CKeyIndex &key;
+protected:
+    inline int compareRow(unsigned idx, const RowCursor & current)
+    {
+        rowInfo.setRow(node->queryKeyAt(idx, rowBuffer), numFieldsRequired);
+        return current.compareNext(rowInfo);
+    }
+    Owned<CJHTreeNode> node;
+    RtlDynRow rowInfo;
+    unsigned int nodeKey = 0;
+    unsigned numFieldsRequired = 0;
+    char *rowBuffer = nullptr;
+    IContextLogger *ctx = nullptr;  // MORE - set something. Or pass it through more places
+
+};
+
 class jhtree_decl CNewKeyCursor : public IKeyCursor, public CInterface
 {
 protected:
-    CKeyIndex &key;
+    CHTreeSourceRowCursor key;
     const RowFilter *filters;
-    Owned<CJHTreeNode> node;
-    unsigned int nodeKey;
     bool eof = false;
 public:
     IMPLEMENT_IINTERFACE;
-    CNewKeyCursor(CKeyIndex &_key, const RowFilter *segs);
-    ~CNewKeyCursor();
+    CNewKeyCursor(CKeyIndex &_key, const RtlRecord &recInfo, const RowFilter *segs);
 
     virtual bool next(char *dst, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
-    virtual bool first(char *dst, KeyStatsCollector &stats) override;
-    virtual bool last(char *dst, KeyStatsCollector &stats) override;
-    virtual bool gtEqual(const char *src, char *dst, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
-    virtual bool ltEqual(const char *src, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
     virtual const char *queryName() const override;
     virtual size32_t getSize();
     virtual size32_t getKeyedSize() const;
