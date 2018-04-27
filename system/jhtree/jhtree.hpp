@@ -28,6 +28,7 @@
 #include "jfile.hpp"
 #include "jlog.hpp"
 #include "errorlist.h"
+#include "rtlnewkey.hpp"
 
 class BloomFilter;
 class SegMonitorList;
@@ -69,7 +70,7 @@ interface jhtree_decl IKeyCursor : public IInterface
     virtual void deserializeCursorPos(MemoryBuffer &mb, KeyStatsCollector &stats) = 0;
     virtual unsigned __int64 getSequence() = 0;
     virtual const byte *loadBlob(unsigned __int64 blobid, size32_t &blobsize) = 0;
-    virtual void reset(unsigned sortFromSeg = 0) = 0;
+    virtual void reset() = 0;
     virtual bool lookup(bool exact, KeyStatsCollector &stats) = 0;
 
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen, KeyStatsCollector &stats) = 0;
@@ -95,6 +96,7 @@ interface jhtree_decl IKeyIndexBase : public IInterface
 interface jhtree_decl IKeyIndex : public IKeyIndexBase
 {
     virtual IKeyCursor *getCursor(const SegMonitorList *segs) = 0;
+    virtual IKeyCursor *getNewCursor(const RowFilter *filter) = 0;
     virtual size32_t keySize() = 0;
     virtual bool isFullySorted() = 0;
     virtual bool isTopLevelKey() = 0;
@@ -293,6 +295,7 @@ public:
 };
 
 extern jhtree_decl bool isCompressedIndex(const char *filename);
+extern jhtree_decl bool isIndexFile(IFile *filename);
 
 #define JHTREE_KEY_NOT_SORTED JHTREE_ERROR_START
 

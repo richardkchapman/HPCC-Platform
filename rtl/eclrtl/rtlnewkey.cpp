@@ -1150,6 +1150,11 @@ public:
         return type;
     }
 
+    virtual bool getBloomHash(hash64_t &hash) const override
+    {
+        return false;
+    }
+
 protected:
     unsigned field;
     const RtlTypeInfo & type;
@@ -1252,6 +1257,7 @@ IFieldFilter * createEmptyFieldFilter(unsigned fieldId, const RtlTypeInfo & type
 
 IFieldFilter * createFieldFilter(unsigned fieldId, const RtlTypeInfo & type, const void * value)
 {
+    // MORE - specialize for single value? to save space at least, as well as for bloom filter support
     Owned<IValueSet> values = createValueSet(type);
     values->addRawRange(value, value);
     return new SetFieldFilter(fieldId, values);

@@ -63,6 +63,8 @@ enum request { LTE, GTE };
 interface INodeLoader
 {
     virtual CJHTreeNode *loadNode(offset_t offset) = 0;
+    virtual CJHTreeNode *locateFirstNode(KeyStatsCollector &stats) = 0;
+    virtual CJHTreeNode *locateLastNode(KeyStatsCollector &stats) = 0;
 };
 
 class jhtree_decl CKeyIndex : implements IKeyIndex, implements INodeLoader, public CInterface
@@ -105,6 +107,7 @@ public:
 
 // IKeyIndex impl.
     virtual IKeyCursor *getCursor(const SegMonitorList *segs) override;
+    virtual IKeyCursor *getNewCursor(const RowFilter *filters) override;
 
     virtual size32_t keySize();
     virtual bool hasPayload();
@@ -129,12 +132,15 @@ public:
     virtual IPropertyTree * getMetadata();
 
     bool bloomFilterReject(const SegMonitorList &segs) const;
+    bool bloomFilterReject(const RowFilter &rowFilters) const;
 
     virtual unsigned getNodeSize() { return keyHdr->getNodeSize(); }
     virtual bool hasSpecialFileposition() const;
  
  // INodeLoader impl.
     virtual CJHTreeNode *loadNode(offset_t offset) = 0;
+    CJHTreeNode *locateFirstNode(KeyStatsCollector &stats);
+    CJHTreeNode *locateLastNode(KeyStatsCollector &stats);
 };
 
 class jhtree_decl CMemKeyIndex : public CKeyIndex
@@ -195,7 +201,7 @@ public:
     virtual void deserializeCursorPos(MemoryBuffer &mb, KeyStatsCollector &stats);
     virtual unsigned __int64 getSequence(); 
     virtual const byte *loadBlob(unsigned __int64 blobid, size32_t &blobsize);
-    virtual void reset(unsigned sortFromSeg = 0);
+    virtual void reset();
     virtual bool lookup(bool exact, KeyStatsCollector &stats) override;
     virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen, KeyStatsCollector &stats) override;
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) override;
@@ -211,8 +217,6 @@ protected:
 
     bool _lookup(bool exact, unsigned lastSeg, KeyStatsCollector &stats);
     void reportExcessiveSeeks(unsigned numSeeks, unsigned lastSeg, KeyStatsCollector &stats);
-    CJHTreeNode *locateFirstNode(KeyStatsCollector &stats);
-    CJHTreeNode *locateLastNode(KeyStatsCollector &stats);
 
 
     inline void setLow(unsigned segNo)
@@ -239,4 +243,46 @@ public:
     CPartialKeyCursor(const CKeyCursor &from, unsigned sortFieldOffset);
     ~CPartialKeyCursor();
 };
+
+class jhtree_decl CNewKeyCursor : public IKeyCursor, public CInterface
+{
+protected:
+    CKeyIndex &key;
+    const RowFilter *filters;
+    Owned<CJHTreeNode> node;
+    unsigned int nodeKey;
+    bool eof = false;
+public:
+    IMPLEMENT_IINTERFACE;
+    CNewKeyCursor(CKeyIndex &_key, const RowFilter *segs);
+    ~CNewKeyCursor();
+
+    virtual bool next(char *dst, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual bool first(char *dst, KeyStatsCollector &stats) override;
+    virtual bool last(char *dst, KeyStatsCollector &stats) override;
+    virtual bool gtEqual(const char *src, char *dst, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual bool ltEqual(const char *src, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual const char *queryName() const override;
+    virtual size32_t getSize();
+    virtual size32_t getKeyedSize() const;
+    virtual offset_t getFPos();
+    virtual void serializeCursorPos(MemoryBuffer &mb) { UNIMPLEMENTED; };
+    virtual void deserializeCursorPos(MemoryBuffer &mb, KeyStatsCollector &stats) { UNIMPLEMENTED; };
+    virtual unsigned __int64 getSequence();
+    virtual const byte *loadBlob(unsigned __int64 blobid, size32_t &blobsize);
+    virtual void reset();
+    virtual bool lookup(bool exact, KeyStatsCollector &stats) override;
+    virtual bool lookupSkip(const void *seek, size32_t seekOffset, size32_t seeklen, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) override { UNIMPLEMENTED; };
+    virtual IKeyCursor *fixSortSegs(unsigned sortFieldOffset) override { UNIMPLEMENTED; };
+
+    virtual unsigned __int64 getCount(KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual unsigned __int64 checkCount(unsigned __int64 max, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual unsigned __int64 getCurrentRangeCount(unsigned groupSegCount, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual bool nextRange(unsigned groupSegCount) override { UNIMPLEMENTED; };
+    virtual const byte *queryKeyBuffer() const override;
+protected:
+};
+
+
 #endif

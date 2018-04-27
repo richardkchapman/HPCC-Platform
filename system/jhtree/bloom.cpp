@@ -95,6 +95,12 @@ bool IndexBloomFilter::reject(const SegMonitorList &segs) const
     return getBloomHash(fields, segs, hashval) && !test(hashval);
 }
 
+bool IndexBloomFilter::reject(const RowFilter &rowFilter) const
+{
+    hash64_t hashval = HASH64_INIT;
+    return getBloomHash(fields, rowFilter, hashval) && !test(hashval);
+}
+
 extern bool getBloomHash(__int64 fields, const SegMonitorList &segs, hash64_t &hashval)
 {
     while (fields)
@@ -108,6 +114,22 @@ extern bool getBloomHash(__int64 fields, const SegMonitorList &segs, hash64_t &h
             if (!seg->getBloomHash(hashval))
                 return false;
         }
+    }
+    return true;
+}
+
+extern bool getBloomHash(__int64 fields, const RowFilter &rowFilter, hash64_t &hashval)
+{
+    unsigned numFilterFields = rowFilter.numFilterFields();
+    while (fields)
+    {
+        unsigned f = ffsll(fields)-1;    // extract lowest 1 bit
+        fields &= ~ (((__uint64) 1)<<f); // and clear it
+        if (f >= numFilterFields)
+            return false;
+        const IFieldFilter &fieldFilter = rowFilter.queryFilter(f);
+        if (!fieldFilter.getBloomHash(hashval))
+            return false;
     }
     return true;
 }

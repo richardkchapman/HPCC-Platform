@@ -346,8 +346,11 @@ class jhtree_decl CKeyLevelManager : implements IKeyManager, public CInterface
 protected:
     KeyStatsCollector stats;
     SegMonitorList segs;
+    RowFilter filters;
     IKeyCursor *keyCursor;
+    Linked<IKeyIndex> key;
     ConstPointerArray activeBlobs;
+
     __uint64 partitionFieldMask = 0;
     unsigned indexParts = 0;
     unsigned keyedSize;     // size of non-payload part of key
@@ -398,17 +401,17 @@ public:
     {
         ::Release(keyCursor);
         keyCursor = NULL;
+        key.clear();
         if (_key)
         {
             assertex(_key->numParts()==1);
-            IKeyIndex *ki = _key->queryPart(0);
-            keyCursor = ki->getCursor(&segs);
+            key.set(_key->queryPart(0));
             if (keyedSize)
-                assertex(keyedSize == ki->keyedSize());
+                assertex(keyedSize == key->keyedSize());
             else
-                keyedSize = ki->keyedSize();
-            partitionFieldMask = ki->getPartitionFieldMask();
-            indexParts = ki->numPartitions();
+                keyedSize = key->keyedSize();
+            partitionFieldMask = key->getPartitionFieldMask();
+            indexParts = key->numPartitions();
         }
     }
 
@@ -457,10 +460,9 @@ public:
         segs.append(segment);
     }
 
-
     virtual void append(FFoption option, const IFieldFilter * filter)
     {
-        UNIMPLEMENTED;
+        filters.addFilter(*filter);
     }
 
     virtual unsigned ordinality() const 
@@ -580,6 +582,7 @@ public:
     virtual void finishSegmentMonitors()
     {
         segs.finish(keyedSize);
+        keyCursor = filters.numFilterFields() ? key->getNewCursor(&filters) : key->getCursor(&segs);
     }
 };
 
@@ -1161,6 +1164,11 @@ IKeyCursor *CKeyIndex::getCursor(const SegMonitorList *segs)
     return new CKeyCursor(*this, segs);
 }
 
+IKeyCursor *CKeyIndex::getNewCursor(const RowFilter *filters)
+{
+    return new CNewKeyCursor(*this, filters);
+}
+
 CJHTreeNode *CKeyIndex::getNode(offset_t offset, IContextLogger *ctx) 
 { 
     latestGetNodeOffset = offset;
@@ -1306,6 +1314,17 @@ bool CKeyIndex::bloomFilterReject(const SegMonitorList &segs) const
     return false;
 }
 
+bool CKeyIndex::bloomFilterReject(const RowFilter &rowFilters) const
+{
+    ForEachItemIn(idx, bloomFilters)
+    {
+        IndexBloomFilter &filter = bloomFilters.item(idx);
+        if (filter.reject(rowFilters))
+            return true;
+    }
+    return false;
+}
+
 IPropertyTree * CKeyIndex::getMetadata()
 {
     offset_t nodepos = queryMetadataHead();
@@ -1333,6 +1352,40 @@ IPropertyTree * CKeyIndex::getMetadata()
     }
     return ret;
 }
+
+CJHTreeNode *CKeyIndex::locateFirstNode(KeyStatsCollector &stats)
+{
+    keySeeks++;
+    stats.seeks++;
+    CJHTreeNode * n = 0;
+    CJHTreeNode * p = LINK(rootNode);
+    while (p != 0)
+    {
+        n = p;
+        p = getNode(n->prevNodeFpos(), stats.ctx);
+        if (p != 0)
+            n->Release();
+    }
+    return n;
+}
+
+CJHTreeNode *CKeyIndex::locateLastNode(KeyStatsCollector &stats)
+{
+    keySeeks++;
+    stats.seeks++;
+    CJHTreeNode * n = 0;
+    CJHTreeNode * p = LINK(rootNode);
+
+    while (p != 0)
+    {
+        n = p;
+        p = getNode(n->nextNodeFpos(), stats.ctx);
+        if (p != 0)
+            n->Release();
+    }
+    return n;
+}
+
 
 void KeyStatsCollector::noteSeeks(unsigned lseeks, unsigned lscans, unsigned lwildseeks)
 {
@@ -1378,7 +1431,9 @@ CKeyCursor::CKeyCursor(const CKeyCursor &from)
 {
     nodeKey = from.nodeKey;
     node.set(from.node);
-    keyBuffer = from.keyBuffer;
+    unsigned keySize = key.keySize();
+    keyBuffer = (char *) malloc(keySize);  // MORE - keyedSize would do eventually. And we may not even need all of that in the derived case
+    memcpy(keyBuffer, from.keyBuffer, keySize);
     eof = from.eof;
     matched = from.matched;
 }
@@ -1390,43 +1445,13 @@ CKeyCursor::~CKeyCursor()
     free(keyBuffer);
 }
 
-void CKeyCursor::reset(unsigned sortFromSeg)
+void CKeyCursor::reset()
 {
     node.clear();
     matched = false;
     eof = key.bloomFilterReject(*segs);
     if (!eof)
-        setLow(sortFromSeg);
-}
-
-CJHTreeNode *CKeyCursor::locateFirstNode(KeyStatsCollector &stats)
-{
-    CJHTreeNode * n = 0;
-    CJHTreeNode * p = LINK(key.rootNode);
-    while (p != 0)
-    {
-        n = p;
-        p = key.getNode(n->prevNodeFpos(), stats.ctx);
-        if (p != 0)
-            n->Release();
-    }
-    return n;
-}
-
-CJHTreeNode *CKeyCursor::locateLastNode(KeyStatsCollector &stats)
-{
-    CJHTreeNode * n = 0;
-    CJHTreeNode * p = LINK(key.rootNode);
-
-    while (p != 0)
-    {
-        n = p;
-        p = key.getNode(n->nextNodeFpos(), stats.ctx);
-        if (p != 0)
-            n->Release();
-    }
-
-    return n;
+        setLow(0);
 }
 
 bool CKeyCursor::next(char *dst, KeyStatsCollector &stats)
@@ -1492,16 +1517,14 @@ unsigned __int64 CKeyCursor::getSequence()
 
 bool CKeyCursor::first(char *dst, KeyStatsCollector &stats)
 {
-    key.keySeeks++;
-    node.setown(locateFirstNode(stats));
+    node.setown(key.locateFirstNode(stats));
     nodeKey = 0;
     return node->getValueAt(nodeKey, dst);
 }
 
 bool CKeyCursor::last(char *dst, KeyStatsCollector &stats)
 {
-    key.keySeeks++;
-    node.setown(locateLastNode(stats));
+    node.setown(key.locateLastNode(stats));
     nodeKey = node->getNumKeys()-1;
     return node->getValueAt( nodeKey, dst );
 }
@@ -1819,7 +1842,6 @@ unsigned __int64 CKeyCursor::getCount(KeyStatsCollector &stats)
 
 unsigned __int64 CKeyCursor::checkCount(unsigned __int64 max, KeyStatsCollector &stats)
 {
-    setLow(0);
     reset();
     unsigned __int64 result = 0;
     unsigned lseeks = 0;
@@ -1941,9 +1963,7 @@ bool CKeyCursor::skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen
 
 IKeyCursor * CKeyCursor::fixSortSegs(unsigned sortFieldOffset)
 {
-    IKeyCursor *ret = new CPartialKeyCursor(*this, sortFieldOffset);
-    keyBuffer = nullptr;  // Because the new cursor took over ownership of it
-    return ret;
+    return new CPartialKeyCursor(*this, sortFieldOffset);
 }
 
 CPartialKeyCursor::CPartialKeyCursor(const CKeyCursor &from, unsigned sortFieldOffset)
@@ -1956,6 +1976,85 @@ CPartialKeyCursor::~CPartialKeyCursor()
 {
     ::Release(segs);
 }
+
+//---------------------------------------------------------------------------------------
+
+CNewKeyCursor::CNewKeyCursor(CKeyIndex &_key, const RowFilter *_filters)
+    : key(OLINK(_key)), filters(_filters)
+{
+    nodeKey = 0;
+}
+
+CNewKeyCursor::~CNewKeyCursor()
+{
+    key.Release();
+}
+
+void CNewKeyCursor::reset()
+{
+    node.clear();
+    eof = key.bloomFilterReject(*filters);
+}
+
+const char *CNewKeyCursor::queryName() const
+{
+    return key.queryFileName();
+}
+
+size32_t CNewKeyCursor::getKeyedSize() const
+{
+    return key.keyedSize();
+}
+
+const byte *CNewKeyCursor::queryKeyBuffer() const
+{
+    UNIMPLEMENTED;
+}
+
+size32_t CNewKeyCursor::getSize()
+{
+    assertex(node);
+    return node->getSizeAt(nodeKey);
+}
+
+offset_t CNewKeyCursor::getFPos()
+{
+    assertex(node);
+    return node->getFPosAt(nodeKey);
+}
+
+unsigned __int64 CNewKeyCursor::getSequence()
+{
+    assertex(node);
+    return node->getSequence(nodeKey);
+}
+
+bool CNewKeyCursor::first(char *dst, KeyStatsCollector &stats)
+{
+    node.setown(key.locateFirstNode(stats));
+    nodeKey = 0;
+    return node->getValueAt(nodeKey, dst);
+}
+
+bool CNewKeyCursor::last(char *dst, KeyStatsCollector &stats)
+{
+    node.setown(key.locateLastNode(stats));
+    nodeKey = node->getNumKeys()-1;
+    return node->getValueAt( nodeKey, dst );
+}
+
+const byte *CNewKeyCursor::loadBlob(unsigned __int64 blobid, size32_t &blobsize)
+{
+    return key.loadBlob(blobid, blobsize);
+}
+
+bool CNewKeyCursor::lookup(bool exact, KeyStatsCollector &stats)
+{
+    UNIMPLEMENTED;
+}
+
+
+//---------------------------------------------------------------------------------------
 
 class CLazyKeyIndex : implements IKeyIndex, public CInterface
 {
@@ -1999,6 +2098,7 @@ public:
     virtual bool IsShared() const { return CInterface::IsShared(); }
 
     virtual IKeyCursor *getCursor(const SegMonitorList *segs) override { return checkOpen().getCursor(segs); }
+    virtual IKeyCursor *getNewCursor(const RowFilter *filters) override { return checkOpen().getNewCursor(filters); }
     virtual size32_t keySize() { return checkOpen().keySize(); }
     virtual size32_t keyedSize() { return checkOpen().keyedSize(); }
     virtual bool hasPayload() { return checkOpen().hasPayload(); }
@@ -2325,13 +2425,6 @@ class CKeyMerger : public CKeyLevelManager
     }
 
     Linked<IKeyIndexBase> keyset;
-
-    void resetKey(unsigned i)
-    {
-        IKeyCursor *cursor = cursors[i];
-        if (cursor)
-            cursor->reset(sortFromSeg);
-    }
 
     void calculateSortSeg()
     {

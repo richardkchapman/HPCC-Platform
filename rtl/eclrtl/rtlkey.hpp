@@ -304,6 +304,7 @@ public:
     virtual int findForwardMatchRange(const RtlRow & row, unsigned & matchRange) const = 0;
     virtual unsigned queryScore() const = 0;
     virtual IFieldFilter *remap(unsigned newFieldIndex) const = 0;
+    virtual bool getBloomHash(hash64_t &hashval) const = 0;
 };
 
 //More types of IFieldFilter to come later

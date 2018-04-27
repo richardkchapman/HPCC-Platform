@@ -29,7 +29,7 @@
 #include "ctfile.hpp"
 #include "jstats.h"
 
-inline void SwapBigEndian(KeyHdr &hdr)
+void SwapBigEndian(KeyHdr &hdr)
 {
     _WINREV(hdr.phyrec);
     _WINREV(hdr.delstk);
@@ -119,6 +119,31 @@ extern bool isCompressedIndex(const char *filename)
     }
     return false;
 }
+
+extern jhtree_decl bool isIndexFile(IFile *file)
+{
+    try
+    {
+        offset_t size = file->size();
+        if (size <= sizeof(KeyHdr))
+            return false;
+        Owned<IFileIO> io = file->open(IFOread);
+        KeyHdr hdr;
+        if (io->read(0, sizeof(hdr), &hdr) != sizeof(hdr))
+            return false;
+        SwapBigEndian(hdr);
+        if (!hdr.root || !hdr.nodeSize || !hdr.root || size % hdr.nodeSize || hdr.root % hdr.nodeSize || hdr.root >= size)
+            return false;
+        return true;    // Reasonable heuristic...
+    }
+    catch (IException *E)
+    {
+        E->Release();
+    }
+    return false;
+}
+
+
 
 // CKeyHdr
 CKeyHdr::CKeyHdr()

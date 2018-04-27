@@ -114,6 +114,7 @@ public:
     IndexBloomFilter(unsigned numHashes, unsigned tableSize, byte *table, __uint64 fields);
     inline __int64 queryFields() const { return fields; }
     bool reject(const SegMonitorList &segs) const;
+    bool reject(const RowFilter &rowFilter) const;
     static int compare(CInterface *const *a, CInterface *const *b);
 private:
     const __uint64 fields;
@@ -181,5 +182,13 @@ extern jhtree_decl IRowHasher * createRowHasher(const RtlRecord &recInfo, __uint
  */
 extern jhtree_decl bool getBloomHash(__int64 fields, const SegMonitorList &segs, hash64_t &hashval);
 
+/**
+ * Retrieve bloom/partition hash corresponding to a supplied filter condition
+ * @param fields    Bitmap containing field numbers
+ * @param rowFilter Filter to be checked
+ * @param hash      Initial hash value, updated to reflect supplied fields
+ * return           true if the filter is suitable for bloom filtering/partitioning via returned hash value
+ */
+extern jhtree_decl bool getBloomHash(__int64 fields, const RowFilter &filter, hash64_t &hashval);
 
 #endif
