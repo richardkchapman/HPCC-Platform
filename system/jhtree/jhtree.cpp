@@ -1106,6 +1106,8 @@ CJHTreeNode *CKeyIndex::loadNode(char *nodeData, offset_t pos, bool needsCopy)
             // MORE - rowcompressed selector goes here
             if (keyHdr->isVariable())
                 ret.setown(new CJHVarTreeNode());
+            else if ((keyHdr->getKeyType() & HTREE_QUICK_COMPRESSED_KEY)==HTREE_QUICK_COMPRESSED_KEY)
+                ret.setown(new CJHRowCompressedNode());
             else
                 ret.setown(new CJHTreeNode());
             break;

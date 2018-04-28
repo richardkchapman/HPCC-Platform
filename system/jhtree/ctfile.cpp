@@ -1019,10 +1019,11 @@ const char *CJHRowCompressedNode::queryKeyAt(unsigned int num, char *scratchBuff
 {
     if (num >= hdr.numKeys)
         return nullptr;
+    unsigned keyedSize = keyHdr->getNodeKeyLength();
     if (keyHdr->hasSpecialFileposition())
-        rowexp->expandRow(scratchBuffer,num,sizeof(offset_t),keyLen); // MORE - could be shorter I think - just need keyed portion
+        rowexp->expandRow(scratchBuffer,num,sizeof(offset_t),keyedSize);
     else
-        rowexp->expandRow(scratchBuffer,num,0,keyLen);
+        rowexp->expandRow(scratchBuffer,num,0,keyedSize);
     return scratchBuffer;
 }
 
