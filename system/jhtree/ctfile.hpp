@@ -210,11 +210,8 @@ protected:
     void unpack(const void *node, bool needCopy);
     unsigned __int64 firstSequence;
     size32_t expandedSize;
-    Owned<IRandRowExpander> rowexp;  // expander for rand rowdiff   
 
-    static char *expandKeys(void *src,unsigned keylength,size32_t &retsize, bool rowcompression);
-    static IRandRowExpander *expandQuickKeys(void *src, bool needCopy);
-
+    static char *expandKeys(void *src,unsigned keylength,size32_t &retsize);
     static void releaseMem(void *togo, size32_t size);
     static void *allocMem(size32_t size);
 
@@ -237,8 +234,6 @@ public:
     inline offset_t getRightSib() const { return hdr.rightSib; }
     inline offset_t getLeftSib() const { return hdr.leftSib; }
     unsigned __int64 getSequence(unsigned int num) const;
-
-    virtual void dump();
 };
 
 class CJHVarTreeNode : public CJHTreeNode 
@@ -255,7 +250,19 @@ public:
     virtual size32_t getSizeAt(unsigned int num) const;
     virtual offset_t getFPosAt(unsigned int num) const;
     virtual int compareValueAt(const char *src, unsigned int index) const;
-    virtual void dump();
+};
+
+class CJHRowCompressedNode : public CJHTreeNode
+{
+    Owned<IRandRowExpander> rowexp;  // expander for rand rowdiff
+    static IRandRowExpander *expandQuickKeys(void *src, bool needCopy);
+public:
+    virtual void load(CKeyHdr *keyHdr, const void *rawData, offset_t pos, bool needCopy);
+    virtual bool getValueAt(unsigned int num, char *key) const;
+    virtual const char *queryValueAt(unsigned int index, char *scratchBuffer) const;
+    virtual const char *queryKeyAt(unsigned int index, char *scratchBuffer) const;
+    virtual offset_t getFPosAt(unsigned int num) const;
+    virtual int compareValueAt(const char *src, unsigned int index) const;
 };
 
 class CJHTreeBlobNode : public CJHTreeNode

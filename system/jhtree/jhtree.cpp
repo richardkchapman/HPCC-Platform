@@ -422,7 +422,7 @@ public:
         {
             hash64_t hash = HASH64_INIT;
             if (getBloomHash(partitionFieldMask, segs, hash))
-                return (hash % indexParts) + 1;
+                return (((unsigned) hash) % indexParts) + 1;  // NOTE - the Hash distribute function that distributes the index when building will truncate to 32-bits before taking modulus - so we must too!
         }
         return 0;
     }
