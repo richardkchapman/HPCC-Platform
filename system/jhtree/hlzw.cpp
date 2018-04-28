@@ -43,6 +43,24 @@ KeyCompressor::~KeyCompressor()
     }
 }
 
+// MORE - thoughts on row compressed keys
+/*
+ * 1. The ones where we can decompress a row at a time will be used if people say COMPRESSED(ROW). Not sure anyone does.
+ * 2. The ability to compare without decompressing won't be used with new field filter mode.
+ * 3. The flag to say "don't need a copy" - designed for memory-mapped indexes and the main reason to think about this format I think - was never passed in
+ * 4. Unclear whether memory-mapped mode or row-compressed indexes or in-place compare have ever been used in anger
+ * 5. Even if flag is set some nodes appear to not be compressed - or at least the decompress code supports that,
+ *    though I don't see corresponding code at compress time. Testing suggests that non-leaf nodes are not row-compressed, but that's a slightly different issue.
+ *    The decompress code suggests that a different expander is used in such cases? Maybe related to USE_RANDROWDIFF setting - but that is hard-wired.
+ * 6. Don't support variable-size rows. So testing for rowexp in the var node code is redundant. Removed.
+ * 7. A compression mode that did not compress keys but did compress payload would be useful.
+ * 8. Is COMPRESSED(ROW) documented? YES. Included in regression suite? ONCE. Used in any known code? If the answer to all of the above is no perhaps should be deprecated.
+ * 9. If test in regression suite fails, perhaps should be disabled sooner!
+ *      - forced all keys to use COMPRESSED_ROW if fixed size, ran regression suite, got cores and valgrind issues on keyed_join3.ecl and others
+ *      - errors if try to read a blob node
+ * 10. COL_PREFIX is used on all indexes and affects all non-leaf nodes - but may not buy us a lot (and would not need to expand if was not set).
+ *
+ */
 void KeyCompressor::open(void *blk,int blksize,bool _isVariable, bool rowcompression)
 {
     isVariable = _isVariable;

@@ -1103,10 +1103,11 @@ CJHTreeNode *CKeyIndex::loadNode(char *nodeData, offset_t pos, bool needsCopy)
             ret.setown(new CJHTreeNode());
             break;
         case 1:
-        	if (keyHdr->isVariable())
-        		ret.setown(new CJHVarTreeNode());
-        	else
-        		ret.setown(new CJHTreeNode());
+            // MORE - rowcompressed selector goes here
+            if (keyHdr->isVariable())
+                ret.setown(new CJHVarTreeNode());
+            else
+                ret.setown(new CJHTreeNode());
             break;
         case 2:
             ret.setown(new CJHTreeBlobNode());
@@ -1122,7 +1123,7 @@ CJHTreeNode *CKeyIndex::loadNode(char *nodeData, offset_t pos, bool needsCopy)
         }
         {
             MTIME_SECTION(queryActiveTimer(), "JHTREE load node");
-            ret->load(keyHdr, nodeData, pos, true);
+            ret->load(keyHdr, nodeData, pos, needsCopy);
         }
         return ret.getClear();
     }
@@ -2010,12 +2011,12 @@ const byte * CHTreeSourceRowCursor::findNext(const RowCursor & current)
         if (nodeKey < numKeys-1)
         {
             int rc = compareRow(++nodeKey, current);
-            if (rc <= 0)
+            if (rc >= 0)
                 return rowInfo.queryRow();
             if (nodeKey < numKeys-1)
             {
                 int rc = compareRow(numKeys-1, current);
-                if (rc <= 0)
+                if (rc >= 0)
                     lwm = nodeKey+1;
             }
         }
@@ -2031,7 +2032,7 @@ const byte * CHTreeSourceRowCursor::findNext(const RowCursor & current)
         {
             int i = a+(b-a)/2;
             int rc = compareRow(i, current);
-            if (rc>0)
+            if (rc<0)
                 a = i+1;
             else
                 b = i;
@@ -2094,7 +2095,7 @@ void CHTreeSourceRowCursor::reset()
 }
 
 CNewKeyCursor::CNewKeyCursor(CKeyIndex &_key, const RtlRecord &recInfo, const RowFilter *_filters)
-    : key(_key, recInfo), filters(_filters)
+    : key(_key, recInfo), filters(_filters), searcher(recInfo, *filters, &key)
 {
 }
 
@@ -2116,7 +2117,8 @@ size32_t CNewKeyCursor::getKeyedSize() const
 
 const byte *CNewKeyCursor::queryKeyBuffer() const
 {
-    UNIMPLEMENTED;
+    assertex(!eof);
+    return searcher.queryRow().queryRow();
 }
 
 size32_t CNewKeyCursor::getSize()
@@ -2141,7 +2143,17 @@ const byte *CNewKeyCursor::loadBlob(unsigned __int64 blobid, size32_t &blobsize)
 
 bool CNewKeyCursor::lookup(bool exact, KeyStatsCollector &stats)
 {
-    UNIMPLEMENTED;
+    while (!eof)
+    {
+        if (!searcher.next())
+        {
+            eof = true;
+            break;
+        }
+        // if postFilter says ok...
+        return true;
+    }
+    return false;
 }
 
 

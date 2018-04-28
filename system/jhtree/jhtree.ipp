@@ -258,7 +258,9 @@ protected:
     inline int compareRow(unsigned idx, const RowCursor & current)
     {
         rowInfo.setRow(node->queryKeyAt(idx, rowBuffer), numFieldsRequired);
-        return current.compareNext(rowInfo);
+        int ret = current.compareNext(rowInfo);
+        printf("Compare %.5s returns %d\n", rowInfo.queryRow(), ret);
+        return ret;
     }
     Owned<CJHTreeNode> node;
     RtlDynRow rowInfo;
@@ -274,6 +276,7 @@ class jhtree_decl CNewKeyCursor : public IKeyCursor, public CInterface
 protected:
     CHTreeSourceRowCursor key;
     const RowFilter *filters;
+    KeySearcher searcher;
     bool eof = false;
 public:
     IMPLEMENT_IINTERFACE;

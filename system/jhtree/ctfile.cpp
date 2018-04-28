@@ -291,47 +291,6 @@ bool CWriteNode::add(offset_t pos, const void *indata, size32_t insize, unsigned
         keyPtr += sizeof(rsequence);
         hdr.keyBytes += sizeof(rsequence);
     }
-
-#if 0
-    // This test is no longer valid if we don't treat all fields as keyed
-    if (hdr.numKeys)
-    {
-        if (memcmp(indata, lastKeyValue, keyedSize) < 0)
-        {
-            // dump out the rows in question
-            StringBuffer hex;
-            unsigned i;
-            for (i = 0; i < insize; i++)
-            {
-                hex.appendf("%02x ", ((unsigned char *) indata)[i]);
-            }
-            DBGLOG("this: %s", hex.str());
-            hex.clear();
-            for (i = 0; i < insize; i++)
-            {
-                hex.appendf("%02x ", ((unsigned char *) lastKeyValue)[i]);
-            }
-            DBGLOG("last: %s", hex.str());
-            hex.clear();
-            for (i = 0; i < insize; i++)
-            {
-                unsigned char c = ((unsigned char *) indata)[i];
-                hex.appendf("%c", isprint(c) ? c : '.');
-            }
-            DBGLOG("this: %s", hex.str());
-            hex.clear();
-            for (i = 0; i < insize; i++)
-            {
-                unsigned char c = ((unsigned char *) lastKeyValue)[i];
-                hex.appendf("%c", isprint(c) ? c : '.');
-            }
-            DBGLOG("last: %s", hex.str());
-
-            throw MakeStringException(0, "Data written to key must be in sorted order");
-        }
-    }
-#endif
-
     if (isLeaf() && keyType & HTREE_COMPRESSED_KEY)
     {
         if (0 == hdr.numKeys)
@@ -642,13 +601,11 @@ void CJHTreeNode::unpack(const void *node, bool needCopy)
         {
             MTIME_SECTION(queryActiveTimer(), "Compressed node expand");
             expandedSize = keyHdr->getNodeSize();
-            bool quick = (keyType&HTREE_QUICK_COMPRESSED_KEY)==HTREE_QUICK_COMPRESSED_KEY;
-#ifndef _OLD_VERSION
+            bool quick = !isBlob() && (keyType&HTREE_QUICK_COMPRESSED_KEY)==HTREE_QUICK_COMPRESSED_KEY;
             keyBuf = NULL;
             if (quick)
                 rowexp.setown(expandQuickKeys(keys, needCopy));
             if (!quick||!rowexp.get())
-#endif
             {
                 keyBuf = expandKeys(keys,keyLen,expandedSize,quick);
             }
@@ -803,6 +760,9 @@ void CJHTreeNode::dump()
     DBGLOG("==========");
 }
 
+// MORE - worth adding a new derived class to handle rowexp, to take the conditionals out of these
+// functions - they are speed-critical
+
 int CJHTreeNode::compareValueAt(const char *src, unsigned int index) const
 {
     if (rowexp.get()) 
@@ -871,7 +831,7 @@ const char * CJHTreeNode::queryKeyAt(unsigned int index, char *scratchBuffer) co
         return scratchBuffer;
     }
     else
-        return keyBuf + index*keyRecLen;
+        return keyBuf + index*keyRecLen + (keyHdr->hasSpecialFileposition() ? sizeof(offset_t) : 0);
 }
 
 
@@ -1053,7 +1013,7 @@ const char *CJHVarTreeNode::queryValueAt(unsigned int index, char *scratchBuffer
 {
     if (index >= hdr.numKeys)
         return nullptr;
-    else if (keyHdr->hasSpecialFileposition() || rowexp)
+    else if (keyHdr->hasSpecialFileposition())
     {
         getValueAt(index, scratchBuffer);
         return scratchBuffer;
@@ -1066,13 +1026,7 @@ const char *CJHVarTreeNode::queryKeyAt(unsigned int index, char *scratchBuffer) 
 {
     if (index >= hdr.numKeys)
         return nullptr;
-    else if (rowexp)
-    {
-        getValueAt(index, scratchBuffer);
-        return scratchBuffer;
-    }
-    else
-        return recArray[index];
+    return recArray[index] + (keyHdr->hasSpecialFileposition() ? sizeof(offset_t) : 0);
 }
 
 size32_t CJHVarTreeNode::getSizeAt(unsigned int num) const

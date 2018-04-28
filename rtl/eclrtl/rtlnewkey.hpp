@@ -63,7 +63,7 @@ protected:
 class ECLRTL_API RowCursor
 {
 public:
-    RowCursor(const RtlRecord & record, RowFilter & filter) : currentRow(record, nullptr)
+    RowCursor(const RtlRecord & record, const RowFilter & filter) : currentRow(record, nullptr)
     {
         filter.extractKeyFilter(record, filters);
         ForEachItemIn(i, filters)
@@ -71,7 +71,7 @@ public:
         numFieldsRequired = filter.getNumFieldsRequired();
     }
 
-    RowCursor(const RtlRecord & record, const UnsignedArray &sortOrder, RowFilter & filter) : currentRow(record, nullptr)
+    RowCursor(const RtlRecord & record, const UnsignedArray &sortOrder, const RowFilter & filter) : currentRow(record, nullptr)
     {
         filter.extractMemKeyFilter(record, sortOrder, filters);
         ForEachItemIn(i, filters)
@@ -180,7 +180,7 @@ public:
 class ECLRTL_API KeySearcher : public CInterface
 {
 public:
-    KeySearcher(const RtlRecord & _info, RowFilter & _filter, ISourceRowCursor * _rows) : cursor(_info, _filter), rows(_rows)
+    KeySearcher(const RtlRecord & _info, const RowFilter & _filter, ISourceRowCursor * _rows) : cursor(_info, _filter), rows(_rows)
     {
     }
 
@@ -222,8 +222,12 @@ public:
             match = rows->findNext(cursor); // more - return the row pointer to avoid recalculation
             if (!match)
                 return false;
+            printf("Maybe match %.5s\n", match);
             if (cursor.setRowForward(match))
+            {
+                printf("Did match %.5s\n", match);
                 return true;
+            }
         }
     }
 

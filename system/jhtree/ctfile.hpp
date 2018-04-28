@@ -152,7 +152,11 @@ public:
     inline KeyHdr *getHdrStruct() { return &hdr; }
     inline static size32_t getSize() { return sizeof(KeyHdr); }
     inline unsigned getNodeSize() { return hdr.nodeSize; }
-    inline bool hasSpecialFileposition() const { return (hdr.ktype & UNUSED_FILE_POSITION) == 0; }
+    inline bool hasSpecialFileposition() const { return true; }
+    // MORE - tempting to say that indexes where the UNUSED_FILE_POSITION bit is set should use a new format
+    // that does not have the file position in the nodes. But there would be compatibility questions, and
+    // it's complicated by the fact that the file position IS used in the non-leaf nodes to refer to the child node.
+    inline bool usesFilepositionInRecord() const { return (hdr.ktype & UNUSED_FILE_POSITION) == 0; }
     inline bool isRowCompressed() const { return (hdr.ktype & HTREE_QUICK_COMPRESSED_KEY) == HTREE_QUICK_COMPRESSED_KEY; }
     __uint64 getPartitionFieldMask()
     {

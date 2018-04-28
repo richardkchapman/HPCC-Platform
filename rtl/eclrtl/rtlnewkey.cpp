@@ -1921,6 +1921,7 @@ public:
 
     virtual const byte * findNext(const RowCursor & search) override
     {
+        // MORE - why does ccdkey not use this?
         size_t numRows = source.numRows();
         if (numRows == 0)
             return nullptr;
