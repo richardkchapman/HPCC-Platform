@@ -443,7 +443,11 @@ public:
                 segs.checkSize(keyedSize, key->queryFileName());
             }
             if (!keyCursor)
+            {
+                // MORE - move this back into setKey once we remove old segmonitor support - it's done delayed so we are sure the segmonitors are set up
+                // but that makes the serialize/deserialize painful
                 keyCursor = filters.numFilterFields() ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);
+            }
             if (!crappyHack)
             {
                 keyCursor->reset();
@@ -543,11 +547,16 @@ public:
 
     virtual void serializeCursorPos(MemoryBuffer &mb)
     {
+        bool newFilters = filters.numFilterFields() > 0;
+        mb.append(newFilters);
         keyCursor->serializeCursorPos(mb);
     }
 
     virtual void deserializeCursorPos(MemoryBuffer &mb)
     {
+        bool newFilters;
+        mb.read(newFilters);
+        keyCursor = newFilters ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);  // MORE - IFFY!
         keyCursor->deserializeCursorPos(mb, stats);
     }
 
