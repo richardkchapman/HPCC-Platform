@@ -434,14 +434,16 @@ public:
 
     virtual void reset(bool crappyHack)
     {
-        if (keyCursor)
+        if (key)
         {
             if (!started)
             {
                 started = true;
                 numsegs = segs.ordinality();
-                segs.checkSize(keyedSize, keyCursor->queryName());
+                segs.checkSize(keyedSize, key->queryFileName());
             }
+            if (!keyCursor)
+                keyCursor = filters.numFilterFields() ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);
             if (!crappyHack)
             {
                 keyCursor->reset();
@@ -583,7 +585,6 @@ public:
     virtual void finishSegmentMonitors()
     {
         segs.finish(keyedSize);
-        keyCursor = filters.numFilterFields() ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);
     }
 };
 
@@ -1103,10 +1104,9 @@ CJHTreeNode *CKeyIndex::loadNode(char *nodeData, offset_t pos, bool needsCopy)
             ret.setown(new CJHTreeNode());
             break;
         case 1:
-            // MORE - rowcompressed selector goes here
             if (keyHdr->isVariable())
                 ret.setown(new CJHVarTreeNode());
-            else if ((keyHdr->getKeyType() & HTREE_QUICK_COMPRESSED_KEY)==HTREE_QUICK_COMPRESSED_KEY)
+            else if (keyHdr->isRowCompressed())
                 ret.setown(new CJHRowCompressedNode());
             else
                 ret.setown(new CJHTreeNode());

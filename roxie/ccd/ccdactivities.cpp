@@ -2719,7 +2719,7 @@ public:
                 tlk.setown(::createKeyMerger(*keyRecInfo, allKeys, steppingOffset, &logctx));
             else
                 tlk.clear();
-            createSegmentMonitorsPending = true;
+            createSegmentMonitorsPending = true; // MORE - I think this is forcing recreation when part changes - not sure why we want that ONLY in stepping case
         }
         else
             CRoxieKeyedActivity::setPartNo(fileChanged);
