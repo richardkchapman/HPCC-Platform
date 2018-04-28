@@ -730,7 +730,7 @@ offset_t CJHTreeNode::nextNodeFpos() const
 
 int CJHTreeNode::compareValueAt(const char *src, unsigned int index) const
 {
-    return memcmp(src, keyBuf + index*keyRecLen + sizeof(__int64), keyCompareLen);
+    return memcmp(src, keyBuf + index*keyRecLen + (keyHdr->hasSpecialFileposition() ? sizeof(offset_t) : 0), keyCompareLen);
 }
 
 bool CJHTreeNode::getValueAt(unsigned int index, char *dst) const
@@ -906,7 +906,7 @@ CJHVarTreeNode::~CJHVarTreeNode()
 
 int CJHVarTreeNode::compareValueAt(const char *src, unsigned int index) const
 {
-    return memcmp(src, recArray[index] + sizeof(offset_t), keyCompareLen);
+    return memcmp(src, recArray[index] + (keyHdr->hasSpecialFileposition() ? sizeof(offset_t) : 0), keyCompareLen);
 }
 
 bool CJHVarTreeNode::getValueAt(unsigned int num, char *dst) const
@@ -985,7 +985,7 @@ void CJHRowCompressedNode::load(CKeyHdr *_keyHdr, const void *rawData, offset_t 
 
 int CJHRowCompressedNode::compareValueAt(const char *src, unsigned int index) const
 {
-    return rowexp->cmpRow(src,index,sizeof(__int64),keyCompareLen);
+    return rowexp->cmpRow(src,index,keyHdr->hasSpecialFileposition() ? sizeof(offset_t) : 0,keyCompareLen);
 }
 
 bool CJHRowCompressedNode::getValueAt(unsigned int num, char *dst) const

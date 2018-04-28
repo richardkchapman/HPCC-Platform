@@ -367,7 +367,6 @@ public:
 
     CKeyLevelManager(const RtlRecord &_recInfo, IKeyIndex * _key, IContextLogger *_ctx, bool _newFilters) : stats(_ctx), recInfo(_recInfo), segs(_recInfo, true), newFilters(_newFilters)
     {
-        assertex(!newFilters);
         numsegs = 0;
         keyCursor = NULL;
         keyedSize = 0;
