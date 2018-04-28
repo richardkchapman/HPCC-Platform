@@ -1429,10 +1429,10 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedJoinOrDenormalize(BuildCt
         flags.append("|JFdynamicindexfilename");
     if (boundIndexActivity)
         flags.append("|JFindexfromactivity");
-
+    if (options.createValueSets)
+        flags.append("|JFnewfilters");
     if (flags.length())
         doBuildUnsignedFunction(instance->classctx, "getJoinFlags", flags.str()+1);
-
     //Fetch flags
     flags.clear();
     if (info.isFullJoin())
@@ -1550,7 +1550,8 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedDistribute(BuildCtx & ctx
         flags.append("|KDFvarindexfilename");
     if (dynamic)
         flags.append("|KDFdynamicindexfilename");
-
+    if (options.createValueSets)
+        flags.append("|KDFnewfilters");
 
     if (flags.length())
         doBuildUnsignedFunction(instance->classctx, "getFlags", flags.str()+1);

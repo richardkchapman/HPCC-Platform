@@ -3729,6 +3729,8 @@ void IndexReadBuilderBase::buildFlagsMember(IHqlExpression * expr)
 
     if (flags.length())
         translator.doBuildUnsignedFunction(instance->classctx, "getFlags", flags.str()+1);
+    if (translator.queryOptions().createValueSets)
+        flags.append("|TIRnewfilters");
 }
 
 void IndexReadBuilderBase::extractMonitors(IHqlExpression * ds, SharedHqlExpr & unkeyedFilter, HqlExprArray & conds)

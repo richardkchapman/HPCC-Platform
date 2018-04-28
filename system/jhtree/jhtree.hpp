@@ -274,9 +274,9 @@ inline offset_t extractFpos(IKeyManager * manager)
 
 class RtlRecord;
 
-extern jhtree_decl IKeyManager *createLocalKeyManager(const RtlRecord &_recInfo, IKeyIndex * _key, IContextLogger *ctx);
-extern jhtree_decl IKeyManager *createKeyMerger(const RtlRecord &_recInfo, IKeyIndexSet * _key, unsigned sortFieldOffset, IContextLogger *ctx);
-extern jhtree_decl IKeyManager *createSingleKeyMerger(const RtlRecord &_recInfo, IKeyIndex * _onekey, unsigned sortFieldOffset, IContextLogger *ctx);
+extern jhtree_decl IKeyManager *createLocalKeyManager(const RtlRecord &_recInfo, IKeyIndex * _key, IContextLogger *ctx, bool newFilters);
+extern jhtree_decl IKeyManager *createKeyMerger(const RtlRecord &_recInfo, IKeyIndexSet * _key, unsigned sortFieldOffset, IContextLogger *ctx, bool newFilters);
+extern jhtree_decl IKeyManager *createSingleKeyMerger(const RtlRecord &_recInfo, IKeyIndex * _onekey, unsigned sortFieldOffset, IContextLogger *ctx, bool newFilters);
 
 class KLBlobProviderAdapter : implements IBlobProvider
 {
