@@ -37,8 +37,7 @@ public:
     bool matches(const RtlRow & row) const;
 
     void createSegmentMonitors(IIndexReadContext *irc);
-    void extractKeyFilter(const RtlRecord & record, IConstArrayOf<IFieldFilter> & keyFilters) const;
-    void extractMemKeyFilter(const RtlRecord & record, const UnsignedArray &sortOrder, IConstArrayOf<IFieldFilter> & keyFilters) const;
+    //void extractKeyFilter(const RtlRecord & record, IConstArrayOf<IFieldFilter> & keyFilters) const;
     unsigned numFilterFields() const { return filters.ordinality(); }
     const IFieldFilter & queryFilter(unsigned i) const { return filters.item(i); }
     const IFieldFilter *findFilter(unsigned fieldIdx) const;
@@ -63,20 +62,8 @@ protected:
 class ECLRTL_API RowCursor
 {
 public:
-    RowCursor(const RtlRecord & record, const RowFilter & filter) : currentRow(record, nullptr)
+    RowCursor(const RtlRecord & record, const RowFilter &_filter) : currentRow(record, nullptr), filter(_filter)
     {
-        filter.extractKeyFilter(record, filters);
-        ForEachItemIn(i, filters)
-            matchedRanges.append(0);
-        numFieldsRequired = filter.getNumFieldsRequired();
-    }
-
-    RowCursor(const RtlRecord & record, const UnsignedArray &sortOrder, const RowFilter & filter) : currentRow(record, nullptr)
-    {
-        filter.extractMemKeyFilter(record, sortOrder, filters);
-        ForEachItemIn(i, filters)
-            matchedRanges.append(0);
-        numFieldsRequired = filter.getNumFieldsRequired();
     }
 
     void selectFirst()
@@ -84,6 +71,15 @@ public:
         eos = false;
         numMatched = 0;
         nextUnmatchedRange = 0;
+        for (unsigned field = 0; field < matchedRanges.length(); field++)
+        {
+            matchedRanges.replace(0, field);
+        }
+        while (matchedRanges.length() < filter.numFilterFields())
+        {
+            matchedRanges.append(0);
+        }
+
     }
 
     //Compare the incoming row against the current search row
@@ -92,7 +88,7 @@ public:
         if (nextSeekIsGT())
         {
             assertex(nextUnmatchedRange == -1U);
-            assertex(numMatched != filters.ordinality());
+            assertex(numMatched != numFilterFields());
             unsigned i;
             int c = 0;
             //Note field numMatched is not matched, but we are searching for the next highest value => loop until <= numMatched
@@ -136,15 +132,10 @@ public:
 
     bool matches() const
     {
-        ForEachItemIn(i, filters)
-        {
-            if (!filters.item(i).matches(currentRow))
-                return false;
-        }
-        return true;
+        return filter.matches(currentRow);
     }
 
-    unsigned numFilterFields() const { return filters.ordinality(); }
+    unsigned numFilterFields() const { return filter.numFilterFields(); }
     const RtlRow & queryRow() const { return currentRow; }
     bool setRowForward(const byte * row);
     bool nextSeekIsGT() const { return (nextUnmatchedRange == -1U); }
@@ -153,17 +144,16 @@ public:
 protected:
     unsigned matchPos(unsigned i) const { return matchedRanges.item(i); }
     bool isValid(unsigned i) const { return matchPos(i) < queryFilter(i).numRanges(); }
-    const IFieldFilter & queryFilter(unsigned i) const { return filters.item(i); }
+    const IFieldFilter & queryFilter(unsigned i) const { return filter.queryFilter(i); }
     bool findNextRange(unsigned field);
 
 protected:
+    const RowFilter &filter;
     RtlDynRow currentRow;
     unsigned numMatched = 0;
     unsigned nextUnmatchedRange = 0;
-    UnsignedArray matchedRanges;
-    unsigned numFieldsRequired = 0;
+    UnsignedArray matchedRanges;  // Contains field numbers - surely could be smaller than 4 bytes. Indexed by filter number. Could probably be a byte.
     bool eos = false;
-    IConstArrayOf<IFieldFilter> filters;
 };
 
 interface ISourceRowCursor
@@ -184,9 +174,9 @@ public:
     {
     }
 
-    KeySearcher(const RtlRecord & _info, const UnsignedArray &_sortOrder, RowFilter & _filter, ISourceRowCursor * _rows) : cursor(_info, _sortOrder, _filter), rows(_rows)
-    {
-    }
+//    KeySearcher(const RtlRecord & _info, const UnsignedArray &_sortOrder, RowFilter & _filter, ISourceRowCursor * _rows) : cursor(_info, _sortOrder, _filter), rows(_rows)
+//    {
+//    }
 
     void reset()
     {

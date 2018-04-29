@@ -1113,7 +1113,7 @@ public:
             else
                 break;  // MORE - this means we never use wilds in in-memory indexes - always leave to postfilter. Is that right?
         }
-        keySearcher.setown(new KeySearcher(_recInfo, index->sortFields, indexedFields, this));
+        keySearcher.setown(new KeySearcher(_recInfo, indexedFields, this));
         translator = translators->queryTranslator(0);  // Any one would do - we require all to match
 #ifdef BASED_POINTERS
         base = index->base;

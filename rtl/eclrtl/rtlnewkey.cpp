@@ -1688,6 +1688,7 @@ void RowFilter::createSegmentMonitors(IIndexReadContext *irc)
         irc->append(FFkeyed, LINK(&filters.item(i)));
 }
 
+/*
 void RowFilter::extractKeyFilter(const RtlRecord & record, IConstArrayOf<IFieldFilter> & keyFilters) const
 {
     if (!filters)
@@ -1713,31 +1714,7 @@ void RowFilter::extractKeyFilter(const RtlRecord & record, IConstArrayOf<IFieldF
             keyFilters.append(*createWildFieldFilter(field, *record.queryType(field)));
     }
 }
-
-void RowFilter::extractMemKeyFilter(const RtlRecord & record, const UnsignedArray &sortOrder, IConstArrayOf<IFieldFilter> & keyFilters) const
-{
-    if (!filters)
-        return;
-
-    // for in-memory index, we want filters in the same order as the sort fields, with wilds added
-    ForEachItemIn(idx, sortOrder)
-    {
-        unsigned sortField = sortOrder.item(idx);
-        bool needWild = true;
-        ForEachItemIn(fidx, filters)
-        {
-            const IFieldFilter &filter = filters.item(fidx);
-            if (filter.queryFieldIndex()==sortField)
-            {
-                keyFilters.append(OLINK(filter));
-                needWild = false;
-                break;
-            }
-        }
-        if (needWild)
-            keyFilters.append(*createWildFieldFilter(sortField, *record.queryType(sortField)));
-    }
-}
+*/
 
 const IFieldFilter *RowFilter::findFilter(unsigned fieldNum) const
 {
@@ -1795,7 +1772,7 @@ void RowFilter::remapField(unsigned filterIdx, unsigned newFieldNum)
 
 bool RowCursor::setRowForward(const byte * row)
 {
-    currentRow.setRow(row, numFieldsRequired);
+    currentRow.setRow(row, filter.getNumFieldsRequired());
 
     unsigned field = 0;
     //Now check which of the fields matches, and update matchedRanges to indicate
@@ -1825,7 +1802,7 @@ bool RowCursor::setRowForward(const byte * row)
     }
     */
 
-    for (; field < filters.ordinality(); field++)
+    for (; field < filter.numFilterFields(); field++)
     {
         const IFieldFilter & filter = queryFilter(field);
         //If the field is within a range return true and the range.  If outside the range return the next range.
@@ -1843,7 +1820,7 @@ bool RowCursor::setRowForward(const byte * row)
     }
 
     numMatched = field;
-    return numMatched == filters.ordinality();
+    return numMatched == filter.numFilterFields();
 }
 
 

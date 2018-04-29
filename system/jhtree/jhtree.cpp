@@ -401,6 +401,19 @@ public:
 
     void setKey(IKeyIndexBase * _key)
     {
+        // MORE - there's a problem with the ordering of segmonitor creation versus setKey versus KeyCursor creation
+        // During the course of a single index read, we may change the KeyManager (thus requiring a recreate of the segMonitors as the manager owns them),
+        // or we may reuse an existing KeyLevelManager for a new index part (and we will not recreate the segmonitors in that case).
+        // Sometimes we use deserialize rather than setkey. segmonitors have been created though...
+        // Keyed join is trickier - segmonitors are changed per row.
+        // So bottom line I think is that keyCursor cannot assume anything about segmonitors when it is constructed, and has to use the ones it is given for each query
+        // Really, segmonitors should be owned by the activity not the levelmanager, then would not need to recreate when changing manager (why do we change manager?)
+        // There are three tricky cases:
+        // - Sometimes first segmonitor not created until after keyCursor created. Could make it lazy, or use flag as currently coded to decide which to use
+        // - when stepping, we change the segmonitors to reflect the fixed part. MIGHT get away with this as done pre-creation with it but messy.
+        //   Better to store the fixed override in the KeyCursor and use existing segs, though messy for old code. Possibly the way to do new though, when coding it.
+        // - new filter code currently requires fieldFilters to be known at construction time. That won't work for keyed join, so will have to be refactored
+        // If I refactor the new filter code to just take a reference to a RowFilter (that I can modify), then most code will work.
         ::Release(keyCursor);
         keyCursor = NULL;
         key.clear();
@@ -414,6 +427,7 @@ public:
                 keyedSize = key->keyedSize();
             partitionFieldMask = key->getPartitionFieldMask();
             indexParts = key->numPartitions();
+            keyCursor = newFilters ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);  // MORE - IFFY! filters/segs are not generally set up yet (we could argue that they should be).
         }
     }
 
@@ -435,7 +449,7 @@ public:
 
     virtual void reset(bool crappyHack)
     {
-        if (key)
+        if (keyCursor)
         {
             if (!started)
             {
@@ -445,8 +459,6 @@ public:
             }
             if (!crappyHack)
             {
-                if (!keyCursor)
-                    keyCursor = newFilters ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);
                 keyCursor->reset();
             }
         }
@@ -551,10 +563,6 @@ public:
 
     virtual void deserializeCursorPos(MemoryBuffer &mb)
     {
-        if (newFilters)
-            keyCursor = key->getNewCursor(recInfo, &filters);  // MORE - this won't work, filters not yet created
-        else
-            keyCursor = key->getCursor(&segs);
         keyCursor->deserializeCursorPos(mb, stats);
     }
 
@@ -2819,7 +2827,6 @@ public:
         {
             started = true;
             segs.checkSize(keyedSize, "[merger]"); //PG: not sure what keyname to use here
-            // MORE - order is messed up. We deserialize before we have created the segmonitors, which messes up RowFilter case that likes to have filters already set up
         }
         if (!crappyHack)
         {
