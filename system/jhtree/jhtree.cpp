@@ -414,7 +414,6 @@ public:
                 keyedSize = key->keyedSize();
             partitionFieldMask = key->getPartitionFieldMask();
             indexParts = key->numPartitions();
-            keyCursor = newFilters ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);  // MORE - IFFY! filters/segs are not generally set up yet (we could argue that they should be).
         }
     }
 
@@ -436,7 +435,7 @@ public:
 
     virtual void reset(bool crappyHack)
     {
-        if (keyCursor)
+        if (key)
         {
             if (!started)
             {
@@ -446,6 +445,8 @@ public:
             }
             if (!crappyHack)
             {
+                if (!keyCursor)
+                    keyCursor = newFilters ? key->getNewCursor(recInfo, &filters) : key->getCursor(&segs);
                 keyCursor->reset();
             }
         }
@@ -459,12 +460,14 @@ public:
 
     virtual void append(IKeySegmentMonitor *segment) 
     { 
+        assertex(!newFilters);
         assertex(!started);
         segs.append(segment);
     }
 
     virtual void append(FFoption option, const IFieldFilter * filter)
     {
+        assertex(newFilters);
         filters.addFilter(*filter);
     }
 
@@ -548,6 +551,10 @@ public:
 
     virtual void deserializeCursorPos(MemoryBuffer &mb)
     {
+        if (newFilters)
+            keyCursor = key->getNewCursor(recInfo, &filters);  // MORE - this won't work, filters not yet created
+        else
+            keyCursor = key->getCursor(&segs);
         keyCursor->deserializeCursorPos(mb, stats);
     }
 
@@ -2812,6 +2819,7 @@ public:
         {
             started = true;
             segs.checkSize(keyedSize, "[merger]"); //PG: not sure what keyname to use here
+            // MORE - order is messed up. We deserialize before we have created the segmonitors, which messes up RowFilter case that likes to have filters already set up
         }
         if (!crappyHack)
         {
@@ -2938,7 +2946,10 @@ public:
             unsigned keyno;
             mb.read(keyno);
             keyNoArray.append(keyno);
-            keyCursor = keyset->queryPart(keyno)->getCursor(&segs);
+            if (newFilters)
+                keyCursor = keyset->queryPart(keyno)->getNewCursor(recInfo, &filters);
+            else
+                keyCursor = keyset->queryPart(keyno)->getCursor(&segs);
             keyCursor->deserializeCursorPos(mb, stats);
             cursorArray.append(*keyCursor);
             mergeHeapArray.append(i);
