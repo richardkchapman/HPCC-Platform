@@ -224,7 +224,7 @@ unsigned SegMonitorList::_lastRealSeg() const
         if (!seg)
             return 0;
         seg--;
-        if (!segMonitors.item(seg).isWild())
+        if (!segMonitors.item(seg).isWild()) // MORE - why not just remove them? Stepping/overrides?
             return seg;
     }
 }
@@ -2015,7 +2015,7 @@ CHTreeSourceRowCursor::~CHTreeSourceRowCursor()
     free(rowBuffer);
 }
 
-const byte * CHTreeSourceRowCursor::findNext(const RowCursor & current)
+const byte * CHTreeSourceRowCursor::findNext(const FilterState & current)
 {
     key.keySeeks++;
     unsigned lwm = 0;
@@ -2081,6 +2081,11 @@ const byte * CHTreeSourceRowCursor::findNext(const RowCursor & current)
         }
     }
     return nullptr;
+}
+
+const byte * CHTreeSourceRowCursor::findLast(const FilterState & current)
+{
+    UNIMPLEMENTED; // take code from findLE above
 }
 
 const byte * CHTreeSourceRowCursor::next()
@@ -2171,6 +2176,29 @@ bool CNewKeyCursor::lookup(bool exact, KeyStatsCollector &stats)
         return true;
     }
     return false;
+}
+
+unsigned __int64 CNewKeyCursor::getCount(KeyStatsCollector &stats)
+{
+    reset();
+    unsigned __int64 result = 0;
+    unsigned lseeks = 0;
+    for (;;)
+    {
+        if (searcher.next())
+        {
+            unsigned __int64 locount = getSequence();
+            searcher.findGE();
+            lseeks++;
+            result += getSequence()-locount+1;
+          //  if (!nextRange(lastFullFilter))
+            //    break;
+        }
+        else
+            break;
+    }
+    stats.noteSeeks(lseeks, 0, 0);
+    return result;
 }
 
 

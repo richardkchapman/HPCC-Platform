@@ -1179,7 +1179,7 @@ public:
         eof = false;
     }
 
-    virtual const byte *findNext(const RowCursor & current)
+    virtual const byte *findNext(const FilterState & current)
     {
         size_t high = numPtrs;
         size_t low = cur+1;
@@ -1203,6 +1203,8 @@ public:
         }
         return (const byte *) GETROW(cur);
     }
+    //Find the last row that is in the current match region
+    virtual const byte * findLast(const FilterState & current) { UNIMPLEMENTED; }
 
     virtual const byte * next()
     {

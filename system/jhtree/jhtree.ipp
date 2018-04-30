@@ -249,13 +249,14 @@ class CHTreeSourceRowCursor : public ISourceRowCursor
 public:
     CHTreeSourceRowCursor(CKeyIndex &_key, const RtlRecord &recInfo);
     ~CHTreeSourceRowCursor();
-    virtual const byte * findNext(const RowCursor & current) override;
+    virtual const byte * findNext(const FilterState & current) override;
+    virtual const byte * findLast(const FilterState & current) override;
     virtual const byte * next() override;
     virtual void reset() override;
 public:
     CKeyIndex &key;
 protected:
-    inline int compareRow(unsigned idx, const RowCursor & current)
+    inline int compareRow(unsigned idx, const FilterState & current)
     {
         rowInfo.setRow(node->queryKeyAt(idx, rowBuffer), numFieldsRequired);
         int ret = current.compareNext(rowInfo);
@@ -297,7 +298,7 @@ public:
     virtual bool skipTo(const void *_seek, size32_t seekOffset, size32_t seeklen) override { UNIMPLEMENTED; };
     virtual IKeyCursor *fixSortSegs(unsigned sortFieldOffset) override { UNIMPLEMENTED; };
 
-    virtual unsigned __int64 getCount(KeyStatsCollector &stats) override { UNIMPLEMENTED; };
+    virtual unsigned __int64 getCount(KeyStatsCollector &stats) override;
     virtual unsigned __int64 checkCount(unsigned __int64 max, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
     virtual unsigned __int64 getCurrentRangeCount(unsigned groupSegCount, KeyStatsCollector &stats) override { UNIMPLEMENTED; };
     virtual bool nextRange(unsigned groupSegCount) override { UNIMPLEMENTED; };

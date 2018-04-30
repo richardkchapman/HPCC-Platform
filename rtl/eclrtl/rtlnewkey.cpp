@@ -1770,7 +1770,7 @@ void RowFilter::remapField(unsigned filterIdx, unsigned newFieldNum)
 
 //---------------------------------------------------------------------------------------------------------------------
 
-bool RowCursor::setRowForward(const byte * row)
+bool FilterState::setRowForward(const byte * row)
 {
     currentRow.setRow(row, filter.getNumFieldsRequired());
 
@@ -1825,7 +1825,7 @@ bool RowCursor::setRowForward(const byte * row)
 
 
 //The filter for field "field" has been exhausted, work out which value should be compared next
-bool RowCursor::findNextRange(unsigned field)
+bool FilterState::findNextRange(unsigned field)
 {
     unsigned matchRange;
     for (;;)
@@ -1840,7 +1840,8 @@ bool RowCursor::findNextRange(unsigned field)
         matchRange = matchedRanges.item(field);
         const IFieldFilter & filter = queryFilter(field);
         //If the field value is less than the upper bound of the current range, search for the next value above
-        //the current value
+        //the current value. Need to search forwards to a value where prior fields match, but this field has a value > current value
+        // equivalent to increment(seg) in old code.
         if (filter.compareHighest(currentRow, matchRange) < 0)
         {
             numMatched = field;
@@ -1896,7 +1897,7 @@ public:
     {
     }
 
-    virtual const byte * findNext(const RowCursor & search) override
+    virtual const byte * findNext(const FilterState & search) override
     {
         // MORE - why does ccdkey not use this?
         size_t numRows = source.numRows();
@@ -1935,6 +1936,11 @@ public:
         if (cur == source.numRows())
             return nullptr;
         return source.queryRow(cur);
+    }
+
+    virtual const byte * findLast(const FilterState & current)
+    {
+        UNIMPLEMENTED;
     }
 
     virtual void reset() override

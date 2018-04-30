@@ -1805,7 +1805,7 @@ struct IHThorKeyedDistributeArg : public IHThorArg
     virtual ICompare * queryCompareRowKey() = 0;
     virtual unsigned getFormatCrc() = 0;
     virtual bool getIndexLayout(size32_t & _retLen, void * & _retData) = 0;
-inline bool hasNewSegmentMonitors() { return (getFlags() & KDFnewfilters) != 0; }
+    inline bool hasNewSegmentMonitors() { return (getFlags() & KDFnewfilters) != 0; }
 };
 
 
