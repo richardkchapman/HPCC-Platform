@@ -174,10 +174,6 @@ public:
     {
     }
 
-//    KeySearcher(const RtlRecord & _info, const UnsignedArray &_sortOrder, RowFilter & _filter, ISourceRowCursor * _rows) : cursor(_info, _sortOrder, _filter), rows(_rows)
-//    {
-//    }
-
     void reset()
     {
         rows->reset();
