@@ -964,7 +964,7 @@ public:
             theFunctionContext = new V8JavascriptEmbedFunctionContext;
             threadHookChain = addThreadTermFunc(releaseContext);
         }
-        theFunctionContext->setActivityContext(activityCtx);
+        theFunctionContext->setActivityContext(activityContext);
         return LINK(theFunctionContext);
     }
     virtual IEmbedServiceContext *createServiceContext(const char *service, unsigned flags, const char *options) override
