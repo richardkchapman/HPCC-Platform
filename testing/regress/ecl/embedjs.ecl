@@ -108,18 +108,19 @@ END;
 
 m(unsigned numRows, boolean isLocal = false, unsigned numParallel = 0) := MODULE
   EXPORT streamed dataset(r) myDataset(unsigned numRows = numRows) := EMBED(javascript : activity, local(isLocal), parallel(numParallel))
-    numSlaves = __activity__.numSlaves;
-    numParallel = numSlaves * __activity__.numStrands;
-    rowsPerPart = (numRows + numParallel - 1) / numParallel;
-    thisSlave = __activity__.slave;
-    thisIndex = thisSlave * __activity__.numStrands + __activity__.strand;
-    first = thisIndex * rowsPerPart;
-    last = first + rowsPerPart;
+    var numSlaves = __activity__.numSlaves;
+    var numParallel = numSlaves * __activity__.numStrands;
+    var rowsPerPart = (numRows + numParallel - 1) / numParallel;
+    var thisSlave = __activity__.slave;
+    var thisIndex = thisSlave * __activity__.numStrands + __activity__.strand;
+    var first = thisIndex * rowsPerPart;
+    var last = first + rowsPerPart;
   
-    names = [ "Gavin", "Richard", "John", "Bart" ];
-    ds = { };
+    var names = [ "Gavin", "Richard", "John", "Bart" ];
+    var ds = [ ];
     while (first < last)
     {
+        ds.append( { id : first, name: names[first % 4] });
         first += 1;
     }
     ds;
