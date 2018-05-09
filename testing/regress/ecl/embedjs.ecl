@@ -120,7 +120,7 @@ m(unsigned numRows, boolean isLocal = false, unsigned numParallel = 0) := MODULE
     var ds = [ ];
     while (first < last)
     {
-        ds.append( { id : first, name: names[first % 4] });
+        ds.push( { id : first, name: names[first % 4] });
         first += 1;
     }
     ds;
