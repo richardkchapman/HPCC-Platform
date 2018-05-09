@@ -909,7 +909,7 @@ public:
             jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
             jsActivityCtx->Set(v8::String::New("numStrands"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
             jsActivityCtx->Set(v8::String::New("slaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
-            context->Global()->Set(v8::String::New(__activity__), jsActivityCtx);
+            context->Global()->Set(v8::String::New("__activity__"), jsActivityCtx);
         }
         result = v8::Persistent<v8::Value>::New(script->Run());
         v8::Handle<v8::Value> exception = tryCatch.Exception();
