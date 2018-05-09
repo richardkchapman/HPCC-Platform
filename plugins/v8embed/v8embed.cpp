@@ -904,7 +904,7 @@ public:
         if (activityCtx)
         {
             v8::Handle<v8::Object> jsActivityCtx = v8::Object::New();
-            jsActivityCtx->Set(v8::String::New("isLocal"), v8::Integer::NewFromBoool(activityCtx->isLocal()));
+            jsActivityCtx->Set(v8::String::New("isLocal"), v8::Boolean::New(activityCtx->isLocal()));
             jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(activityCtx->numSlaves()));
             jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(activityCtx->numSlaves()));
             jsActivityCtx->Set(v8::String::New("numStrands"), v8::Integer::NewFromUnsigned(activityCtx->numSlaves()));
@@ -964,7 +964,7 @@ public:
             theFunctionContext = new V8JavascriptEmbedFunctionContext;
             threadHookChain = addThreadTermFunc(releaseContext);
         }
-        theFunctionCtx->setActivityContext(activityCtx);
+        theFunctionContext->setActivityContext(activityCtx);
         return LINK(theFunctionContext);
     }
     virtual IEmbedServiceContext *createServiceContext(const char *service, unsigned flags, const char *options) override
