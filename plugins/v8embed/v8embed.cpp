@@ -904,11 +904,11 @@ public:
         if (activityCtx)
         {
             v8::Handle<v8::Object> jsActivityCtx = v8::Object::New();
-            jsActivityCtx->Set(v8::String::New("isLocal"), v8::Integer::NewFromBoool(ctx->isLocal()));
-            jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
-            jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
-            jsActivityCtx->Set(v8::String::New("numStrands"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
-            jsActivityCtx->Set(v8::String::New("slaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
+            jsActivityCtx->Set(v8::String::New("isLocal"), v8::Integer::NewFromBoool(activityCtx->isLocal()));
+            jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(activityCtx->numSlaves()));
+            jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(activityCtx->numSlaves()));
+            jsActivityCtx->Set(v8::String::New("numStrands"), v8::Integer::NewFromUnsigned(activityCtx->numSlaves()));
+            jsActivityCtx->Set(v8::String::New("slaves"), v8::Integer::NewFromUnsigned(activityCtx->numSlaves()));
             context->Global()->Set(v8::String::New("__activity__"), jsActivityCtx);
         }
         result = v8::Persistent<v8::Value>::New(script->Run());
