@@ -101,6 +101,34 @@ val[2] = t;
 val;
 ENDEMBED;
 
+r := RECORD
+    UNSIGNED id;
+    STRING name;
+END;
+
+m(unsigned numRows, boolean isLocal = false, unsigned numParallel = 0) := MODULE
+  EXPORT streamed dataset(r) myDataset(unsigned numRows = numRows) := EMBED(javascript : activity, local(isLocal), parallel(numParallel))
+    numSlaves = __activity__.numSlaves;
+    numParallel = numSlaves * __activity__.numStrands;
+    rowsPerPart = (numRows + numParallel - 1) / numParallel;
+    thisSlave = __activity__.slave;
+    thisIndex = thisSlave * __activity__.numStrands + __activity__.strand;
+    first = thisIndex * rowsPerPart;
+    last = first + rowsPerPart;
+  
+    names = [ "Gavin", "Richard", "John", "Bart" ];
+    ds = { };
+    while (first < last)
+    {
+        first += 1;
+    }
+    return ds;
+  ENDEMBED;
+END;
+
+
+
+
 add1(10);
 add2('Hello');
 add3('World');
@@ -136,3 +164,24 @@ SUM(NOFOLD(s1b + s2b), a);
 s1c :=DATASET(250000, TRANSFORM({ integer a }, SELF.a := (integer) ((STRING) COUNTER + '1')));
 s2c :=DATASET(250000, TRANSFORM({ integer a }, SELF.a := (integer) ((STRING)(COUNTER/2) + '1')));
 SUM(NOFOLD(s1c + s2c), a);
+
+// Test embed activity
+
+//Global activity - fixed number of rows
+output(m(10).myDataset());
+//Local version of the activity 
+output(count(m(10, isLocal := true).myDataset()) = CLUSTERSIZE * 10);
+
+//Check that stranding (if implemented) still generates unique records
+output(COUNT(DEDUP(m(1000, numParallel := 5).myDataset(), id, ALL)));
+
+r2 := RECORD
+    UNSIGNED id;
+    DATASET(r) child;
+END;
+
+//Check that the activity can also be executed in a child query
+output(DATASET(10, TRANSFORM(r2, SELF.id := COUNTER; SELF.child := m(COUNTER).myDataset())));
+
+//Test stranding inside a child query
+output(DATASET(10, TRANSFORM(r2, SELF.id := COUNTER; SELF.child := m(COUNTER, NumParallel := 3).myDataset())));
