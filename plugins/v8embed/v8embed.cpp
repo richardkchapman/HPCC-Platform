@@ -454,6 +454,10 @@ public:
         isolate->Exit();
         isolate->Dispose();
     }
+    void setActivityContext(const IThorActivityContext *_activityCtx)
+    {
+        activityCtx = _activityCtx;
+    }
     virtual IInterface *bindParamWriter(IInterface *esdl, const char *esdlservice, const char *esdltype, const char *name)
     {
         return NULL;
@@ -897,6 +901,16 @@ public:
         assertex (!script.IsEmpty());
         v8::HandleScope handle_scope;
         v8::TryCatch tryCatch;
+        if (activityCtx)
+        {
+            v8::Handle<v8::Object> jsActivityCtx = v8::Object::New();
+            jsActivityCtx->Set(v8::String::New("isLocal"), v8::Integer::NewFromBoool(ctx->isLocal()));
+            jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
+            jsActivityCtx->Set(v8::String::New("numSlaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
+            jsActivityCtx->Set(v8::String::New("numStrands"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
+            jsActivityCtx->Set(v8::String::New("slaves"), v8::Integer::NewFromUnsigned(ctx->numSlaves()));
+            context->Global()->Set(v8::String::New(__activity__), jsActivityCtx);
+        }
         result = v8::Persistent<v8::Value>::New(script->Run());
         v8::Handle<v8::Value> exception = tryCatch.Exception();
         if (!exception.IsEmpty())
@@ -907,6 +921,7 @@ public:
     }
 
 protected:
+    const IThorActivityContext *activityCtx = nullptr;
     v8::Isolate *isolate;
     v8::Persistent<v8::Context> context;
     v8::Persistent<v8::Script> script;
@@ -949,6 +964,7 @@ public:
             theFunctionContext = new V8JavascriptEmbedFunctionContext;
             threadHookChain = addThreadTermFunc(releaseContext);
         }
+        theFunctionCtx->setActivityContext(activityCtx);
         return LINK(theFunctionContext);
     }
     virtual IEmbedServiceContext *createServiceContext(const char *service, unsigned flags, const char *options) override
