@@ -27,6 +27,7 @@
 #include "junicode.hpp"
 #include "eclrtl.hpp"
 #include "rtlbcd.hpp"
+#include "eclhelper.hpp"
 #include "eclrtl_imp.hpp"
 #ifdef _USE_ICU
 #include "unicode/uchar.h"
@@ -5802,6 +5803,21 @@ void rtlSubstituteEmbeddedScript(size32_t &__lenResult, char * &__result, size32
     __lenResult = result.lengthUtf8();
     __result = result.detach();
 }
+
+void rtlSubstituteActivityContext(StringBuffer &result, const IThorActivityContext *ctx, size32_t scriptChars, const char *script)
+{
+    result.append(rtlUtf8Size(scriptChars, script), script);
+    if (ctx)
+    {
+        char buf[20];
+        result.replaceString("__LOCAL__", ctx->isLocal() ? "TRUE" : "FALSE");
+        result.replaceString("__NUMSLAVES__", itoa(ctx->numSlaves(), buf, 10));
+        result.replaceString("__NUMSTRANDS__", itoa(ctx->numStrands(), buf, 10));
+        result.replaceString("__SLAVE__", itoa(ctx->querySlave(), buf, 10));
+        result.replaceString("__STRAND__", itoa(ctx->queryStrand(), buf, 10));
+    }
+}
+
 
 //---------------------------------------------------------------------------
 

@@ -80,6 +80,10 @@ dataset(childrec) testMySQLDS2() := EMBED(mysql : server(myServer),user(myUser),
   SELECT [] from tbl1 where u1='Straße';
 ENDEMBED;
 
+streamed dataset(childrec) testMySQLDS2a() := EMBED(mysql : server(myServer),user(myUser),database(myDB),PROJECTED('[]'), activity, local(true))
+  SELECT [] from tbl1 where (NOT __LOCAL__) OR (__NUMSLAVES__<2) OR (value = __SLAVE__+1);
+ENDEMBED;
+
 ds3query := u'SELECT ** FROM tbl1;' : STORED('ds3query');
 
 dataset(childrec) testMySQLDS3() := EMBED(mysql, ds3query : server(myServer),user(myUser),database(myDB),PROJECTED(u'**'));
@@ -165,6 +169,7 @@ sequential (
   PARALLEL (
   OUTPUT(testMySQLDS()),
   COUNT(testMySQLDS2()),
+  OUTPUT(testMySQLDS2a()),
   OUTPUT(testMySQLDS3(), {name}),
   OUTPUT(testMySQLRow().name),
   OUTPUT(testMySQLParms('name1', 1, true, 1.2, 3.4, D'aa55aa55', U'Straße', U'Straße')),

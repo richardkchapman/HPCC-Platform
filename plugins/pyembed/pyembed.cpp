@@ -1292,6 +1292,18 @@ public:
         PyEval_RestoreThread(sharedCtx->threadState);
     }
 
+    virtual void setActivityOptions(const IThorActivityContext *ctx)
+    {
+        OwnedPyObject activityContext = PyDict_New();
+        PyDict_SetItemString(activityContext, "isLocal", ctx->isLocal() ? Py_True : Py_False);
+        PyDict_SetItemString(activityContext, "numSlaves", PyInt_FromLong(ctx->numSlaves()));
+        PyDict_SetItemString(activityContext, "numStrands", PyInt_FromLong(ctx->numStrands()));
+        PyDict_SetItemString(activityContext, "slave", PyInt_FromLong(ctx->querySlave()));
+        PyDict_SetItemString(activityContext, "strand", PyInt_FromLong(ctx->queryStrand()));
+        PyDict_SetItemString(locals, "__activity__", activityContext.getClear());
+        checkPythonError();
+    }
+
     void setScopes(ICodeContext *codeCtx, const char *_options)
     {
         locals.setown(PyDict_New());
@@ -1614,6 +1626,12 @@ public:
     {
         script.setown(sharedCtx->compileEmbeddedScript(lenChars, utf, argstring));
     }
+    virtual void setActivityOptions(const IThorActivityContext *ctx) override
+    {
+        Python27EmbedContextBase::setActivityOptions(ctx);
+        argstring.append("__activity__");
+    }
+
 
     virtual void callFunction()
     {
@@ -1694,11 +1712,11 @@ private:
 class Python27EmbedContext : public CInterfaceOf<IEmbedContext>
 {
 public:
-    virtual IEmbedFunctionContext *createFunctionContext(unsigned flags, const char *options)
+    virtual IEmbedFunctionContext *createFunctionContext(unsigned flags, const char *options) override
     {
-        return createFunctionContextEx(NULL, flags, options);
+        return createFunctionContextEx(nullptr, nullptr, flags, options);
     }
-    virtual IEmbedFunctionContext *createFunctionContextEx(ICodeContext * ctx, unsigned flags, const char *options)
+    virtual IEmbedFunctionContext *createFunctionContextEx(ICodeContext * ctx, const IThorActivityContext *activityCtx, unsigned flags, const char *options) override
     {
         checkThreadContext();
         Owned<Python27EmbedContextBase> ret;
@@ -1707,9 +1725,11 @@ public:
         else
             ret.setown(new Python27EmbedScriptContext(threadContext));
         ret->setScopes(ctx, options);
+        if (activityCtx)
+            ret->setActivityOptions(activityCtx);
         return ret.getClear();
     }
-    virtual IEmbedServiceContext *createServiceContext(const char *service, unsigned flags, const char *options)
+    virtual IEmbedServiceContext *createServiceContext(const char *service, unsigned flags, const char *options) override
     {
         throwUnexpected();
     }
