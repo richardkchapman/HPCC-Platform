@@ -122,7 +122,7 @@ m(unsigned numRows, boolean isLocal = false, unsigned numParallel = 0) := MODULE
     {
         first += 1;
     }
-    return ds;
+    ds;
   ENDEMBED;
 END;
 
