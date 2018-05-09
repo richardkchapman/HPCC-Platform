@@ -127,9 +127,6 @@ m(unsigned numRows, boolean isLocal = false, unsigned numParallel = 0) := MODULE
   ENDEMBED;
 END;
 
-
-/*
-
 add1(10);
 add2('Hello');
 add3('World');
@@ -165,7 +162,7 @@ SUM(NOFOLD(s1b + s2b), a);
 s1c :=DATASET(250000, TRANSFORM({ integer a }, SELF.a := (integer) ((STRING) COUNTER + '1')));
 s2c :=DATASET(250000, TRANSFORM({ integer a }, SELF.a := (integer) ((STRING)(COUNTER/2) + '1')));
 SUM(NOFOLD(s1c + s2c), a);
-*/
+
 // Test embed activity
 
 //Global activity - fixed number of rows
