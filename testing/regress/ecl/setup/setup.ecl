@@ -90,7 +90,9 @@ SEQUENTIAL(
              buildindex(Files.DG_NormalIndexFileEvens,overwrite,SET('_nodeSize', 512)),
              buildindex(Files.DG_TransIndexFile,overwrite),
              buildindex(Files.DG_TransIndexFileEvens,overwrite),
-             buildindex(Files.DG_KeyedIndexFile,overwrite))
+             buildindex(Files.DG_KeyedIndexFile,overwrite),
+             buildindex(Files.DG_KeyedIndexFileDelta,overwrite),
+             )
     );
 
     fileServices.AddFileRelationship( __nameof__(Files.DG_FlatFile), __nameof__(Files.DG_NormalIndexFile), '', '', 'view', '1:1', false);

@@ -27,6 +27,7 @@ useTranslation := #IFDEFINED(root.useTranslation, false);
 
 //--- end of version configuration ---
 
+#option ('layoutTranslation', useTranslation);
 #onwarning (4126, ignore);
 
 import $.setup;
