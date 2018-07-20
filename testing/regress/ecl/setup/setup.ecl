@@ -92,7 +92,15 @@ SEQUENTIAL(
              buildindex(Files.DG_TransIndexFileEvens,overwrite),
              buildindex(Files.DG_KeyedIndexFile,overwrite),
              buildindex(Files.DG_KeyedIndexFileDelta,overwrite),
-             )
+             ),
+    ORDERED(
+        FileServices.DeleteSuperFile(Files.DG_DupKeyedIndexSuperFileName),
+        FileServices.CreateSuperFile(Files.DG_DupKeyedIndexSuperFileName),
+        FileServices.StartSuperFileTransaction(),
+        FileServices.AddSuperFile(Files.DG_DupKeyedIndexSuperFileName,__nameof__(Files.DG_KeyedIndexFile)),
+        FileServices.AddSuperFile(Files.DG_DupKeyedIndexSuperFileName,__nameof__(Files.DG_KeyedIndexFileDelta)),
+        FileServices.FinishSuperFileTransaction(),
+    )
     );
 
     fileServices.AddFileRelationship( __nameof__(Files.DG_FlatFile), __nameof__(Files.DG_NormalIndexFile), '', '', 'view', '1:1', false);

@@ -23106,7 +23106,7 @@ public:
                                     }
                                     else
                                     {
-                                        if (seekGEOffset && (keySet->length() > 1))
+                                        if (seekGEOffset, false) // This fixes the ordering for superkeys
                                             remote.getMem(1, fileNo, 0);
                                         else if (processSingleKey(thisKey, translators->queryTranslator(fileNo)))
                                             break;
