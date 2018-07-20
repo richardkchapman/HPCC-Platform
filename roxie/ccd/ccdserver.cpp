@@ -23057,6 +23057,7 @@ public:
                             if (seekGEOffset && !thisKey->isTopLevelKey())
                             {
                                 tlk.setown(createSingleKeyMerger(indexHelper.queryDiskRecordSize()->queryRecordAccessor(true), thisKey, seekGEOffset, this, indexHelper.hasNewSegmentMonitors()));
+                                tlk->setLayoutTranslator(translators->queryTranslator(fileNo));
                             }
                             else
                             {
@@ -23105,7 +23106,9 @@ public:
                                     }
                                     else
                                     {
-                                        if (processSingleKey(thisKey, translators->queryTranslator(fileNo)))
+                                        if (seekGEOffset && (keySet->length() > 1))
+                                            remote.getMem(1, fileNo, 0);
+                                        else if (processSingleKey(thisKey, translators->queryTranslator(fileNo)))
                                             break;
                                     }
                                 }
