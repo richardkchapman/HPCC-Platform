@@ -23015,6 +23015,7 @@ public:
     {
         try
         {
+            bool noLocal = factory->queryQueryFactory().queryOptions().disableLocalOptimizations || seekGEOffset > 0;
             if (indexHelper.canMatchAny())
             {
                 if (variableInfoPending)
@@ -23025,7 +23026,6 @@ public:
                     // MORE - this recreates the segmonitors per part but not per fileno (which is a little backwards).
                     // With soft layout support may need to recreate per fileno too (i.e. different keys in a superkey have different layout) but never per partno
                     // However order is probably better to iterate fileno's inside partnos 
-                    // MORE - also not properly supporting STEPPED I fear.
                     // A superkey that mixes single and multipart or tlk and roroot keys might be hard
                     for (unsigned partNo = 0; partNo < keySet->length(); partNo++)
                     {
@@ -23106,8 +23106,12 @@ public:
                                     }
                                     else
                                     {
-                                        if (seekGEOffset, false) // This fixes the ordering for superkeys
-                                            remote.getMem(1, fileNo, 0);
+                                        // Single - part key. We process locally unless smart-stepping is involved, in which case we need to ensure that
+                                        // we do the proper two-stage merge.
+                                        // Unfortunately processSingleKey will not use the merger we carefully set up before,
+                                        // so we disable the local processing in that case
+                                        if (noLocal)
+                                            remote.getMem(1, fileNo, 0);  // 1 because it's a single part key
                                         else if (processSingleKey(thisKey, translators->queryTranslator(fileNo)))
                                             break;
                                     }
