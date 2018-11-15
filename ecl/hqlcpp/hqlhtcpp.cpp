@@ -14587,6 +14587,26 @@ ABoundActivity * HqlCppTranslator::doBuildActivityDistribute(BuildCtx & ctx, IHq
 
         return instance->getBoundActivity();
     }
+    else if (cond->isBoolean())
+    {
+        //Generate the instance definition for a DISTRIBUTE, ALL/SET...
+        Owned<ActivityInstance> instance = new ActivityInstance(*this, ctx, TAKsetdistribute, expr, "SetDistribute");
+        buildActivityFramework(instance);
+        buildInstancePrefix(instance);
+        doBuildBoolFunction(instance->startctx, "include", cond); // Come back to this
+
+        StringBuffer flags;
+        if (matchesBoolean(cond, true))
+            flags.append("|SDFisall");
+        if (flags.length())
+            doBuildUnsignedFunction(instance->classctx, "getFlags", flags.str()+1);
+
+        buildInstanceSuffix(instance);
+        buildConnectInputOutput(ctx, instance, boundDataset, 0, 0);
+
+        return instance->getBoundActivity();
+
+    }
     else
     {
         //Now generate the instance definition...

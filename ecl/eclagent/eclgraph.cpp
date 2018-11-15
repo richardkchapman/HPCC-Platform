@@ -223,6 +223,8 @@ static IHThorActivity * createActivity(IAgentContext & agent, unsigned activityI
     case TAKpull:
     case TAKsplit:
         throwUnexpected();  // Code generator should have removed or transformed
+    case TAKsetdistribute:
+        UNIMPLEMENTED;
     case TAKchildnormalize:
         return createChildNormalizeActivity(agent, activityId, subgraphId, (IHThorChildNormalizeArg &)arg, kind);
     case TAKchildaggregate:

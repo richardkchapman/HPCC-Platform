@@ -89,7 +89,7 @@ class CDistributorBase : implements IHashDistributor, implements IExceptionHandl
     Semaphore distribDoneSem, localFinishedSem;
     ICompare *iCompare, *keepBestCompare;
     size32_t bucketSendSize;
-    bool doDedup, allowSpill, connected, selfstopped;
+    bool doDedup, allowSpill, connected, selfstopped, isall;
     Owned<IException> sendException, recvException;
     IStopInput *istop;
     size32_t fixedEstSize;
@@ -816,23 +816,55 @@ protected:
                     const void *row = input->ungroupedNextRow();
                     if (!row)
                         break;
-                    unsigned dest = owner.ihash->hash(row)%owner.numnodes;
-                    CTarget *target = targets.item(dest);
-                    if (target->getSenderFinished())
+                    if (owner.isall)
+                    {
+                        bool sent = false;
+                        for (unsigned dest = 0; dest < owner.numnodes; dest++)
+                        {
+                            CTarget *target = targets.item(dest);
+                            if (!target->getSenderFinished())
+                            {
+                                CSendBucket *bucket = target->queryBucketCreate();
+                                LinkThorRow(row);
+                                size32_t rs = bucket->add(row);
+                                if (!sent)
+                                {
+                                    sent = true;
+                                    totalSent++;
+                                }
+                                {
+                                    SpinBlock b(totalSzLock);
+                                    totalSz += rs;
+                                }
+                                if (bucket->querySize() >= owner.bucketSendSize)
+                                {
+                                    HDSendPrintLog3("adding new bucket: %d, size = %d", bucket->queryDestination(), bucket->querySize());
+                                    add(target->getBucketClear());
+                                }
+                            }
+                        }
                         ReleaseThorRow(row);
+                    }
                     else
                     {
-                        CSendBucket *bucket = target->queryBucketCreate();
-                        size32_t rs = bucket->add(row);
-                        totalSent++;
+                        unsigned dest = owner.ihash->hash(row)%owner.numnodes;
+                        CTarget *target = targets.item(dest);
+                        if (target->getSenderFinished())
+                            ReleaseThorRow(row);
+                        else
                         {
-                            SpinBlock b(totalSzLock);
-                            totalSz += rs;
-                        }
-                        if (bucket->querySize() >= owner.bucketSendSize)
-                        {
-                            HDSendPrintLog3("adding new bucket: %d, size = %d", bucket->queryDestination(), bucket->querySize());
-                            add(target->getBucketClear());
+                            CSendBucket *bucket = target->queryBucketCreate();
+                            size32_t rs = bucket->add(row);
+                            totalSent++;
+                            {
+                                SpinBlock b(totalSzLock);
+                                totalSz += rs;
+                            }
+                            if (bucket->querySize() >= owner.bucketSendSize)
+                            {
+                                HDSendPrintLog3("adding new bucket: %d, size = %d", bucket->queryDestination(), bucket->querySize());
+                                add(target->getBucketClear());
+                            }
                         }
                     }
                     checkSendersFinished(); // clears out defunct target buckets if any have stopped
@@ -1001,11 +1033,12 @@ protected:
 public:
     IMPLEMENT_IINTERFACE_USING(CInterface);
 
-    CDistributorBase(CActivityBase *_activity, bool _doDedup, IStopInput *_istop, const char *_id)
+    CDistributorBase(CActivityBase *_activity, bool _doDedup, bool _isall, IStopInput *_istop, const char *_id)
         : activity(_activity), recvthread(this), sendthread(this), sender(*this), id(_id)
     {
         aborted = connected = false;
         doDedup = _doDedup;
+        isall = _isall;
         self = activity->queryJobChannel().queryMyRank() - 1;
         numnodes = activity->queryJob().querySlaves();
         iCompare = NULL;
@@ -1386,8 +1419,8 @@ class CRowDistributor: public CDistributorBase
     ICommunicator &comm;
     bool stopping;
 public:
-    CRowDistributor(CActivityBase *activity, ICommunicator &_comm, mptag_t _tag, bool doDedup, IStopInput *istop, const char *id)
-        : CDistributorBase(activity, doDedup, istop, id), comm(_comm), tag(_tag)
+    CRowDistributor(CActivityBase *activity, ICommunicator &_comm, mptag_t _tag, bool doDedup, bool isall, IStopInput *istop, const char *id)
+        : CDistributorBase(activity, doDedup, isall, istop, id), comm(_comm), tag(_tag)
     {
         stopping = false;
     }
@@ -1653,7 +1686,7 @@ class CRowPullDistributor: public CDistributorBase
     }
 public:
     CRowPullDistributor(CActivityBase *activity, ICommunicator &_comm, mptag_t _tag, bool doDedup, IStopInput *istop, const char *id)
-        : CDistributorBase(activity, doDedup, istop, id), comm(_comm), tag(_tag)
+        : CDistributorBase(activity, doDedup, false, istop, id), comm(_comm), tag(_tag)
     {
         pull = true;
         targetWriterLimit = 1; // >1 target writer can cause packets to be received out of order
@@ -1947,9 +1980,9 @@ public:
 //==================================================================================================
 
 
-IHashDistributor *createHashDistributor(CActivityBase *activity, ICommunicator &comm, mptag_t tag, bool doDedup, IStopInput *istop, const char *id)
+IHashDistributor *createHashDistributor(CActivityBase *activity, ICommunicator &comm, mptag_t tag, bool doDedup, bool isall, IStopInput *istop, const char *id)
 {
-    return new CRowDistributor(activity, comm, tag, doDedup, istop, id);
+    return new CRowDistributor(activity, comm, tag, doDedup, isall, istop, id);
 }
 
 IHashDistributor *createPullHashDistributor(CActivityBase *activity, ICommunicator &comm, mptag_t tag, bool doDedup, IStopInput *istop, const char *id=NULL)
@@ -1984,6 +2017,7 @@ protected:
     ICompare *mergecmp = nullptr;     // if non-null is merge distribute
     bool eofin = false;
     bool setupDist = true;
+    bool isall = false;
 public:
     HashDistributeSlaveBase(CGraphElementBase *_container)
         : CSlaveActivity(_container)
@@ -2008,7 +2042,7 @@ public:
         if (mergecmp)
             distributor = createPullHashDistributor(this, queryJobChannel().queryJobComm(), mptag, false, this);
         else
-            distributor = createHashDistributor(this, queryJobChannel().queryJobComm(), mptag, false, this);
+            distributor = createHashDistributor(this, queryJobChannel().queryJobComm(), mptag, false, isall, this);
     }
     void stopInput()
     {
@@ -2093,6 +2127,22 @@ public:
     {
         IHThorHashDistributeArg *distribargs = (IHThorHashDistributeArg *)queryHelper();
         ihash = distribargs->queryHash();
+    }
+};
+
+//===========================================================================
+
+class SetDistributeSlaveActivity : public HashDistributeSlaveBase
+{
+    typedef HashDistributeSlaveBase PARENT;
+public:
+    SetDistributeSlaveActivity(CGraphElementBase *container) : PARENT(container)
+    {
+        IHThorSetDistributeArg *distribargs = (IHThorSetDistributeArg *)queryHelper();
+        if (!distribargs->isAll())
+            UNIMPLEMENTED;
+        isall = true;
+        ihash = nullptr;
     }
 };
 
@@ -3661,7 +3711,7 @@ public:
     {
         HashDedupSlaveActivityBase::init(data, slaveData);
         mptag = container.queryJobChannel().deserializeMPTag(data);
-        distributor = createHashDistributor(this, queryJobChannel().queryJobComm(), mptag, true, this);
+        distributor = createHashDistributor(this, queryJobChannel().queryJobComm(), mptag, true, false, this);
     }
     virtual void start() override
     {
@@ -3774,7 +3824,7 @@ public:
         ICompare *icompareL = joinargs->queryCompareLeft();
         ICompare *icompareR = joinargs->queryCompareRight();
         if (!lhsDistributor)
-            lhsDistributor.setown(createHashDistributor(this, queryJobChannel().queryJobComm(), mptag, false, this, "LHS"));
+            lhsDistributor.setown(createHashDistributor(this, queryJobChannel().queryJobComm(), mptag, false, false, this, "LHS"));
         Owned<IRowStream> reader = lhsDistributor->connect(queryRowInterfaces(inL), leftInputStream, ihashL, icompareL, nullptr);
         Owned<IThorRowLoader> loaderL = createThorRowLoader(*this, ::queryRowInterfaces(inL), icompareL, stableSort_earlyAlloc, rc_allDisk, SPILL_PRIORITY_HASHJOIN);
         loaderL->setTracingPrefix("Join left");
@@ -3786,7 +3836,7 @@ public:
         lhsDistributor->join();
         leftdone = true;
         if (!rhsDistributor)
-            rhsDistributor.setown(createHashDistributor(this, queryJobChannel().queryJobComm(), mptag2, false, this, "RHS"));
+            rhsDistributor.setown(createHashDistributor(this, queryJobChannel().queryJobComm(), mptag2, false, false, this, "RHS"));
         reader.setown(rhsDistributor->connect(queryRowInterfaces(inR), rightInputStream, ihashR, icompareR, nullptr));
         Owned<IThorRowLoader> loaderR = createThorRowLoader(*this, ::queryRowInterfaces(inR), icompareR, stableSort_earlyAlloc, rc_mixed, SPILL_PRIORITY_HASHJOIN);;
         loaderL->setTracingPrefix("Join right");
@@ -4446,6 +4496,12 @@ CActivityBase *createHashDistributeSlave(CGraphElementBase *container)
         return createReDistributeSlave(container);
     ActPrintLog(container, "HASHDISTRIB: createHashDistributeSlave");
     return new HashDistributeSlaveActivity(container);
+}
+
+CActivityBase *createSetDistributeSlave(CGraphElementBase *container)
+{
+    ActPrintLog(container, "SETDISTRIB: createSetDistributeSlave");
+    return new SetDistributeSlaveActivity(container);
 }
 
 CActivityBase *createHashDistributeMergeSlave(CGraphElementBase *container)

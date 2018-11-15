@@ -818,6 +818,7 @@ extern const char * getActivityText(ThorActivityKind kind)
     case TAKquantile:               return "Quantile";
     case TAKspillread:              return "Spill Read";
     case TAKspillwrite:             return "Spill Write";
+    case TAKsetdistribute:          return "Set Distribute";
     }
     throwUnexpected();
 }

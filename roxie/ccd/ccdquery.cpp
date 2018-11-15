@@ -670,6 +670,8 @@ protected:
         case TAKhashdistributemerge:
         case TAKhashjoin:
             throwUnexpected();  // Code generator should have removed or transformed
+        case TAKsetdistribute:
+            UNIMPLEMENTED;
         case TAKiterate:
             return createRoxieServerIterateActivityFactory(id, subgraphId, *this, helperFactory, kind, node);
         case TAKprocess:

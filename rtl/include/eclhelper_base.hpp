@@ -623,6 +623,13 @@ class ECLRTL_API CThorHashDistributeArg : public CThorArgOf<IHThorHashDistribute
     virtual ICompare * queryMergeCompare() override;
 };
 
+class ECLRTL_API CThorSetDistributeArg : public CThorArgOf<IHThorSetDistributeArg>
+{
+    virtual unsigned getFlags() override;
+    virtual bool     include(/*unsigned node=0*/) override;
+};
+
+
 class ECLRTL_API CThorHashDedupArg : public CThorArgOf<IHThorHashDedupArg>
 {
     virtual unsigned getFlags() override;

@@ -863,6 +863,7 @@ bool isGlobalActivity(CGraphElementBase &container)
         case TAKkeyeddistribute:
         case TAKhashdistribute:
         case TAKhashdistributemerge:
+        case TAKsetdistribute:
         case TAKworkunitwrite:
         case TAKdistribution:
         case TAKpartition:
