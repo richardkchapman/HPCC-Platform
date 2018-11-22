@@ -313,8 +313,8 @@ static HqlTransformerInfo childDatasetSpotterInfo("ChildDatasetSpotter");
 class NewChildDatasetSpotter : public ConditionalContextTransformer
 {
 public:
-    NewChildDatasetSpotter(HqlCppTranslator & _translator, BuildCtx & _ctx, bool _forceRoot)
-        : ConditionalContextTransformer(childDatasetSpotterInfo, true), translator(_translator), ctx(_ctx), forceRoot(_forceRoot)
+    NewChildDatasetSpotter(HqlCppTranslator & _translator, BuildCtx & _ctx, bool _forceRoot, bool _forceSequential)
+        : ConditionalContextTransformer(childDatasetSpotterInfo, true), translator(_translator), ctx(_ctx), forceRoot(_forceRoot), forceSequential(_forceSequential)
     {
         //The following line forces the conditionalContextTransformer code to generate a single root subgraph.
         //An alternative would be to generate one (or more) graphs at the first unconditional place they are
@@ -466,6 +466,11 @@ public:
 
         ChildGraphExprBuilder & builder = queryBuilder(extra);
         OwnedHqlExpr graph = builder.getGraph();
+        if (true || forceSequential)
+        {
+            graph.setown(appendAttribute(graph, sequentialAtom));
+            EclIR::dump_ir(graph);
+        }
         OwnedHqlExpr cleanedGraph = mapExternalToInternalResults(graph, builder.queryRepresents());
         return cleanedGraph.getClear();
     }
@@ -510,6 +515,7 @@ protected:
     HqlCppTranslator & translator;
     BuildCtx & ctx;
     bool forceRoot;
+    bool forceSequential;
 };
 
 
@@ -635,6 +641,12 @@ public:
         : translator(_translator), buildctx(_ctx)
     {
         processed = false;
+        forceSequential = false;
+    }
+
+    void setSequential()
+    {
+        forceSequential = true;
     }
 
     void processAssign(BuildCtx & ctx, IHqlExpression * stmt)
@@ -727,7 +739,7 @@ protected:
                     analyseExprs.append(*LINK(value));
             }
 
-            NewChildDatasetSpotter spotter(translator, buildctx, forceRoot);
+            NewChildDatasetSpotter spotter(translator, buildctx, forceRoot, forceSequential);
             if (spotter.analyseNeedsTransform(analyseExprs))
             {
                 //This could be conditional on whether or not there is an unconditional candidate, but that would stop
@@ -759,6 +771,7 @@ protected:
     BuildCtx buildctx;
     StatementCollection pending;
     bool processed;
+    bool forceSequential;
 };
 
 void HqlCppTranslator::optimizeBuildActionList(BuildCtx & ctx, IHqlExpression * exprs)
@@ -1335,7 +1348,14 @@ void HqlCppTranslator::doFilterAssignment(BuildCtx & ctx, TransformBuilder * bui
         break;
     case no_attr:
     case no_attr_link:
+        break;
     case no_attr_expr:
+        if (cur->queryName()==parallelAtom)
+        {
+            bool parallel = matchesBoolean(cur->queryChild(0), true);
+            if (!parallel)
+                builder->setSequential();
+        }
         break;
     default:
         UNIMPLEMENTED;

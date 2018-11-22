@@ -2004,6 +2004,17 @@ transformOption
                         {
                             $$.setExpr(createValue(no_skip, makeVoidType(), $3.getExpr()), $1);
                         }
+    | PARALLEL '(' booleanExpr ')'
+                        {
+                            parser->normalizeExpression($3, type_boolean, true);
+                            $$.setExpr(createExprAttribute(parallelAtom, $3.getExpr()), $1);
+                        }
+    | PARALLEL          {
+                            $$.setExpr(createExprAttribute(parallelAtom, createConstant(true)), $1);
+                        }
+    | SEQUENTIAL        {
+                            $$.setExpr(createExprAttribute(parallelAtom, createConstant(false)), $1);
+                        }
     ;
 
 transformations
