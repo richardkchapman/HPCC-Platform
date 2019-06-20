@@ -23,6 +23,7 @@
 #include <jlog.hpp>
 #include "jisem.hpp"
 #include "udplib.hpp"
+#include "udptopo.hpp"
 #include "ccd.hpp"
 #include "ccddebug.hpp"
 #include "ccdquery.hpp"
@@ -60,13 +61,12 @@ RoxiePacketHeader::RoxiePacketHeader(const RemoteActivityId &_remoteId, ruid_t _
     init(_remoteId, _uid, _channel, _overflowSequence);
 }
 
-RoxiePacketHeader::RoxiePacketHeader(const RoxiePacketHeader &source, unsigned _activityId)
+RoxiePacketHeader::RoxiePacketHeader(const RoxiePacketHeader &source, unsigned _activityId) : serverId(source.serverId)
 {
     // Used to create the header to send a callback to originating server or an IBYTI to a buddy
     activityId = _activityId;
     uid = source.uid;
     queryHash = source.queryHash;
-    serverIdx = source.serverIdx;
     channel = source.channel;
     overflowSequence = source.overflowSequence;
     continueSequence = source.continueSequence;
@@ -90,7 +90,7 @@ unsigned RoxiePacketHeader::priorityHash() const
     // Used to determine which slave to act as primary and which as secondary for a given packet (thus spreading the load)
     // It's important that we do NOT include channel (since that would result in different values for the different slaves responding to a broadcast)
     // We also don't include continueSequence since we'd prefer continuations to go the same way as original
-    unsigned hash = hashc((const unsigned char *) &serverIdx, sizeof(serverIdx), 0);
+    unsigned hash = serverId.hash();
     hash = hashc((const unsigned char *) &uid, sizeof(uid), hash);
     hash += overflowSequence; // MORE - is this better than hashing?
     if (traceLevel > 9)
@@ -109,7 +109,7 @@ bool RoxiePacketHeader::matchPacket(const RoxiePacketHeader &oh) const
         oh.uid==uid &&
         (oh.overflowSequence & ~OUTOFBAND_SEQUENCE) == (overflowSequence & ~OUTOFBAND_SEQUENCE) &&
         oh.continueSequence == continueSequence &&
-        oh.serverIdx==serverIdx &&
+        oh.serverId==serverId &&
         oh.channel==channel;
 }
 
@@ -119,7 +119,7 @@ void RoxiePacketHeader::init(const RemoteActivityId &_remoteId, ruid_t _uid, uns
     activityId = _remoteId.activityId;
     queryHash = _remoteId.queryHash;
     uid = _uid;
-    serverIdx = myNodeIndex;
+    serverId = myNode;
     channel = _channel;
     overflowSequence = _overflowSequence;
     continueSequence = 0;
@@ -127,7 +127,7 @@ void RoxiePacketHeader::init(const RemoteActivityId &_remoteId, ruid_t _uid, uns
 
 StringBuffer &RoxiePacketHeader::toString(StringBuffer &ret) const
 {
-    const IpAddress &serverIP = getNodeAddress(serverIdx);
+    const IpAddress &serverIP = serverId.getNodeAddress();
     ret.appendf("uid=" RUIDF " activityId=", uid);
     switch(activityId & ~ROXIE_PRIORITY_MASK)
     {
@@ -223,10 +223,10 @@ void addSlaveChannel(unsigned channel, unsigned level)
     ci->setPropInt("@subChannel", numSlaves[channel]);
 }
 
-void addChannel(unsigned nodeNumber, unsigned channel, unsigned level)
+void addChannel(const IpAddress &node, unsigned channel, unsigned level)
 {
     numSlaves[channel]++;
-    if (nodeNumber == myNodeIndex && channel > 0)
+    if (node == myNode.getNodeAddress() && channel > 0)
     {
         assertex(channel <= numChannels);
         assertex(!replicationLevel[channel]);
@@ -235,7 +235,7 @@ void addChannel(unsigned nodeNumber, unsigned channel, unsigned level)
     }
     if (!localSlave)
     {
-        addEndpoint(channel, getNodeAddress(nodeNumber), ccdMulticastPort);
+        addEndpoint(channel, node, ccdMulticastPort);
     }
 }
 
@@ -351,13 +351,29 @@ void closeMulticastSockets()
 size32_t channelWrite(unsigned channel, void const* buf, size32_t size)
 {
     size32_t minwrote = 0;
-    SocketEndpointArray &eps = slaveEndpoints[channel]; // if multicast is enabled, this will have a single multicast endpoint in it.
-    assertex(eps.ordinality());
-    ForEachItemIn(idx, eps)
+    if (useDynamicServers)
     {
-        size32_t wrote = multicastSocket->udp_write_to(eps.item(idx), buf, size);
-        if (!idx || wrote < minwrote)
-            minwrote = wrote;
+        Owned<const ITopologyServer> topo = getTopology();
+        const SocketEndpointArray &eps = topo->querySlaves(channel);
+        if (!eps.ordinality())
+            throw makeStringExceptionV(0, "No slaves available for channel %d", channel);
+        ForEachItemIn(idx, eps)
+        {
+            size32_t wrote = multicastSocket->udp_write_to(eps.item(idx), buf, size);
+            if (!idx || wrote < minwrote)
+                minwrote = wrote;
+        }
+    }
+    else
+    {
+        SocketEndpointArray &eps = slaveEndpoints[channel]; // if multicast is enabled, this will have a single multicast endpoint in it.
+        assertex(eps.ordinality());
+        ForEachItemIn(idx, eps)
+        {
+            size32_t wrote = multicastSocket->udp_write_to(eps.item(idx), buf, size);
+            if (!idx || wrote < minwrote)
+                minwrote = wrote;
+        }
     }
     return minwrote;
 }
@@ -747,7 +763,7 @@ void SlaveContextLogger::flush()
         }
         log.kill();
         if (anyOutput)
-            output->flush(true);
+            output->flush();
          output.clear();
     }
 }
@@ -929,7 +945,7 @@ struct PingRecord
 void doPing(IRoxieQueryPacket *packet, const IRoxieContextLogger &logctx)
 {
     const RoxiePacketHeader &header = packet->queryHeader();
-    const IpAddress &serverIP = getNodeAddress(header.serverIdx);
+    const IpAddress &serverIP = header.serverId.getNodeAddress();
     unsigned contextLength = packet->getContextLength();
     if (contextLength != sizeof(PingRecord))
     {
@@ -947,7 +963,7 @@ void doPing(IRoxieQueryPacket *packet, const IRoxieContextLogger &logctx)
     void *ret = output->getBuffer(contextLength, false);
     memcpy(ret, data, contextLength);
     output->putBuffer(ret, contextLength, false);
-    output->flush(true);
+    output->flush();
 }
 
 //=================================================================================
@@ -1312,7 +1328,7 @@ public:
             void *ret = output->getBuffer(len+1, true);
             memcpy(ret, message.str(), len+1);
             output->putBuffer(ret, len+1, true);
-            output->flush(true);
+            output->flush();
             E->Release();
         }   
         catch (IException *EInE)
@@ -1491,7 +1507,7 @@ public:
                     busy = false; // Keep order - before setActivity below
                     setActivity(NULL);  // Ensures all stats are merged from child queries etc
                     logctx.flush();
-                    output->flush(true);
+                    output->flush();
                 }
 #ifdef TEST_SLAVE_FAILURE
             }
@@ -1717,7 +1733,7 @@ public:
                 void *ret = output->getBuffer(len+1, true);
                 memcpy(ret, message.str(), len+1);
                 output->putBuffer(ret, len+1, true);
-                output->flush(true);
+                output->flush();
             }   
             catch (IException *EInE)
             {
@@ -1974,11 +1990,13 @@ public:
 
 class RoxieSocketQueueManager : public RoxieReceiverBase
 {
-    unsigned maxPacketSize;
-    bool running;
+protected:
     Linked<ISendManager> sendManager;
     Linked<IReceiveManager> receiveManager;
+    Owned<RoxieThrottledPacketSender> throttledPacketSendManager;
     Owned<TokenBucket> bucket;
+    unsigned maxPacketSize = 0;
+    bool running = false;
 
     class ReceiverThread : public Thread
     {
@@ -1988,7 +2006,7 @@ class RoxieSocketQueueManager : public RoxieReceiverBase
         int run()
         {
             // Raise the priority so ibyti's get through in a timely fashion
-#ifdef __linux__
+#if defined( __linux__) || defined(__APPLE__)
             setLinuxThreadPriority(3);
 #else
             adjustPriority(1);
@@ -1998,36 +2016,12 @@ class RoxieSocketQueueManager : public RoxieReceiverBase
     } readThread;
 
 public:
-    RoxieSocketQueueManager(unsigned snifferChannel, unsigned _numWorkers) : RoxieReceiverBase(_numWorkers), readThread(*this)
+    RoxieSocketQueueManager(unsigned _numWorkers) : RoxieReceiverBase(_numWorkers), readThread(*this)
     {
-        int udpQueueSize = topology->getPropInt("@udpQueueSize", UDP_QUEUE_SIZE);
-        int udpSendQueueSize = topology->getPropInt("@udpSendQueueSize", UDP_SEND_QUEUE_SIZE);
-        int udpMaxSlotsPerClient = topology->getPropInt("@udpMaxSlotsPerClient", 0x7fffffff);
         maxPacketSize = multicastSocket->get_max_send_size();
         if ((maxPacketSize==0)||(maxPacketSize>65535))
             maxPacketSize = 65535;
-        if (topology->getPropInt("@sendMaxRate", 0))
-        {
-            unsigned sendMaxRate = topology->getPropInt("@sendMaxRate");
-            unsigned sendMaxRatePeriod = topology->getPropInt("@sendMaxRatePeriod", 1);
-            bucket.setown(new TokenBucket(sendMaxRate, sendMaxRatePeriod, sendMaxRate));
-            throttledPacketSendManager.setown(new RoxieThrottledPacketSender(*bucket, maxPacketSize));
-        }
-
-        IpAddress snifferIp;
-        getChannelIp(snifferIp, snifferChannel);
-        if (udpMaxSlotsPerClient > udpQueueSize)
-            udpMaxSlotsPerClient = udpQueueSize;
-        unsigned serverFlowPort = topology->getPropInt("@serverFlowPort", CCD_SERVER_FLOW_PORT);
-        unsigned dataPort = topology->getPropInt("@dataPort", CCD_DATA_PORT);
-        unsigned clientFlowPort = topology->getPropInt("@clientFlowPort", CCD_CLIENT_FLOW_PORT);
-        unsigned snifferPort = topology->getPropInt("@snifferPort", CCD_SNIFFER_PORT);
-        receiveManager.setown(createReceiveManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpQueueSize, udpMaxSlotsPerClient, myNodeIndex));
-        sendManager.setown(createSendManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpSendQueueSize, fastLaneQueue ? 3 : 2, bucket, myNodeIndex));
-        running = false;
     }
-
-    Owned<RoxieThrottledPacketSender> throttledPacketSendManager;
 
     virtual void sendPacket(IRoxieQueryPacket *x, const IRoxieContextLogger &logctx)
     {
@@ -2116,17 +2110,17 @@ public:
         {
             StringBuffer s; logctx.CTXLOG("Creating Output Stream for reply packet on Q=%d - %s", qnum, header.toString(s).str());
         }
-        return sendManager->createMessagePacker(header.uid, header.getSequenceId(), &header, sizeof(RoxiePacketHeader), header.serverIdx, qnum);
+        return sendManager->createMessagePacker(header.uid, header.getSequenceId(), &header, sizeof(RoxiePacketHeader), header.serverId, qnum);
     }
 
     virtual bool replyPending(RoxiePacketHeader &header)
     {
-        return sendManager->dataQueued(header.uid, header.getSequenceId(), header.serverIdx);
+        return sendManager->dataQueued(header.uid, header.getSequenceId(), header.serverId);
     }
 
     virtual bool abortCompleted(RoxiePacketHeader &header)
     {
-        return sendManager->abortData(header.uid, header.getSequenceId(), header.serverIdx);
+        return sendManager->abortData(header.uid, header.getSequenceId(), header.serverId);
     }
 
     bool abortRunning(RoxiePacketHeader &header, RoxieQueue &queue, bool checkRank, bool &preActivity)
@@ -2256,7 +2250,7 @@ public:
                 {
                     RoxiePacketHeader newHeader(header, ROXIE_ALIVE);
                     Owned<IMessagePacker> output = ROQ->createOutputStream(newHeader, true, logctx);
-                    output->flush(true);
+                    output->flush();
                 }
 
                 // If it's a retry, look it up against already running, or output stream, or input queue
@@ -2434,6 +2428,51 @@ public:
     }
 };
 
+class RoxieUdpSocketQueueManager : public RoxieSocketQueueManager
+{
+public:
+    RoxieUdpSocketQueueManager(unsigned snifferChannel, unsigned _numWorkers) : RoxieSocketQueueManager(_numWorkers)
+    {
+        int udpQueueSize = topology->getPropInt("@udpQueueSize", UDP_QUEUE_SIZE);
+        int udpSendQueueSize = topology->getPropInt("@udpSendQueueSize", UDP_SEND_QUEUE_SIZE);
+        int udpMaxSlotsPerClient = topology->getPropInt("@udpMaxSlotsPerClient", 0x7fffffff);
+        if (topology->getPropInt("@sendMaxRate", 0))
+        {
+            unsigned sendMaxRate = topology->getPropInt("@sendMaxRate");
+            unsigned sendMaxRatePeriod = topology->getPropInt("@sendMaxRatePeriod", 1);
+            bucket.setown(new TokenBucket(sendMaxRate, sendMaxRatePeriod, sendMaxRate));
+            throttledPacketSendManager.setown(new RoxieThrottledPacketSender(*bucket, maxPacketSize));
+        }
+
+        IpAddress snifferIp;
+        getChannelIp(snifferIp, snifferChannel);
+        if (udpMaxSlotsPerClient > udpQueueSize)
+            udpMaxSlotsPerClient = udpQueueSize;
+        unsigned serverFlowPort = topology->getPropInt("@serverFlowPort", CCD_SERVER_FLOW_PORT);
+        unsigned dataPort = topology->getPropInt("@dataPort", CCD_DATA_PORT);
+        unsigned clientFlowPort = topology->getPropInt("@clientFlowPort", CCD_CLIENT_FLOW_PORT);
+        unsigned snifferPort = topology->getPropInt("@snifferPort", CCD_SNIFFER_PORT);
+        receiveManager.setown(createReceiveManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpQueueSize, udpMaxSlotsPerClient));
+        sendManager.setown(createSendManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpSendQueueSize, fastLaneQueue ? 3 : 2, bucket));
+    }
+
+};
+
+class RoxieAeronSocketQueueManager : public RoxieSocketQueueManager
+{
+public:
+    RoxieAeronSocketQueueManager(unsigned _numWorkers) : RoxieSocketQueueManager(_numWorkers)
+    {
+        unsigned dataPort = topology->getPropInt("@dataPort", CCD_DATA_PORT);
+        SocketEndpoint ep(dataPort, myNode.getNodeAddress());
+        receiveManager.setown(createAeronReceiveManager(ep));
+        assertex(!myNode.getNodeAddress().isNull());
+        sendManager.setown(createAeronSendManager(dataPort, fastLaneQueue ? 3 : 2, myNode.getNodeAddress()));
+    }
+
+};
+
+
 #ifdef _MSC_VER
 #pragma warning( pop )
 #endif
@@ -2469,9 +2508,9 @@ public:
         header.append(sizeof(RoxiePacketHeader), &_header);
     }
 
-    virtual void flush(bool last_message);
+    virtual void flush() override;
 
-    virtual void sendMetaInfo(const void *buf, unsigned len)
+    virtual void sendMetaInfo(const void *buf, unsigned len) override
     {
         meta.append(len, buf);
     }
@@ -2578,7 +2617,7 @@ class CLocalMessageCollator : implements ILocalMessageCollator, public CInterfac
     InterruptableSemaphore sem;
     QueueOf<IMessageResult, false> pending;
     CriticalSection crit;
-    Linked<IRowManager> rowManager;
+    Linked<IRowManager> rowManager; // Linked to ensure it lives longer than me
     Linked<ILocalReceiveManager> receiveManager;
     ruid_t id;
     unsigned totalBytesReceived;
@@ -2591,11 +2630,6 @@ public:
     virtual ruid_t queryRUID() const 
     {
         return id;
-    }
-
-    virtual bool add_package(DataBuffer *dataBuff)
-    {
-        throwUnexpected(); // internal use in udp layer...
     }
 
     virtual IMessageResult* getNextResult(unsigned time_out, bool &anyActivity)
@@ -2635,7 +2669,6 @@ class RoxieLocalReceiveManager : implements ILocalReceiveManager, public CInterf
     MapXToMyClass<ruid_t, ruid_t, ILocalMessageCollator> collators;
     CriticalSection crit;
     Owned<StringContextLogger> logctx;
-    Linked<IMessageCollator> defaultCollator;
 
 public:
     IMPLEMENT_IINTERFACE;
@@ -2645,7 +2678,7 @@ public:
 
     virtual IMessageCollator *createMessageCollator(IRowManager *manager, ruid_t ruid)
     {
-        IMessageCollator *collator = new CLocalMessageCollator(manager, ruid);
+        ILocalMessageCollator *collator = new CLocalMessageCollator(manager, ruid);
         CriticalBlock b(crit);
         collators.setValue(ruid, collator);
         return collator;
@@ -2658,38 +2691,31 @@ public:
         collators.setValue(id, NULL);
     }
 
-    virtual void setDefaultCollator(IMessageCollator *collator)
-    {
-        CriticalBlock b(crit);
-        defaultCollator.set(collator);
-    }
-
     virtual ILocalMessageCollator *lookupCollator(ruid_t id)
     {
         CriticalBlock b(crit);
-        IMessageCollator *ret = collators.getValue(id);
+        ILocalMessageCollator *ret = collators.getValue(id);
         if (!ret)
-            ret = defaultCollator;
-        return LINK(QUERYINTERFACE(ret, ILocalMessageCollator));
+            ret = collators.getValue(RUID_DISCARD);
+        return LINK(ret);
     }
 
 };
 
-void LocalMessagePacker::flush(bool last_message)
+void LocalMessagePacker::flush()
 {
+    // MORE - I think this means we don't send anything until whole message available in localSlave mode, which
+    // may not be optimal.
     data.setLength(lastput);
-    if (last_message)
+    Owned<ILocalMessageCollator> collator = rm->lookupCollator(id);
+    if (collator)
     {
-        Owned<ILocalMessageCollator> collator = rm->lookupCollator(id);
-        if (collator)
-        {
-            unsigned datalen = data.length();
-            unsigned metalen = meta.length();
-            unsigned headerlen = header.length();
-            collator->enqueueMessage(outOfBand, data.detach(), datalen, meta.detach(), metalen, header.detach(), headerlen);
-        }
-        // otherwise Roxie server is no longer interested and we can simply discard
+        unsigned datalen = data.length();
+        unsigned metalen = meta.length();
+        unsigned headerlen = header.length();
+        collator->enqueueMessage(outOfBand, data.detach(), datalen, meta.detach(), metalen, header.detach(), headerlen);
     }
+    // otherwise Roxie server is no longer interested and we can simply discard
 }
 
 CLocalMessageCollator::CLocalMessageCollator(IRowManager *_rowManager, ruid_t _ruid) 
@@ -2716,7 +2742,7 @@ class RoxieLocalQueueManager : public RoxieReceiverBase
     Linked<RoxieLocalReceiveManager> receiveManager;
 
 public:
-    RoxieLocalQueueManager(unsigned snifferChannel, unsigned _numWorkers) : RoxieReceiverBase(_numWorkers)
+    RoxieLocalQueueManager(unsigned _numWorkers) : RoxieReceiverBase(_numWorkers)
     {
         receiveManager.setown(new RoxieLocalReceiveManager);
     }
@@ -2748,7 +2774,7 @@ public:
                 // Send back an out-of-band immediately, to let Roxie server know that channel is still active
                 RoxiePacketHeader newHeader(header, ROXIE_ALIVE);
                 Owned<IMessagePacker> output = createOutputStream(newHeader, true, logctx);
-                output->flush(true);
+                output->flush();
                 return; // No point sending the retry in localSlave mode
             }
             RoxieQueue *targetQueue;
@@ -2846,9 +2872,11 @@ IRoxieOutputQueueManager *ROQ;
 extern IRoxieOutputQueueManager *createOutputQueueManager(unsigned snifferChannel, unsigned numWorkers)
 {
     if (localSlave)
-        return new RoxieLocalQueueManager(snifferChannel, numWorkers);
+        return new RoxieLocalQueueManager(numWorkers);
+    else if (useAeron)
+        return new RoxieAeronSocketQueueManager(numWorkers);
     else
-        return new RoxieSocketQueueManager(snifferChannel, numWorkers);
+        return new RoxieUdpSocketQueueManager(snifferChannel, numWorkers);
 
 }
 
@@ -2880,7 +2908,6 @@ public:
         Owned<StringContextLogger> logctx = new StringContextLogger("PacketDiscarder");
         rowManager.setown(roxiemem::createRowManager(0, NULL, *logctx, NULL, false));
         mc.setown(ROQ->queryReceiveManager()->createMessageCollator(rowManager, RUID_DISCARD));
-        ROQ->queryReceiveManager()->setDefaultCollator(mc);
         while (!aborted)
         {
             bool anyActivity = false;
@@ -2923,7 +2950,6 @@ public:
                 // to avoid leaking partial unwanted packets, we clear out mc periodically...
                 ROQ->queryReceiveManager()->detachCollator(mc);
                 mc.setown(ROQ->queryReceiveManager()->createMessageCollator(rowManager, RUID_DISCARD));
-                ROQ->queryReceiveManager()->setDefaultCollator(mc);
             }
         }
         return 0;
@@ -2972,25 +2998,33 @@ class PingTimer : public Thread
 
     void sendPing(unsigned priorityMask)
     {
-        unsigned packetSize = sizeof(RoxiePacketHeader) + sizeof(char) + strlen("PING") + 1 + sizeof(PingRecord);
-        void *packetData = malloc(packetSize);
-        RoxiePacketHeader *header = (RoxiePacketHeader *) packetData;
-        RemoteActivityId pingId(ROXIE_PING | priorityMask, 0);
-        header->init(pingId, 0, 0, 0);
+        try
+        {
+            unsigned packetSize = sizeof(RoxiePacketHeader) + sizeof(char) + strlen("PING") + 1 + sizeof(PingRecord);
+            void *packetData = malloc(packetSize);
+            RoxiePacketHeader *header = (RoxiePacketHeader *) packetData;
+            RemoteActivityId pingId(ROXIE_PING | priorityMask, 0);
+            header->init(pingId, 0, 0, 0);
 
-        char *finger = (char *) (header + 1);
-        *finger++ = (char) LOGGING_FLAGSPRESENT;
-        strcpy(finger, "PING");
-        finger += strlen("PING")+1;
-        if (traceLevel > 1)
-            DBGLOG("PING sent");
+            char *finger = (char *) (header + 1);
+            *finger++ = (char) LOGGING_FLAGSPRESENT;
+            strcpy(finger, "PING");
+            finger += strlen("PING")+1;
+            if (traceLevel > 1)
+                DBGLOG("PING sent");
 
-        PingRecord data;
-        data.senderIP.ipset(getNodeAddress(myNodeIndex));
-        data.tick = usTick();
-        memcpy(finger, &data, sizeof(PingRecord));
-        Owned<IRoxieQueryPacket> packet = createRoxiePacket(packetData, packetSize);
-        ROQ->sendPacket(packet, logctx);
+            PingRecord data;
+            data.senderIP.ipset(myNode.getNodeAddress());
+            data.tick = usTick();
+            memcpy(finger, &data, sizeof(PingRecord));
+            Owned<IRoxieQueryPacket> packet = createRoxiePacket(packetData, packetSize);
+            ROQ->sendPacket(packet, logctx);
+        }
+        catch (IException *E)
+        {
+            EXCLOG(E);
+            E->Release();
+        }
     }
 
 public:

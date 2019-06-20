@@ -59,7 +59,6 @@ void openMulticastSocket();
 void joinMulticastChannel(unsigned channel);
 
 
-extern unsigned myNodeIndex;
 #define OUTOFBAND_SEQUENCE    0x8000        // indicates an out-of-band reply
 #define OVERFLOWSEQUENCE_MAX 0x7fffu        // Max value before we want to wrap (to avoid collision with flag)
 #define CONTINUE_SEQUENCE_SKIPTO  0x8000    // flag in continueSequence field indicating presence of skipTo data
@@ -153,7 +152,7 @@ public:
     hash64_t queryHash;             // identifies the query
 
     ruid_t uid;                     // unique id
-    unsigned serverIdx;             // final result (server) destination
+    ServerIdentifier serverId;
 #ifdef TIME_PACKETS
     unsigned tick;
 #endif
@@ -240,6 +239,7 @@ extern bool useRemoteResources;
 extern bool checkFileDate;
 extern bool lazyOpen;
 extern bool localSlave;
+extern bool useAeron;
 extern bool ignoreOrphans;
 extern bool doIbytiDelay;
 extern unsigned initIbytiDelay;

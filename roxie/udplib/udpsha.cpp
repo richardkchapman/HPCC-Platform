@@ -40,6 +40,7 @@ unsigned udpLocalWriteSocketSize = 1024000;
 unsigned udpSnifferReadThreadPriority = 3;
 unsigned udpSnifferSendThreadPriority = 3;
 
+bool useDynamicServers = true;
 unsigned multicastTTL = 1;
 
 MODULE_INIT(INIT_PRIORITY_STANDARD)
@@ -59,11 +60,13 @@ static IpAddressArray nodeTable;
 
 extern UDPLIB_API const IpAddress &getNodeAddress(unsigned index)
 {
+    assert(!useDynamicServers);
     return nodeTable.item(index);
 }
 
 extern UDPLIB_API unsigned addRoxieNode(const char *ipString)
 {
+    assert(!useDynamicServers);
     IpAddress ip(ipString);
     if (ip.isNull())
         throw MakeStringException(ROXIE_UDP_ERROR, "Could not resolve address %s", ipString);
@@ -78,9 +81,17 @@ extern UDPLIB_API unsigned addRoxieNode(const char *ipString)
 
 extern UDPLIB_API unsigned getNumNodes()
 {
+    assert(!useDynamicServers);
     assertex(nodeTable.ordinality());
     return nodeTable.ordinality();
 }
+
+const IpAddress &ServerIdentifier::getNodeAddress() const
+{
+    return serverIp;
+}
+
+ServerIdentifier myNode;
 
 //---------------------------------------------------------------------------------------------
 
@@ -191,7 +202,7 @@ DataBuffer *queue_t::pop()
 }
 
 
-bool queue_t::removeData(void *key, PKT_CMP_FUN pkCmpFn) 
+bool queue_t::removeData(const void *key, PKT_CMP_FUN pkCmpFn)
 {
     bool ret = false;
     CriticalBlock b(c_region);
@@ -201,7 +212,7 @@ bool queue_t::removeData(void *key, PKT_CMP_FUN pkCmpFn)
         for (;;)
         {
             if (elements[ix].data && 
-                ((key == NULL) || (pkCmpFn == NULL) || pkCmpFn((void*) elements[ix].data, key)))
+                ((key == NULL) || (pkCmpFn == NULL) || pkCmpFn((const void*) elements[ix].data, key)))
             {
                 ::Release(elements[ix].data);
                 elements[ix].data = NULL;  // safer than trying to remove it and close up queue - race conditions with code elsewhere
@@ -218,7 +229,7 @@ bool queue_t::removeData(void *key, PKT_CMP_FUN pkCmpFn)
 }
 
 
-bool queue_t::dataQueued(void *key, PKT_CMP_FUN pkCmpFn) 
+bool queue_t::dataQueued(const void *key, PKT_CMP_FUN pkCmpFn)
 {
     bool ret = false;
     CriticalBlock b(c_region);
@@ -227,7 +238,7 @@ bool queue_t::dataQueued(void *key, PKT_CMP_FUN pkCmpFn)
         unsigned ix = first;
         for (;;)
         {
-            if (elements[ix].data && pkCmpFn((void*) elements[ix].data, key))
+            if (elements[ix].data && pkCmpFn((const void*) elements[ix].data, key))
             {
                 ret = true;
                 break;
@@ -279,7 +290,7 @@ int check_max_socket_write_buffer(int size) {
     return check_set("/proc/sys/net/core/wmem_max", size);
 }
 
-#ifdef __linux__
+#if defined( __linux__) || defined(__APPLE__)
 void setLinuxThreadPriority(int level)
 {
     pthread_t self = pthread_self();

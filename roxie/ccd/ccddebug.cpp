@@ -1443,7 +1443,7 @@ extern void doDebugRequest(IRoxieQueryPacket *packet, const IRoxieContextLogger 
     void *ret = output->getBuffer(xml.length()+1, true);
     memcpy(ret, xml.str(), xml.length()+1);
     output->putBuffer(ret, xml.length()+1, true);
-    output->flush(true);
+    output->flush();
 }
 
 class CProxyDebugContext : public CInterface

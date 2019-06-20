@@ -42,6 +42,7 @@ void usage()
     printf("Options are:\n");
     printf(
         "--jumboFrames\n"
+        "--useAeron\n"
         "--udpLocalWriteSocketSize nn\n"
         "--udpRetryBusySenders nn\n"
         "--maxPacketsPerSender nn\n"
@@ -76,7 +77,7 @@ bool doSortSimulator = false;
 bool simpleSequential = true;
 float slowNodeSkew = 1.0;
 unsigned numSortSlaves = 50;
-
+bool useAeron = false;
 bool doRawTest = false;
 unsigned rawBufferSize = 1024;
 
@@ -164,7 +165,7 @@ public:
     {
         CriticalBlock block(arsect);
         while (allReceived<torecv) {
-            PROGLOG("Waiting for Receiver (%" I64F "d remaining)",torecv-allReceived);
+            PROGLOG("Waiting for Receiver (%" I64F "d bytes remaining)",torecv-allReceived);
             CriticalUnblock unblock(arsect);
             Sleep(1000);
         }
@@ -173,11 +174,19 @@ public:
 
     virtual int run()
     {
-        Owned<IReceiveManager> rcvMgr = createReceiveManager(7000, 7001, 7002, 7003, multicastIP, udpQueueSize, maxPacketsPerSender, myIndex);
+        Owned<IReceiveManager> rcvMgr;
+        if (useAeron)
+        {
+            SocketEndpoint myEP(7000, myNode.getNodeAddress());
+            rcvMgr.setown(createAeronReceiveManager(myEP));
+        }
+        else
+            rcvMgr.setown(createReceiveManager(7000, 7001, 7002, 7003, multicastIP, udpQueueSize, maxPacketsPerSender));
         Owned<roxiemem::IRowManager> rowMgr = roxiemem::createRowManager(0, NULL, queryDummyContextLogger(), NULL, false);
         Owned<IMessageCollator> collator = rcvMgr->createMessageCollator(rowMgr, 1);
         unsigned lastReport = 0;
-        unsigned receivedTotal = 0;
+        offset_t receivedTotal = 0;
+        offset_t lastTotal = 0;
         unsigned *received = new unsigned[numNodes];
         unsigned *lastSequence = new unsigned[numNodes];
         for (unsigned i = 0; i < numNodes; i++)
@@ -207,7 +216,10 @@ public:
                 if (header->sequence > lastSequence[header->nodeIndex])
                 {
                     if (header->sequence != lastSequence[header->nodeIndex]+1)
+                    {
                         DBGLOG("Missing messages %u-%u from node %u", lastSequence[header->nodeIndex]+1, header->sequence-1, header->nodeIndex);
+                    //    udpTraceLevel = 6;
+                    }
                     lastSequence[header->nodeIndex] = header->sequence;
                 }
                 else
@@ -249,13 +261,15 @@ public:
             if (lastReport && (lastReceived - lastReport > 10000))
             {
                 lastReport = lastReceived;
-                DBGLOG("Received %u bytes total, rate = %.2f MB/s", receivedTotal, ((double)receivedTotal)/10485760.0);
+                offset_t receivedRecent = receivedTotal - lastTotal;
+                DBGLOG("Received %" I64F "u bytes, rate = %.2f MB/s", receivedRecent, ((double)receivedRecent)/10485760.0);
                 for (unsigned i = 0; i < numNodes; i++)
                 {
                     DBGLOG("  %u bytes from node %u", received[i], i);
                     received[i] = 0;
                 }
-                receivedTotal = 0;
+                DBGLOG("Received %" I64F "u bytes total", receivedTotal);
+                lastTotal = receivedTotal;
             }
         }
         {
@@ -274,7 +288,11 @@ void testNxN()
 {
     if (maxPacketsPerSender > udpQueueSize)
         maxPacketsPerSender = udpQueueSize;
-    Owned <ISendManager> sendMgr = createSendManager(7000, 7001, 7002, 7003, multicastIP, 100, udpNumQs, NULL, myIndex);
+    Owned <ISendManager> sendMgr;
+    if (useAeron)
+        sendMgr.setown(createAeronSendManager(7000, udpNumQs, myNode.getNodeAddress()));
+    else
+        sendMgr.setown(createSendManager(7000, 7001, 7002, 7003, multicastIP, 100, udpNumQs, NULL));
     Receiver receiver;
 
     IMessagePacker **packers = new IMessagePacker *[numNodes];
@@ -282,7 +300,7 @@ void testNxN()
     for (unsigned i = 0; i < numNodes; i++)
     {
         sequences[i] = 1;
-        packers[i] = NULL; 
+        packers[i] = NULL;
     }
 
     DBGLOG("Ready to start");
@@ -293,9 +311,10 @@ void testNxN()
             Sleep(5000);
     }
     offset_t sentTotal = 0;
+    offset_t lastTotal = 0;
     if (sending)
     {
-        Sleep(5000); // Give receivers a fighting chance 
+        Sleep(5000); // Give receivers a fighting chance
         unsigned dest = 0;
         unsigned start = msTick();
         unsigned last = start;
@@ -313,10 +332,12 @@ void testNxN()
                     dest = 0;
             }
             while (dontSendToSelf&&(dest==myIndex));
-            if (!packers[dest]) 
+            if (!packers[dest])
             {
                 TestHeader t = {sequences[dest], myIndex};
-                packers[dest] = sendMgr->createMessagePacker(1, sequences[dest], &t, sizeof(t), dest, 0);
+                ServerIdentifier destServer;
+                destServer.setIp(getNodeAddress(dest));
+                packers[dest] = sendMgr->createMessagePacker(1, sequences[dest], &t, sizeof(t), destServer, 0);
             }
             void *row = packers[dest]->getBuffer(rowSize, variableRows);
             memset(row, 0xaa, rowSize);
@@ -325,10 +346,13 @@ void testNxN()
             {
                 unsigned now = msTick();
                 if (now-last>10000) {
+                    offset_t sentRecent = sentTotal - lastTotal;
                     DBGLOG("Sent %" I64F "d bytes total, rate = %.2f MB/s", sentTotal, (((double)sentTotal)/1048576.0)/((now-start)/1000.0));
+                    DBGLOG("Sent %" I64F "d bytes this period, rate = %.2f MB/s", sentRecent, (((double)sentRecent)/1048576.0)/((now-last)/1000.0));
                     last = now;
+                    lastTotal = sentTotal;
                 }
-                packers[dest]->flush(true);
+                packers[dest]->flush();
                 packers[dest]->Release();
                 packers[dest] = NULL;
                 sequences[dest]++;
@@ -346,7 +370,7 @@ void testNxN()
         for (unsigned i = 0; i < numNodes; i++)
         {
             if (packers[i])
-                packers[i]->flush(true);
+                packers[i]->flush();
         }
         DBGLOG("Node %d All Sent %" I64F "d bytes total, rate = %.2f MB/s", myIndex, sentTotal, (((double)sentTotal)/1048576.0)/((msTick()-start)/1000.0));
         while (!sendMgr->allDone())
@@ -592,6 +616,9 @@ int main(int argc, char * argv[] )
     InitModuleObjects();
     if (argc < 2)
         usage();
+    bool startEmbeddedMediaDriver = true;
+    useDynamicServers = false;
+
     strdup("Make sure leak checking is working");
     queryStderrLogMsgHandler()->setMessageFields(MSGFIELD_time | MSGFIELD_thread | MSGFIELD_prefix);
 
@@ -639,6 +666,10 @@ int main(int argc, char * argv[] )
             else if (strcmp(ip, "--jumboFrames")==0)
             {
                 roxiemem::setDataAlignmentSize(0x2000);
+            }
+            else if (strcmp(ip, "--useAeron")==0)
+            {
+                useAeron = true;
             }
             else if (strcmp(ip, "--rawSpeedTest")==0)
             {
@@ -752,6 +783,7 @@ int main(int argc, char * argv[] )
             printf("ERROR: my ip does not appear to be in range\n");
             usage();
         }
+        myNode.setIp(IpAddress("."));
         roxiemem::setTotalMemoryLimit(false, true, false, 1048576000, 0, NULL, NULL);
         testNxN();
         roxiemem::releaseRoxieHeap();
@@ -1119,7 +1151,7 @@ int main(int argc, char * argv[] )
 
     if (modeType & RCV_MODE_BIT) 
     {
-        rcvMgr = createReceiveManager(7000, 7001, 7002, 7003, multiCast, 100, 0x7fffffff, myIndex);
+        rcvMgr = createReceiveManager(7000, 7001, 7002, 7003, multiCast, 100, 0x7fffffff);
         rowMgr = createRowManager(0, NULL, queryDummyContextLogger(), NULL, false);
         msgCollA = rcvMgr->createMessageCollator(rowMgr, 100);
         if (destB)

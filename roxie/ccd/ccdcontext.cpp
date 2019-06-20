@@ -140,7 +140,7 @@ public:
                 char *buf = (char *) output->getBuffer(debugInfo.length(), true);
                 memcpy(buf, debugInfo.toByteArray(), debugInfo.length());
                 output->putBuffer(buf, debugInfo.length(), true);
-                output->flush(true);
+                output->flush();
                 output.clear();
                 if (callback->wait(5000))
                     break;

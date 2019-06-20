@@ -71,13 +71,7 @@ public:
         lastput = 0;
     }
 
-    virtual bool dataQueued() 
-    {
-        return false;
-    }
-
-
-    virtual void *getBuffer(unsigned len, bool variable)
+    virtual void *getBuffer(unsigned len, bool variable) override
     {
         if (variable)
         {
@@ -90,7 +84,7 @@ public:
         }
     }
 
-    virtual void putBuffer(const void *buf, unsigned len, bool variable)
+    virtual void putBuffer(const void *buf, unsigned len, bool variable) override
     {
         if (variable)
         {
@@ -102,9 +96,9 @@ public:
         lastput += len;
     }
 
-    virtual void flush(bool last_message) { }
-    virtual void sendMetaInfo(const void *buf, unsigned len) { throwUnexpected(); }
-    virtual unsigned size() const { return lastput; }
+    virtual void flush() override { }
+    virtual void sendMetaInfo(const void *buf, unsigned len) override { throwUnexpected(); }
+    virtual unsigned size() const override { return lastput; }
 };
 
 interface IPacketDiscarder : public IInterface
@@ -123,7 +117,7 @@ extern void closeMulticastSockets();
 extern void sendUnloadMessage(hash64_t hash, const char *id, const IRoxieContextLogger &logctx);
 
 extern void addSlaveChannel(unsigned channel, unsigned level);
-extern void addChannel(unsigned nodeNumber, unsigned channel, unsigned level);
+void addChannel(const IpAddress &node, unsigned channel, unsigned level);
 extern unsigned getReplicationLevel(unsigned channel);
 
 #endif
