@@ -132,7 +132,7 @@ void timeoutTopology()
         {
             if (traceLevel)
             {
-                DBGLOG("No heartbeat for %d ms for %s", now-lastSeen, it->first.c_str());
+                DBGLOG("No heartbeat for %u ms for %s", now-lastSeen, it->first.c_str());
             }
             it = topology.erase(it);
             responseDirty = true;
