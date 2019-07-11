@@ -112,7 +112,7 @@ void init_signals()
 #endif
 }
 
-void updateTopology(std::string newInfo)
+void updateTopology(const std::string &newInfo)
 {
     unsigned &found = topology[newInfo];
     if (found==0)
@@ -151,7 +151,7 @@ void reportTopology()
     if (now - lastTopologyReport < topologyReportInterval)
         return;
     DBGLOG("Current state:");
-    for (auto it : topology)
+    for (const auto& it : topology)
     {
         DBGLOG(" %s - %ums", it.first.c_str(), now-it.second);
     }
@@ -164,7 +164,7 @@ void regenerateResponse()
     {
         cachedResponse.clear();
         cachedDigest.set("=");
-        for (auto it : topology)
+        for (const auto& it : topology)
         {
            cachedResponse.append(it.first.c_str()).append('\n');
         }

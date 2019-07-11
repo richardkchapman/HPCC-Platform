@@ -81,6 +81,10 @@ int startAeronDriver()
         context->dirs_delete_on_start = true;
         context->warn_if_dirs_exist = false;
         context->term_buffer_sparse_file = false;
+
+        // MORE - should possibly allow these to be configured, or experiment to find what values work well for Roxie
+        // In my (very rudimentary and non-representative) tests these values seem ok.
+
         context->mtu_length=16384;
         context->socket_rcvbuf=2097152;
         context->socket_sndbuf=2097152;
@@ -145,11 +149,11 @@ public:
                 });
             context.availableImageHandler([](aeron::Image &image)
                 {
-                    DBGLOG("AeronReceiver: Available image correlationId=%" I64F "d, sessionId=%d at position %" I64F "d from %s", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
+                    DBGLOG("AeronReceiver: Available image correlationId=%" I64F "d, sessionId=%d at position %" I64F "d from %s", (__int64) image.correlationId(), image.sessionId(), (__int64) image.position(), image.sourceIdentity().c_str());
                 });
             context.unavailableImageHandler([](aeron::Image &image)
                 {
-                   DBGLOG("AeronReceiver: Unavailable image correlationId=%" I64F "d, sessionId=%d at position %" I64F "d from %s", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
+                   DBGLOG("AeronReceiver: Unavailable image correlationId=%" I64F "d, sessionId=%d at position %" I64F "d from %s", (__int64) image.correlationId(), image.sessionId(), (__int64) image.position(), image.sourceIdentity().c_str());
                 });
         }
         aeron = aeron::Aeron::connect(context);
@@ -260,8 +264,7 @@ private:
     std::shared_ptr<aeron::Subscription> addSubscription(const SocketEndpoint &myEndpoint, int queue)
     {
         StringBuffer channel("aeron:udp?endpoint=");
-        myEndpoint.getIpText(channel);
-        channel.append(':').append(myEndpoint.port);
+        myEndpoint.getUrlStr(channel);
         std::int64_t id = aeron->addSubscription(channel.str(), queue);
         std::shared_ptr<aeron::Subscription> subscription = aeron->findSubscription(id);
         while (!subscription)
@@ -301,7 +304,7 @@ public:
                 publication = aeron->findPublication(id);
             }
             if (publication->maxPayloadLength() < DATA_PAYLOAD)
-                throw makeStringExceptionV(ROXIE_AERON_ERROR, "AeronSender: Publication not connected to channel %s after %d seconds ", channel.str(), aeronConnectTimeout);
+                throw makeStringExceptionV(ROXIE_AERON_ERROR, "AeronSender: maximum payload %u too small (%u required)", (unsigned) publication->maxPayloadLength(), (unsigned) DATA_PAYLOAD);
             if (udpTraceLevel <= 4)
                 DBGLOG("AeronSender: Publication maxima: %d %d", publication->maxPayloadLength(), publication->maxMessageLength());
             publications.push_back(publication);
@@ -340,7 +343,7 @@ public:
                 else if (aeron::PUBLICATION_CLOSED == result)
                     throw makeStringExceptionV(ROXIE_PUBLICATION_CLOSED, "AeronSender: Offer failed because publisher is closed sending to %s", target.str());
                 else
-                    throw makeStringExceptionV(ROXIE_AERON_ERROR, "AeronSender: Offer failed for unknown reason %" I64F "d sending to %s", result, target.str());
+                    throw makeStringExceptionV(ROXIE_AERON_ERROR, "AeronSender: Offer failed for unknown reason %" I64F "d sending to %s", (__int64) result, target.str());
             }
             break;
         }
@@ -383,7 +386,7 @@ public:
             context.newPublicationHandler(
                 [](const std::string& channel, std::int32_t streamId, std::int32_t sessionId, std::int64_t correlationId)
                 {
-                    DBGLOG("AeronSender: Publication %s, correlation %" I64F "d, streamId %d, sessionId %d", channel.c_str(),  correlationId, streamId, sessionId);
+                    DBGLOG("AeronSender: Publication %s, correlation %" I64F "d, streamId %d, sessionId %d", channel.c_str(), (__int64) correlationId, streamId, sessionId);
                 });
 
         aeron = aeron::Aeron::connect(context);

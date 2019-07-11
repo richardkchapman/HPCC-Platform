@@ -28,7 +28,7 @@ class CMessageCollator : public CInterfaceOf<IMessageCollator>
 private:
     std::queue<PackageSequencer*> queue;
     msg_map             mapping;  // Note - only accessed from collator thread
-    bool                activity;
+    RelaxedAtomic<bool> activity;
     bool                memLimitExceeded;
     CriticalSection     queueCrit;
     InterruptableSemaphore sem;

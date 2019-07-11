@@ -443,7 +443,7 @@ CMessageCollator::CMessageCollator(IRowManager *_rowMgr, unsigned _ruid) : rowMg
     if (checkTraceLevel(TRACE_MSGPACK, 3))
         DBGLOG("UdpCollator: CMessageCollator::CMessageCollator rowMgr=%p this=%p ruid=" RUIDF "", _rowMgr, this, ruid);
     memLimitExceeded = false;
-    activity = false; // w/o it there is a race condition
+    activity = false;
     totalBytesReceived = 0;
 }
 
@@ -522,9 +522,9 @@ void CMessageCollator::collate(DataBuffer *dataBuff)
     bool isComplete = pkSqncr->insert(dataBuff);
     if (isComplete)
     {
-        queueCrit.enter();
         pkSqncr->Link();
         mapping.remove(puid);
+        queueCrit.enter();
         queue.push(pkSqncr);
         sem.signal();
         queueCrit.leave();

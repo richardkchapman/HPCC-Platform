@@ -82,7 +82,7 @@ class IpMapTest : public CppUnit::TestFixture
         {
             numCreated++;
         }
-        static unsigned numCreated;
+        static RelaxedAtomic<unsigned> numCreated;
     };
 
     void testThread()
@@ -110,7 +110,7 @@ class IpMapTest : public CppUnit::TestFixture
     }
 };
 
-unsigned IpMapTest::IpEntry::numCreated = 0;
+RelaxedAtomic<unsigned> IpMapTest::IpEntry::numCreated {0};
 
 CPPUNIT_TEST_SUITE_REGISTRATION( IpMapTest );
 CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( IpMapTest, "IpMapTest" );

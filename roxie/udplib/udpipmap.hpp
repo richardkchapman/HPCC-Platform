@@ -88,7 +88,6 @@ private:
 public:
     IpMapOf<T>(std::function<T *(const IpAddress &)> _tfunc) : tfunc(_tfunc)
     {
-        memset(table, 0, sizeof(table));
     }
     T &lookup(const IpAddress &) const;
     inline T &operator[](const IpAddress &ip) const { return lookup(ip); }
@@ -97,7 +96,7 @@ public:
 
 private:
     const std::function<T *(const IpAddress &)> tfunc;
-    mutable std::atomic<const list *> table[256];
+    mutable std::atomic<const list *> table[256] = {};
     mutable CriticalSection lock;
     mutable int firstHash = 256;
     mutable int lastHash = -1;
@@ -110,8 +109,8 @@ template<class T> T &IpMapOf<T>::lookup(const IpAddress &ip) const
    unsigned hash = ip.fasthash() & 0xff;
    for (;;)
    {
-       const list *l = table[hash].load(std::memory_order_acquire);
-       const list *finger = l;
+       const list *head = table[hash].load(std::memory_order_acquire);
+       const list *finger = head;
        while (finger)
        {
            if (finger->ip.ipequals(ip))
@@ -122,9 +121,9 @@ template<class T> T &IpMapOf<T>::lookup(const IpAddress &ip) const
        // Note that we only lock out other additions, not other lookups
        // I could have a lock per table-entry if I thought it was worthwhile
        CriticalBlock b(lock);
-       if (table[hash].load(std::memory_order_acquire) != l)
+       if (table[hash].load(std::memory_order_acquire) != head)
            continue;  // NOTE - an alternative implementation would be to rescan the list inside the critsec, but this is cleaner
-       finger = new list(ip, l, tfunc);
+       finger = new list(ip, head, tfunc);
        table[hash].store(finger, std::memory_order_release);
        if (hash <= firstHash)
        {

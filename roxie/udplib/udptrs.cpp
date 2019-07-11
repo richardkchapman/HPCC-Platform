@@ -164,10 +164,10 @@ public:
 
     // MORE - consider where/if we need critsecs in here!
 
-    unsigned sendData(const UdpPermitToSendMsg &permit, TokenBucket *bucket, unsigned &maxPackets)
+    unsigned sendData(const UdpPermitToSendMsg &permit, TokenBucket *bucket)
     {
         requestExpiryTime = 0;
-        maxPackets = permit.max_data;
+        unsigned maxPackets = permit.max_data;
         std::vector<DataBuffer *> toSend;
         unsigned totalSent = 0;
         while (toSend.size() < maxPackets && packetsQueued.load(std::memory_order_relaxed))
@@ -415,13 +415,14 @@ class CSendManager : implements ISendManager, public CInterface
         {
             if (udpTraceLevel > 0)
                 DBGLOG("UdpSender: send_resend_flow started");
+            unsigned timeout = udpRequestToSendTimeout;
             while (running)
             {
-                unsigned timeout = udpRequestToSendTimeout;
                 if (terminated.wait(timeout) || !running)
                     break;
-                unsigned now = msTick();
 
+                unsigned now = msTick();
+                timeout = udpRequestToSendTimeout;
                 for (auto&& dest: parent.receiversTable)
                 {
                     unsigned expireTime = dest.requestExpiryTime;
@@ -648,8 +649,7 @@ class CSendManager : implements ISendManager, public CInterface
                 if (udpSnifferEnabled)
                     send_sniff(sniff_t::busy);
                 UdpReceiverEntry &receiverInfo = parent.receiversTable[permit.destNode.getNodeAddress()];
-                unsigned maxPackets;
-                unsigned payload = receiverInfo.sendData(permit, bucket, maxPackets);
+                unsigned payload = receiverInfo.sendData(permit, bucket);
                 if (udpSnifferEnabled)
                     send_sniff(sniff_t::idle);
                 

@@ -176,7 +176,7 @@ public:
 
 class flow_t {
 public:
-    enum flowmsg_t  { ok_to_send, request_received, request_to_send, send_completed, request_to_send_more };
+    enum flowmsg_t : unsigned short { ok_to_send, request_received, request_to_send, send_completed, request_to_send_more };
     static const char *name(flowmsg_t m)
     {
         switch (m)
