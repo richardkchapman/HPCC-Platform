@@ -2786,16 +2786,16 @@ protected:
 
     void initDebugMode(bool breakAtStart, const char *debugUID)
     {
-        if (!debugPermitted || !ownEP.port || nativeProtocol)
+        if (!debugPermitted || !debugEndpoint.port || nativeProtocol)
             throw MakeStringException(ROXIE_ACCESS_ERROR, "Debug query not permitted here");
         debugContext.setown(new CRoxieServerDebugContext(this, logctx, factory->cloneQueryXGMML()));
         debugContext->debugInitialize(debugUID, factory->queryQueryName(), breakAtStart);
         if (workUnit)
         {
             WorkunitUpdate wu(&workUnit->lock());
-            wu->setDebugAgentListenerPort(ownEP.port); //tells debugger what port to write commands to
+            wu->setDebugAgentListenerPort(debugEndpoint.port); //tells debugger what port to write commands to
             StringBuffer sb;
-            ownEP.getIpText(sb);
+            debugEndpoint.getIpText(sb);
             wu->setDebugAgentListenerIP(sb); //tells debugger what IP to write commands to
         }
         options.timeLimit = 0;

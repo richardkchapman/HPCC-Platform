@@ -252,7 +252,7 @@ extern unsigned numServerThreads;
 extern unsigned numRequestArrayThreads;
 extern unsigned readTimeout;
 extern unsigned indexReadChunkSize;
-extern SocketEndpoint ownEP;
+extern SocketEndpoint debugEndpoint;
 extern unsigned maxBlockSize;
 extern unsigned maxLockAttempts;
 extern bool enableHeartBeat;

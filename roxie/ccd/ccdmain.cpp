@@ -183,7 +183,7 @@ unsigned maxFileAge[2] = {0xffffffff, 60*60*1000}; // local files don't expire, 
 unsigned minFilesOpen[2] = {2000, 500};
 unsigned maxFilesOpen[2] = {4000, 1000};
 
-SocketEndpoint ownEP;
+SocketEndpoint debugEndpoint;
 HardwareInfo hdwInfo;
 unsigned parallelAggregate;
 bool inMemoryKeysEnabled = true;
@@ -539,7 +539,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
                 }
                 else if (name=="--channel")
                 {
-                    slavePorts.emplace_back(8887, atoi(value.c_str()));
+                    slavePorts.emplace_back(CCD_MULTICAST_PORT, atoi(value.c_str()));
                     continue;
                 }
             }
@@ -1018,6 +1018,9 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
             IpAddress myIP(".");
             for (unsigned port: farmerPorts)
             {
+                VStringBuffer xpath("./RoxieFarmProcess[@port='%u']", port);
+                if (!topology->hasProp(xpath))
+                    topology->addPropTree("./RoxieFarmProcess")->setPropInt("@port", port);
                 RoxieEndpointInfo me = {RoxieEndpointInfo::RoxieServer, 0, { (unsigned short) port, myIP }};
                 myRoles.push_back(me);
             }
@@ -1192,13 +1195,18 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
                     unsigned listenQueue = roxieFarm.getPropInt("@listenQueue", DEFAULT_LISTEN_QUEUE_SIZE);
                     unsigned numThreads = roxieFarm.getPropInt("@numThreads", numServerThreads);
                     unsigned port = roxieFarm.getPropInt("@port", ROXIE_SERVER_PORT);
+                    if (useDynamicServers)
+                    {
+                        if (std::find(std::begin(farmerPorts), std::end(farmerPorts), port) == std::end(farmerPorts))
+                            continue;
+                    }
                     //unsigned requestArrayThreads = roxieFarm.getPropInt("@requestArrayThreads", 5);
                     // NOTE: farmer name [@name=] is not copied into topology
                     const IpAddress &ip = myNode.getNodeAddress();
                     if (!roxiePort)
                     {
                         roxiePort = port;
-                        ownEP.set(roxiePort, ip);
+                        debugEndpoint.set(roxiePort, ip);
                     }
                     bool suspended = roxieFarm.getPropBool("@suspended", false);
                     Owned <IHpccProtocolListener> roxieServer;
