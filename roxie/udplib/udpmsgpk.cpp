@@ -184,7 +184,8 @@ public:
             unsigned prevseq;
             if (lastContiguousPacket)
             {
-                prevseq = ((UdpPacketHeader*) lastContiguousPacket->data)->pktSeq & UDP_PACKET_SEQUENCE_MASK;
+                UdpPacketHeader *lastHdr  = (UdpPacketHeader*) lastContiguousPacket->data;
+                prevseq = lastHdr->pktSeq & UDP_PACKET_SEQUENCE_MASK;
                 finger = lastContiguousPacket->msgNext;
             }
             else
