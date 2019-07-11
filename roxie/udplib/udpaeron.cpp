@@ -145,7 +145,7 @@ public:
             context.newSubscriptionHandler(
                 [](const std::string& channel, std::int32_t streamId, std::int64_t correlationId)
                 {
-                    DBGLOG("AeronReceiver: Subscription: %s %" I64F "d %d", channel.c_str(), correlationId, streamId);
+                    DBGLOG("AeronReceiver: Subscription: %s %" I64F "d %d", channel.c_str(), (__int64) correlationId, streamId);
                 });
             context.availableImageHandler([](aeron::Image &image)
                 {
