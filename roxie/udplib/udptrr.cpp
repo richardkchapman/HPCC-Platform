@@ -471,7 +471,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             {
                 try
                 {
-                    int l = sizeof(msg);
+                    unsigned l = sizeof(msg);
                     unsigned int res ;
                     flow_socket->readtms(&msg, l, l, res, timeout);
                     assert(res==l);
@@ -826,7 +826,7 @@ IReceiveManager *createReceiveManager(int server_flow_port, int data_port, int c
                                       int sniffer_port, const IpAddress &sniffer_multicast_ip,
                                       int udpQueueSize, unsigned maxSlotsPerSender)
 {
-    assertex (maxSlotsPerSender <= udpQueueSize);
+    assertex (maxSlotsPerSender <= (unsigned) udpQueueSize);
     return new CReceiveManager(server_flow_port, data_port, client_flow_port, sniffer_port, sniffer_multicast_ip, udpQueueSize, maxSlotsPerSender);
 }
 

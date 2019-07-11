@@ -88,7 +88,6 @@ class IpMapTest : public CppUnit::TestFixture
     void testThread()
     {
         IpMapOf<IpEntry> map([](const IpAddress &){return new IpEntry; });
-        bool running = true;
         std::thread threads[100];
         for (int i = 0; i < 100; i++)
         {

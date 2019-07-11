@@ -98,10 +98,8 @@ private:
     const std::function<T *(const IpAddress &)> tfunc;
     mutable std::atomic<const list *> table[256] = {};
     mutable CriticalSection lock;
-    mutable int firstHash = 256;
-    mutable int lastHash = -1;
+    mutable unsigned firstHash = 256;
     mutable std::atomic<const list *> first { nullptr };
-    mutable std::atomic<const list *> last { nullptr };
 };
 
 template<class T> T &IpMapOf<T>::lookup(const IpAddress &ip) const
@@ -129,11 +127,6 @@ template<class T> T &IpMapOf<T>::lookup(const IpAddress &ip) const
        {
            firstHash = hash;
            first = finger;
-       }
-       if (hash > lastHash)
-       {
-           lastHash = hash;
-           last = finger;
        }
        return *finger->entry;
    }

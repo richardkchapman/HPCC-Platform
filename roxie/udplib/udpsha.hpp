@@ -60,8 +60,8 @@ class queue_t
     queue_element   *elements;
     unsigned int    element_count;
     
-    int             first;
-    int             last;
+    unsigned        first;
+    unsigned        last;
     CriticalSection c_region;
     int             active_buffers;
     int             queue_size;

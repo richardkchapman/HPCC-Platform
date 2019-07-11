@@ -318,7 +318,7 @@ public:
                     pktHdr->node.getTraceText(s).str(), dataBuff, this);
             }
             unsigned packetDataLimit = pktHdr->length - pktHdr->metalength;
-            if ((packetDataLimit  - current_pos) >= length) 
+            if ((packetDataLimit  - current_pos) >= (unsigned) length)
             {
                 // Simple case - no need to copy
                 res = &dataBuff->data[current_pos];
@@ -344,7 +344,7 @@ public:
             {
                 // Spans more than one block - allocate and copy
                 unsigned cpyLen = packetDataLimit - current_pos;
-                if (cpyLen > length) cpyLen = length;
+                if (cpyLen > (unsigned) length) cpyLen = length;
                 memcpy(currResLoc, &dataBuff->data[current_pos], cpyLen);
                 length -= cpyLen;
                 currResLoc += cpyLen;

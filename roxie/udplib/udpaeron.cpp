@@ -303,7 +303,7 @@ public:
                 std::this_thread::yield();
                 publication = aeron->findPublication(id);
             }
-            if (publication->maxPayloadLength() < DATA_PAYLOAD)
+            if ((unsigned) publication->maxPayloadLength() < DATA_PAYLOAD)
                 throw makeStringExceptionV(ROXIE_AERON_ERROR, "AeronSender: maximum payload %u too small (%u required)", (unsigned) publication->maxPayloadLength(), (unsigned) DATA_PAYLOAD);
             if (udpTraceLevel <= 4)
                 DBGLOG("AeronSender: Publication maxima: %d %d", publication->maxPayloadLength(), publication->maxMessageLength());

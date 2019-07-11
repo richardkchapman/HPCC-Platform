@@ -46,6 +46,11 @@ include_directories (
          ./../../system/aeron/aeron-driver/src/main/c/
     )
 
+if (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG)
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-switch -Wno-unused-parameter -Werror -Wno-delete-non-virtual-dtor -Wno-overloaded-virtual -Wno-reorder -Wno-sign-compare")
+endif()
+
+
 HPCC_ADD_LIBRARY( udplib SHARED ${SRCS} )
 set_target_properties( udplib PROPERTIES 
     COMPILE_FLAGS -D_USRDLL

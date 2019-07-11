@@ -503,7 +503,7 @@ class CSendManager : implements ISendManager, public CInterface
 #endif
             while(running) 
             {
-                UdpPermitToSendMsg f = { flow_t::ok_to_send, 0 };
+                UdpPermitToSendMsg f = { flow_t::ok_to_send, 0, { } };
                 while (running) 
                 {
                     try 
