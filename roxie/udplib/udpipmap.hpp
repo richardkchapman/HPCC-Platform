@@ -86,7 +86,8 @@ private:
     };
 
 public:
-    IpMapOf<T>(std::function<T *(const IpAddress &)> _tfunc) : tfunc(_tfunc)
+    typedef std::function<T *(const IpAddress &)> creatorFunc;
+    IpMapOf<T>(creatorFunc _tfunc) : tfunc(_tfunc)
     {
     }
     T &lookup(const IpAddress &) const;
@@ -95,7 +96,7 @@ public:
     myIterator end()   { return myIterator(nullptr, 256, nullptr); }
 
 private:
-    const std::function<T *(const IpAddress &)> tfunc;
+    const creatorFunc tfunc;
     mutable std::atomic<const list *> table[256] = {};
     mutable CriticalSection lock;
     mutable unsigned firstHash = 256;
