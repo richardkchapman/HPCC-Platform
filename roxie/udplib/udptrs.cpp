@@ -86,7 +86,7 @@ private:
     const bool isLocal = false;
     ISocket *send_flow_socket = nullptr;
     ISocket *data_socket = nullptr;
-    const unsigned numQueues = 0;
+    const unsigned numQueues;
     int     current_q = 0;
     int     currentQNumPkts = 0;         // Current Queue Number of Consecutive Processed Packets.
     int     *maxPktsPerQ = nullptr;      // to minimise power function re-calc for every packet
@@ -317,6 +317,7 @@ public:
     : ip (_ip), sourceIP(_sourceIP), numQueues(_numQueues), isLocal(_ip.isLocal())
     {
         assert(!initialized);
+        assert(numQueues > 0);
         if (!ip.isNull())
         {
             try 
@@ -670,7 +671,6 @@ class CSendManager : implements ISendManager, public CInterface
     friend class send_data;
 
     unsigned numQueues;
-    //Semaphore sem;
 
     IpMapOf<UdpReceiverEntry> receiversTable;
     send_resend_flow  *resend_flow;

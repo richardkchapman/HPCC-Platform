@@ -218,7 +218,6 @@ public:
                     if (header->sequence != lastSequence[header->nodeIndex]+1)
                     {
                         DBGLOG("Missing messages %u-%u from node %u", lastSequence[header->nodeIndex]+1, header->sequence-1, header->nodeIndex);
-                    //    udpTraceLevel = 6;
                     }
                     lastSequence[header->nodeIndex] = header->sequence;
                 }
@@ -616,7 +615,6 @@ int main(int argc, char * argv[] )
     InitModuleObjects();
     if (argc < 2)
         usage();
-    bool startEmbeddedMediaDriver = true;
     useDynamicServers = false;
 
     strdup("Make sure leak checking is working");

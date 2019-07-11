@@ -135,9 +135,9 @@ void TopologyManager::update()
                                 {
                                     eol++;
                                     md5.clear().append(eol-mem, mem);  // Note: includes '\n'
-                                    auto newServer = new CTopologyServer(eol);
+                                    Owned<const ITopologyServer> newServer = new CTopologyServer(eol);
                                     SpinBlock b(lock);
-                                    currentTopology.setown(newServer);
+                                    currentTopology.swap(newServer);
                                 }
                             }
                         }
@@ -173,7 +173,7 @@ void TopologyManager::setServers(const SocketEndpointArray &_topoServers)
 void TopologyManager::setRoles(const std::vector<RoxieEndpointInfo> &myRoles)
 {
     topoBuf.clear();
-    for (auto role : myRoles)
+    for (const auto &role : myRoles)
     {
         switch (role.role)
         {
@@ -191,8 +191,8 @@ extern UDPLIB_API const ITopologyServer *getTopology()
     return &topology.getCurrent();
 }
 
-std::thread topoThread;
-Semaphore abortTopo;
+static std::thread topoThread;
+static Semaphore abortTopo;
 const unsigned topoUpdateInterval = 5000;
 
 extern UDPLIB_API void startTopoThread(const SocketEndpointArray &topoServers, const std::vector<RoxieEndpointInfo> &myRoles, unsigned traceLevel)
@@ -201,7 +201,9 @@ extern UDPLIB_API void startTopoThread(const SocketEndpointArray &topoServers, c
     topology.setRoles(myRoles);
     topoThread = std::thread([traceLevel]()
     {
-        while (!abortTopo.wait(topoUpdateInterval))
+        topology.update();
+        unsigned waitTime = 1000;  // First time around we don't wait as long, so that system comes up faster
+        while (!abortTopo.wait(waitTime))
         {
             topology.update();
             if (traceLevel > 2)
@@ -214,6 +216,7 @@ extern UDPLIB_API void startTopoThread(const SocketEndpointArray &topoServers, c
                     DBGLOG("Slave %d: %s", idx, eps.item(idx).getIpText(s).str());
                 }
             }
+            waitTime = topoUpdateInterval;
         }
     });
 }

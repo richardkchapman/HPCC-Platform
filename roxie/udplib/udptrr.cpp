@@ -147,14 +147,14 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             if (udpMaxRetryTimedoutReqs && (timeouts >= udpMaxRetryTimedoutReqs))
             {
                 if (udpTraceLevel)
-                    DBGLOG("Retrying");
+                    DBGLOG("Abandoning");
                 timeouts = 0;
                 return false;
             }
             else
             {
                 if (udpTraceLevel)
-                    DBGLOG("Abandoning");
+                    DBGLOG("Retrying");
                 return true;
             }
         }
@@ -599,7 +599,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                     parent.inflight--;
                     // MORE - reset it to zero if we fail to read data, or if avail_read returns 0.
                     UdpPacketHeader &hdr = *(UdpPacketHeader *) b->data;
-                    assert(hdr.length == res);
+                    assert(hdr.length == res && hdr.length > sizeof(hdr));
                     if (udpTraceLevel > 5) // don't want to interrupt this thread if we can help it
                     {
                         StringBuffer s;
@@ -663,7 +663,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
     int                  input_queue_size;
     receive_receive_flow *receive_flow;
     receive_data         *data;
-    //ReceiveFlowManager   *manager;
     receive_sniffer      *sniffer;
     
     int                  receive_flow_port;
@@ -685,7 +684,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         {
             if (i < -input_queue->capacity())
             {
-                //if (udpTraceLevel)
+                if (udpTraceLevel)
                     DBGLOG("UdpReceiver: ERROR: inflight has more packets in queue but not counted (%d) than queue capacity (%d)", -i, input_queue->capacity());  // Should never happen
                 inflight = -input_queue->capacity();
             }
@@ -693,7 +692,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         }
         else if (i >= free)
         {
-            //if (udpTraceLevel)
+            if (udpTraceLevel)
                 DBGLOG("UdpReceiver: ERROR: more packets in flight (%d) than slots free (%d)", i, free);  // Should never happen
             inflight = i = free-1;
         }
@@ -715,7 +714,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         input_queue_size = queue_size;
         input_queue = new queue_t(queue_size);
         data = new receive_data(*this);
-  //      manager = new ReceiveFlowManager(*this, m_slot_pr_client);
         receive_flow = new receive_receive_flow(*this, server_flow_port, m_slot_pr_client);
         if (udpSnifferEnabled)
             sniffer = new receive_sniffer(*this, snif_port, multicast_ip);
@@ -725,7 +723,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         running = true;
         collatorThread.start();
         data->start();
-//        manager->start();
         receive_flow->start();
         if (udpSnifferEnabled)
             sniffer->start();
@@ -739,7 +736,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         collatorThread.join();
         delete data;
         delete receive_flow;
-  //      delete manager;
         delete sniffer;
         delete input_queue;
     }
