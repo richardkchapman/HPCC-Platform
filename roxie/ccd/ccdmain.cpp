@@ -17,6 +17,7 @@
 
 #include <platform.h>
 #include <signal.h>
+#include <algorithm>
 #include <jlib.hpp>
 #include <jio.hpp>
 #include <jmisc.hpp>
