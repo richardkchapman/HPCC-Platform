@@ -45,4 +45,4 @@
 	url = https://github.com/hpcc-systems/libantlr3c.git
 [submodule "system/aeron"]
 	path = system/aeron
-	url = git@github.com:hpcc-systems/aeron
+	url = https://github.com/hpcc-systems/aeron.git
