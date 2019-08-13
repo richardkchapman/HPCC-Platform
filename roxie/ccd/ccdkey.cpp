@@ -839,7 +839,7 @@ public:
         // MORE - could do with being faster than this!
         assertex(curStream != NULL);
         unsigned __int64 pos = deserializeSource.tell();
-        return makeLocalFposOffset(thisPartIdx-1, pos);
+        return makeFilePositionLocal(pos);
     }
 
     virtual const char * queryLogicalFilename(const void * row) override
