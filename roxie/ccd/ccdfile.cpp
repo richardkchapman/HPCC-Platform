@@ -1619,7 +1619,7 @@ public:
         if (f)
             valid++;
         files.append(f);
-        bases.append(base);
+        bases.append(base);  // NOTE - bases resets to zero per subfile, but accumulates per part. This may not be what we want!
         if (_actualCrc)
         {
             if (actualCrc && actualCrc != _actualCrc)
