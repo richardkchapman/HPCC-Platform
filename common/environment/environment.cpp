@@ -1477,11 +1477,12 @@ void CLocalEnvironment::buildMachineCache() const
                 StringBuffer x("Hardware/Computer[@netAddress=\"");
                 x.append(netAddress).append("\"]");
                 cache.setValue(x.str(), cached);
-
+#if 0
                 IpAddress ip;
                 ip.ipset(netAddress);
                 if (ip.isLocal())
                     cache.setValue("Hardware/Computer[@netAddress=\".\"]", cached);
+#endif
             }
             numOfMachines++;
             StringBuffer x("Hardware/Computer[@id=\"");
