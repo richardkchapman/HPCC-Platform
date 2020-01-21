@@ -507,8 +507,8 @@ void CDeploymentEngine::checkInstance(IPropertyTree& node) const
 {
     // Check for valid net address
     StringAttr sAttr;
-    if (m_envDepEngine.lookupNetAddress(sAttr, node.queryProp("@computer")).length()==0)
-        throw MakeStringException(0, "Process %s has invalid computer net address", m_name.get());
+   // if (m_envDepEngine.lookupNetAddress(sAttr, node.queryProp("@computer")).length()==0)
+     //   throw MakeStringException(0, "Process %s has invalid computer net address", m_name.get());
 
     // Check for valid directory
     StringBuffer directory;

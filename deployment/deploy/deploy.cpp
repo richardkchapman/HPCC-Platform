@@ -758,6 +758,8 @@ public:
     //---------------------------------------------------------------------------
     void getSSHAccountInfo(const char* computer, StringAttr& user, StringAttr& sshKeyFile, StringAttr& sshKeyPassphrase) const
     {
+        if (!computer)
+            return;
         Owned<IConstMachineInfo> machine = m_environment.getMachine(computer);
         if (machine)
         {
@@ -1156,12 +1158,14 @@ IPropertyTree* getInstances(const IPropertyTree* pEnvRoot, const char* compName,
   {
     IPropertyTree* pComponent = &iter->query();
     const char* type = pComponent->queryName();
+    printf("type=%s\n", type);
     if (stricmp(type, "Topology")!=0 && stricmp(type, "Directories")!=0 &&
         pComponent->queryProp("@buildSet") && pComponent->queryProp("@name") &&
         ((!compName && !compType) ||
          (compName && !strcmp(pComponent->queryProp("@name"), compName)) ||
          (!compName && compType && !strcmp(pComponent->queryProp("@buildSet"), compType))))
     {
+      printf(" found name=%s\n", compName);
       const char* name    = pComponent->queryProp("@name");
       const char* build   = pComponent->queryProp("@build");
       const char* buildSet= pComponent->queryProp("@buildSet");
@@ -1201,7 +1205,7 @@ IPropertyTree* getInstances(const IPropertyTree* pEnvRoot, const char* compName,
           const char* computer = pInst->queryProp("@computer");
           const char* netAddr = pInst->queryProp("@netAddress");
 
-          if (!computer || !*computer || !strcmp("Notes", pInst->queryName()))
+          if (ipAddr && (!computer || !*computer || !strcmp("Notes", pInst->queryName())))
             continue;
 
           if (!strcmp(buildSet, "thor"))
@@ -1214,7 +1218,7 @@ IPropertyTree* getInstances(const IPropertyTree* pEnvRoot, const char* compName,
 
             netAddr = pComputer->queryProp("@netAddress");
             if (matchDeployAddress(ipAddr, netAddr) || 
-                (!ipAddr && netAddr && *netAddr))
+                (!ipAddr))
             {
               if (!bAdded)
               {
@@ -1241,7 +1245,7 @@ IPropertyTree* getInstances(const IPropertyTree* pEnvRoot, const char* compName,
             }
           }
           else if (matchDeployAddress(ipAddr, netAddr) || 
-                   (!ipAddr && netAddr && *netAddr))
+                   (!ipAddr))
           {
             if (!bAdded)
             {
