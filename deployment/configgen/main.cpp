@@ -918,7 +918,7 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  if (ipAddr.length()==0  && compname.length()==0 && !listallComps && !validateOnly && !listcommondirs && !listMachines && !listldaps && !ldapconfig)
+  if (ipAddr.length()==0  && !compName && !listallComps && !validateOnly && !listcommondirs && !listMachines && !listldaps && !ldapconfig)
     ipAddr.clear().append("."); // Meaning match any local address
 
   try
