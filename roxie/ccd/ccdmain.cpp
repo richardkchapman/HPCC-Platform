@@ -1135,6 +1135,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
             IpAddress myIP(".");
             for (unsigned port: farmerPorts)
             {
+                // MORE - what about listenQueue, numThreads etc
                 VStringBuffer xpath("./RoxieFarmProcess[@port='%u']", port);
                 if (!topology->hasProp(xpath))
                     topology->addPropTree("./RoxieFarmProcess")->setPropInt("@port", port);
