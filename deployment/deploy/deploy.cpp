@@ -1158,14 +1158,12 @@ IPropertyTree* getInstances(const IPropertyTree* pEnvRoot, const char* compName,
   {
     IPropertyTree* pComponent = &iter->query();
     const char* type = pComponent->queryName();
-    printf("type=%s\n", type);
     if (stricmp(type, "Topology")!=0 && stricmp(type, "Directories")!=0 &&
         pComponent->queryProp("@buildSet") && pComponent->queryProp("@name") &&
         ((!compName && !compType) ||
          (compName && !strcmp(pComponent->queryProp("@name"), compName)) ||
          (!compName && compType && !strcmp(pComponent->queryProp("@buildSet"), compType))))
     {
-      printf(" found name=%s\n", compName);
       const char* name    = pComponent->queryProp("@name");
       const char* build   = pComponent->queryProp("@build");
       const char* buildSet= pComponent->queryProp("@buildSet");
@@ -1205,7 +1203,7 @@ IPropertyTree* getInstances(const IPropertyTree* pEnvRoot, const char* compName,
           const char* computer = pInst->queryProp("@computer");
           const char* netAddr = pInst->queryProp("@netAddress");
 
-          if (ipAddr && (!computer || !*computer || !strcmp("Notes", pInst->queryName())))
+          if (!computer || !*computer || !strcmp("Notes", pInst->queryName()))
             continue;
 
           if (!strcmp(buildSet, "thor"))
