@@ -862,10 +862,10 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
             Owned<IPropertyTree> nas = envGetNASConfiguration(topology);
             envInstallNASHooks(nas);
         }
-        useDynamicServers = topology->getPropBool("@useDynamicServers", topologyServers.length()>0);
+        useDynamicServers = topology->getPropBool("@useDynamicServers", topologyServers.length()>0 || topology->getCount("./RoxieServerProcess") == 0);
         useAeron = topology->getPropBool("@useAeron", useDynamicServers);
         localSlave = topology->getPropBool("@localSlave", false);
-        numChannels = topology->getPropInt("@numChannels", 0);
+        numChannels = topology->getPropInt("@numChannels", useDynamicServers ? 1 : 0);
         doIbytiDelay = topology->getPropBool("@doIbytiDelay", true);
         minIbytiDelay = topology->getPropInt("@minIbytiDelay", 2);
         initIbytiDelay = topology->getPropInt("@initIbytiDelay", 50);
