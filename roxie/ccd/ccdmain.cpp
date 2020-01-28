@@ -863,7 +863,7 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
             envInstallNASHooks(nas);
         }
         useDynamicServers = topology->getPropBool("@useDynamicServers", topologyServers.length()>0 || topology->getCount("./RoxieServerProcess") == 0);
-        useAeron = topology->getPropBool("@useAeron", useDynamicServers);
+        useAeron = topology->getPropBool("@useAeron", false);
         localSlave = topology->getPropBool("@localSlave", false);
         numChannels = topology->getPropInt("@numChannels", useDynamicServers ? 1 : 0);
         doIbytiDelay = topology->getPropBool("@doIbytiDelay", true);
