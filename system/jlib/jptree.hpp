@@ -288,4 +288,6 @@ inline static bool isValidXPathChr(char c)
     return ('\0' != c && (isalnum(c) || strchr(validChrs, c)));
 }
 
+jlib_decl IPropertyTree * loadConfiguration(const char * configDir, const char * configFile, const char * componentTag, const char * legacyFile, const char * envPrefix, IPropertyTree * (mapper)(IPropertyTree *));
+
 #endif

@@ -764,7 +764,8 @@ int main(int argc, const char *argv[])
 
     try
     {
-        globals.setown(createPTreeFromXMLFile("eclccserver.xml", ipt_caseInsensitive));
+        globals.setown(loadConfiguration(nullptr, "eclccserver.json", "EclCCServer", "eclccserver.xml", "ECLCCSERVER", nullptr));
+//        globals.setown(createPTreeFromXMLFile("eclccserver.xml", ipt_caseInsensitive));
     }
     catch (IException * e)
     {
