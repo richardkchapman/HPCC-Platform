@@ -222,7 +222,7 @@ extern unsigned highTimeout;
 extern unsigned slaTimeout;
 extern unsigned headRegionSize;
 extern unsigned ccdMulticastPort;
-extern IPropertyTree *topology;
+extern Owned<IPropertyTree> topology;
 extern MapStringTo<int> *preferredClusters;
 extern StringArray allQuerySetNames;
 

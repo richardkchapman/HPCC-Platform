@@ -97,9 +97,10 @@ bool runOnce = false;
 unsigned udpMulticastBufferSize = 262142;
 bool roxieMulticastEnabled = true;
 
-IPropertyTree *topology;
+Owned<IPropertyTree> topology;
 MapStringTo<int> *preferredClusters;
 StringBuffer topologyFile;
+StringBuffer configFile;
 CriticalSection ccdChannelsCrit;
 StringArray allQuerySetNames;
 
@@ -195,18 +196,6 @@ unsigned blobCacheMB = 0;
 
 unsigned roxiePort = 0;
 Owned<IPerfMonHook> perfMonHook;
-
-MODULE_INIT(INIT_PRIORITY_STANDARD)
-{
-    topology = NULL;
-
-    return true;
-}
-
-MODULE_EXIT()
-{
-    ::Release(topology);
-}
 
 //=========================================================================================
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -665,36 +654,46 @@ int STARTQUERY_API start_query(int argc, const char *argv[])
         removeSentinelFile(sentinelFile);
 
         if (globals->hasProp("--topology"))
+        {
             globals->getProp("--topology", topologyFile);
-        else
-            topologyFile.append(codeDirectory).append(PATHSEPCHAR).append("RoxieTopology.xml");
-
-        if (checkFileExists(topologyFile.str()))
-        {
-            DBGLOG("Loading topology file %s", topologyFile.str());
-            topology = createPTreeFromXMLFile(topologyFile.str(), ipt_lowmem);
-            saveTopology();
-            if (globals->hasProp("--udpTraceLevel"))
-                topology->setProp("@udpTraceLevel", globals->queryProp("--udpTraceLevel"));
-            if (globals->hasProp("--traceLevel"))
-                topology->setProp("@traceLevel", globals->queryProp("--traceLevel"));
-            if (globals->hasProp("--prestartSlaveThreads"))
-                topology->setProp("@prestartSlaveThreads", globals->queryProp("--prestartSlaveThreads"));
-        }
-        else
-        {
-            if (globals->hasProp("--topology"))
+            if (!checkFileExists(topologyFile.str()))
             {
                 // Explicitly-named topology file SHOULD exist...
                 throw MakeStringException(ROXIE_INVALID_TOPOLOGY, "topology file %s not found", topologyFile.str());
             }
-            topology=createPTreeFromXMLString(
+        }
+        else
+            topologyFile.append("RoxieTopology.xml");
+
+        if (globals->hasProp("--config"))
+        {
+            globals->getProp("--config", configFile);
+            {
+                // Explicitly-named topology file SHOULD exist...
+                throw MakeStringException(ROXIE_INVALID_TOPOLOGY, "config file %s not found", configFile.str());
+            }
+        }
+        else
+            configFile.append("roxie.json");
+
+        if (checkFileExists(topologyFile.str()) && checkFileExists(configFile.str()))
+            throw MakeStringException(ROXIE_INVALID_TOPOLOGY, "config file %s and legacy config file %s both present", configFile.str(), topologyFile.str());
+
+        topology.setown(loadConfiguration(nullptr, configFile, "Roxie", topologyFile, "ROXIE", argv, nullptr));
+
+        if (checkFileExists(topologyFile.str()))
+        {
+//            saveTopology();
+        }
+        else
+        {
+            topology.setown(createPTreeFromXMLString(
                 "<RoxieTopology allFilesDynamic='1' localSlave='1' resolveLocally='1'>"
                 " <RoxieFarmProcess/>"
                 " <RoxieServerProcess netAddress='.'/>"
                 "</RoxieTopology>"
                 , ipt_lowmem
-                );
+                ));
             int port = globals->getPropInt("--port", 9876);
             topology->setPropInt("RoxieFarmProcess/@port", port);
             topology->setProp("@daliServers", globals->queryProp("--daliServers"));

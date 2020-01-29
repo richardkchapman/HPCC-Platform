@@ -26,6 +26,10 @@
 #include "jstring.hpp"
 
 #include <algorithm>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#define environ (*_NSGetEnviron())
+#endif
 
 #define MAKE_LSTRING(name,src,length) \
     const char *name = (const char *) alloca((length)+1); \
@@ -7738,7 +7742,34 @@ static void applyEnvironmentConfig(IPropertyTree & target, const char * cptPrefi
     }
 }
 
-jlib_decl IPropertyTree * loadConfiguration(const char * configDir, const char * configFile, const char * componentTag, const char * legacyFilename, const char * envPrefix, IPropertyTree * (mapper)(IPropertyTree *))
+static void applyCommandlineArg(IPropertyTree & target, const char * value)
+{
+    const char * name = value;
+    if (!startsWith(name, "--"))
+        return;
+
+    name += 2;
+
+    StringBuffer propName;
+    if (islower(*name))
+    {
+        propName.append("@");
+    }
+    const char * eq = strchr(value, '=');
+    if (eq)
+    {
+        propName.append(eq - name, name);
+        target.setProp(propName, eq + 1);
+    }
+    else
+    {
+        propName.append(name);
+        target.setProp(propName, nullptr);
+    }
+    // MORE - cope with nested elements, repeated elements...
+}
+
+jlib_decl IPropertyTree * loadConfiguration(const char * configDir, const char * configFile, const char * componentTag, const char * legacyFilename, const char * envPrefix, const char **argv, IPropertyTree * (mapper)(IPropertyTree *))
 {
     StringBuffer fullpath;
     if (configDir)
@@ -7748,9 +7779,12 @@ jlib_decl IPropertyTree * loadConfiguration(const char * configDir, const char *
     addNonEmptyPathSepChar(fullpath);
     fullpath.append(configFile);
 
+    if (legacyFilename && checkFileExists(legacyFilename) && checkFileExists(fullpath.str()))
+        throw makeStringExceptionV(0, "config file %s and legacy config file %s both present", fullpath.str(), legacyFilename);
+
     Owned<IPropertyTree> config = loadConfiguration(fullpath, componentTag);
 
-    if (legacyFilename)
+    if (legacyFilename && checkFileExists(legacyFilename))
     {
         Owned <IPropertyTree> legacy = createPTreeFromXMLFile(legacyFilename, ipt_caseInsensitive);
         if (legacy && mapper)
@@ -7759,10 +7793,17 @@ jlib_decl IPropertyTree * loadConfiguration(const char * configDir, const char *
             mergeConfiguration(*config, *legacy);
     }
 
+
     const char * * environment = const_cast<const char * *>(environ);
     for (const char * * cur = environment; *cur; cur++)
     {
         applyEnvironmentConfig(*config, envPrefix, *cur);
     }
+
+    for (const char * * cur = argv; *cur; cur++)
+    {
+        applyCommandlineArg(*config, *cur);
+    }
+
     return config.getClear();
 }
