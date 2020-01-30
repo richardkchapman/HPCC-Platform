@@ -427,7 +427,8 @@ public:
             printf("Warning - Owned Spinlock destroyed"); // can't use DBGLOG here!
     }
 #endif
-    inline void enter()       
+    [[deprecated]]
+    inline void enter()
     { 
         ThreadId self = GetCurrentThreadId(); 
 #ifdef SPINLOCK_RR_CHECK    // as requested by RKC 

@@ -2276,7 +2276,7 @@ public:
 
     void processRow(CDummyMessagePacker &d)
     {
-        CriticalBlock b(parCrit); // MORE - use a spinlock
+        CriticalBlock b(parCrit);
         MemoryBuffer &m = d.data;
         Owned<ISerialStream> stream = createMemoryBufferSerialStream(m);
         CThorStreamDeserializerSource rowSource(stream);
