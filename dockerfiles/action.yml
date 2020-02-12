@@ -15,4 +15,4 @@ outputs:
     description: 'Is the tag, which was pushed'
 runs:
   using: 'docker'
-  image: 'action.Dockerfile'
+  image: 'Dockerfile'
