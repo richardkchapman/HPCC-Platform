@@ -4,7 +4,5 @@ RUN apk update \
   && apk upgrade \
   && apk add --no-cache git bash
 
-COPY / /build/
-WORKDIR /build
-ENTRYPOINT ["./buildall.sh"]
+ENTRYPOINT ["dockerfiles/buildall.sh"]
 

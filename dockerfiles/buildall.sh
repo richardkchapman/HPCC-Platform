@@ -21,6 +21,9 @@ fi
 
 set -e
 
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+pushd $DIR 2>&1 > /dev/null
+
 build_image() {
   local name=$1
   local ver=$2
