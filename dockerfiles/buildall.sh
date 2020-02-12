@@ -8,6 +8,7 @@ BASE_VER=7.8
 BUILD_VER=$1
 BUILD_USER=$2
 [[ -z ${BUILD_USER} ]] && BUILD_USER=${INPUT_BUILD_USER}
+[[ -z ${BUILD_USER} ]] && BUILD_USER=${GITHUB_REPOSITORY%/*}
 [[ -z ${BUILD_USER} ]] && BUILD_USER=hpcc-systems
 [[ -z ${BUILD_VER} ]] && BUILD_VER=${INPUT_BUILD_VER}
 [[ -z ${BUILD_VER} ]] && BUILD_VER=$(git describe --exact-match --tags)
