@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Build
-        uses: ./.github/actions/buildall
+        uses: ./dockerfiles
         with:
           name: myDocker/repository
           username: ${{ secrets.DOCKER_USERNAME }}
