@@ -4,6 +4,6 @@ RUN apk update \
   && apk upgrade \
   && apk add --no-cache git bash
 
-COPY /* /
+COPY / /build/
 ENTRYPOINT ["/buildall.sh"]
 
