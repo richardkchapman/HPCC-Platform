@@ -15,6 +15,6 @@ jobs:
       - name: Build
         uses: ./dockerfiles
         with:
-          name: myDocker/repository
+          build_user: richardkchapman
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
