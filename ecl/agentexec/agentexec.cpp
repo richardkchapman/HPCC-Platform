@@ -272,7 +272,6 @@ int main(int argc, const char *argv[])
     Owned<IPropertyTree> config;
     try
     {
-        DBGLOG("AgentExec: Loading config file 'agentexec.xml'");
         config.setown(loadConfiguration(defaultJson, argv, "EclAgent", "ECLAGENT", "agentexec.xml", nullptr));
     }
     catch (IException *e) 

@@ -104,7 +104,7 @@ public:
         if (goer == this)
             dllCache.remove(dllName);
     }
-    static const CQueryDll *getQueryDll(const char *dllName, bool isExe)
+    static const CQueryDll *getQueryDll(const char *dllName, bool isExe, bool copyToCache)
     {
         CriticalBlock b(dllCacheLock);
         CQueryDll *dll = dllCache.getValue(dllName);
@@ -112,7 +112,7 @@ public:
             return dll;
         else
         {
-            Owned<ILoadedDllEntry> dll = isExe ? createExeDllEntry(dllName) : queryRoxieDllServer().loadDll(dllName, DllLocationDirectory);
+            Owned<ILoadedDllEntry> dll = isExe ? createExeDllEntry(dllName) : queryRoxieDllServer().loadDll(dllName, copyToCache ? DllLocationDirectory : DllLocationLocal);
             assertex(dll != NULL);
             return new CQueryDll(dllName, dll.getClear());
         }
@@ -129,7 +129,7 @@ public:
             else
                 throw makeStringExceptionV(ROXIE_MISSING_DLL, "Attempting to load workunit %s with no associated dll", wu->queryWuid());
         }
-        return getQueryDll(dllName.str(), false);
+        return getQueryDll(dllName.str(), false, false);
     }
     virtual HelperFactory *getFactory(const char *helperName) const
     {
@@ -149,12 +149,12 @@ CopyMapStringToMyClass<CQueryDll> CQueryDll::dllCache;
 
 extern const IQueryDll *createQueryDll(const char *dllName)
 {
-    return CQueryDll::getQueryDll(dllName, false);
+    return CQueryDll::getQueryDll(dllName, false, true);
 }
 
 extern const IQueryDll *createExeQueryDll(const char *exeName)
 {
-    return CQueryDll::getQueryDll(exeName, true);
+    return CQueryDll::getQueryDll(exeName, true, false);
 }
 
 extern const IQueryDll *createWuQueryDll(IConstWorkUnit *wu)

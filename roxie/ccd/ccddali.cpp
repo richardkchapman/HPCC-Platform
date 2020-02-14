@@ -869,6 +869,7 @@ public:
                 }
             }
         }
+        // If we get here, the dll does not exist in my cache directory. Ask dali where it is and go get it
         CriticalBlock b(crit);
         Owned<IRoxieDaliHelper> daliHelper = connectToDali();
         if (!started)
