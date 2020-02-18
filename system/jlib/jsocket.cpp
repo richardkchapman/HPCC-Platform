@@ -6310,6 +6310,7 @@ bool SocketEndpointArray::fromName(const char *name, unsigned defport)
     {
     case 2:
         defport = atoi(portSplit.item(1));
+        name = portSplit.item(0);
         // fallthrough
     case 1:
         break;

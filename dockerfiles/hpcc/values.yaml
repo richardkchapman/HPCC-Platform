@@ -59,6 +59,7 @@ roxie:
     ports: [ 9876, 0 ]
     numChannels: 2
     topoport: 9004
+    topoReplicas: 2
     XconfigFile: "roxie.yaml"
    
 notroxie: 
