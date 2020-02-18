@@ -6335,6 +6335,8 @@ bool SocketEndpointArray::fromName(const char *name, unsigned defport)
                 ep.setNetAddress(sizeof(unsigned),entry->h_addr_list[ptr]);
                 ep.port = defport;
                 append(ep);
+                StringBuffer s;
+                DBGLOG("Lookup %s found %s", name, ep.getUrlStr(s).str());
             }
         }
         return ordinality()>0;
