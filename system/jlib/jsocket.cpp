@@ -6351,25 +6351,28 @@ bool SocketEndpointArray::fromName(const char *name, unsigned defport)
         for (ai = addrInfo; ai; ai = ai->ai_next)
         {
             DBGLOG("flags=%d, family=%d, socktype=%d, protocol=%d, addrlen=%d, canonname=%s",ai->ai_flags,ai->ai_family,ai->ai_socktype,ai->ai_protocol,ai->ai_addrlen,ai->ai_canonname?ai->ai_canonname:"NULL");
-            switch (ai->ai_family)
+            if (ai->ai_protocol == IPPROTO_IP)
             {
-                case AF_INET:
+                switch (ai->ai_family)
                 {
-                    SocketEndpoint ep;
-                    ep.setNetAddress(sizeof(in_addr),&(((sockaddr_in *)ai->ai_addr)->sin_addr));
-                    ep.port = defport;
-                    append(ep);
-                    StringBuffer s;
-                    DBGLOG("Lookup %s found %s", name, ep.getUrlStr(s).str());
-                    break;
-                }
-            case AF_INET6:
-                {
-                    SocketEndpoint ep;
-                    ep.setNetAddress(sizeof(in_addr6),&(((sockaddr_in6 *)ai->ai_addr)->sin6_addr));
-                    ep.port = defport;
-                    append(ep);
-                    break;
+                    case AF_INET:
+                    {
+                        SocketEndpoint ep;
+                        ep.setNetAddress(sizeof(in_addr),&(((sockaddr_in *)ai->ai_addr)->sin_addr));
+                        ep.port = defport;
+                        append(ep);
+                        StringBuffer s;
+                        DBGLOG("Lookup %s found %s", name, ep.getUrlStr(s).str());
+                        break;
+                    }
+                case AF_INET6:
+                    {
+                        SocketEndpoint ep;
+                        ep.setNetAddress(sizeof(in_addr6),&(((sockaddr_in6 *)ai->ai_addr)->sin6_addr));
+                        ep.port = defport;
+                        append(ep);
+                        break;
+                    }
                 }
             }
         }
