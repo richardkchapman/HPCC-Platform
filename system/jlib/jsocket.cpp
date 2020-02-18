@@ -6350,6 +6350,7 @@ bool SocketEndpointArray::fromName(const char *name, unsigned defport)
         struct addrinfo  *ai;
         for (ai = addrInfo; ai; ai = ai->ai_next)
         {
+            DBGLOG("flags=%d, family=%d, socktype=%d, protocol=%d, addrlen=%d, canonname=%s",ai->ai_flags,ai->ai_family,ai->ai_socktype,ai->ai_protocol,ai->ai_addrlen,ai->ai_canonname?ai->ai_canonname:"NULL");
             switch (ai->ai_family)
             {
                 case AF_INET:
