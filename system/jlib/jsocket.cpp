@@ -6318,7 +6318,7 @@ bool SocketEndpointArray::fromName(const char *name, unsigned defport)
         throw MakeStringException(-1, "Invalid name %s SocketEndpointArray::fromName", name);
     }
 #if defined(__linux__) || defined (__APPLE__) || defined(getaddrinfo)
-    if (IP4only)
+  //  if (IP4only)
 #endif
     {
         CriticalBlock c(hostnamesect);
