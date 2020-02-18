@@ -6345,7 +6345,7 @@ bool SocketEndpointArray::fromName(const char *name, unsigned defport)
     struct addrinfo  *addrInfo = NULL;
     memset(&hints,0,sizeof(hints));
     int ret = getaddrinfo(name, NULL , &hints, &addrInfo);
-    if (ret)
+    if (ret == 0)
     {
         struct addrinfo  *ai;
         for (ai = addrInfo; ai; ai = ai->ai_next)
@@ -6358,6 +6358,8 @@ bool SocketEndpointArray::fromName(const char *name, unsigned defport)
                     ep.setNetAddress(sizeof(in_addr),&(((sockaddr_in *)ai->ai_addr)->sin_addr));
                     ep.port = defport;
                     append(ep);
+                    StringBuffer s;
+                    DBGLOG("Lookup %s found %s", name, ep.getUrlStr(s).str());
                     break;
                 }
             case AF_INET6:
