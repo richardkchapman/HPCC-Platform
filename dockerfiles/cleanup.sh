@@ -2,7 +2,7 @@
 
 # clean up old images
 
-docker rm $(docker ps -q -f 'status=exited')
+[[ "$1" == "-all" ]] && docker rm $(docker ps -q -f 'status=exited')
 docker rmi $(docker images -q -f "dangling=true")
 
 HEAD=$(git rev-parse --short HEAD)

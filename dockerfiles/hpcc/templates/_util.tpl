@@ -81,6 +81,6 @@ volumeMounts:
 {{- /* Add image attributes for a component */ -}}
 {{- /* Pass in a dictionary with root and imagename defined */ -}}
 {{- define "hpcc.utils.addImageAttrs" -}}
-image: "hpccsystems/{{ .imagename }}:{{ .root.Values.global.image.version }}"
+image: "{{ .root.Values.global.image.root | default hpccsystems }}/{{ .imagename }}:{{ .root.Values.global.image.version }}"
 imagePullPolicy: {{ .root.Values.global.image.pullPolicy }}
 {{- end -}}

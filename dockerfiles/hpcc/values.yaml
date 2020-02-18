@@ -7,7 +7,10 @@ global:
     storageSize: 3Gi
 
   image:
+    # This should probably say "latest" or "stable" in the example script, but set to a specific version in production systems
+    # We should also support overriding the version within a component
     version: master-2020-02-10
+    root: "hpccsystems"    # change this if you want to pull your images from somewhere other than DockerHub hpccsystems/*
     pullPolicy: IfNotPresent
 
   # Remove or override this if you don't want the simplified assumptions (including
