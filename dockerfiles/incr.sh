@@ -22,7 +22,11 @@ else
     
     echo Building local incremental images based on ${PREV}
         
-    docker image build -t hpccsystems/platform-build:${HEAD} --build-arg BUILD_VER=${PREV} --build-arg COMMIT=${HEAD} platform-build-incremental/
+    if [[ -n "$FORCE" ]] ; then
+      docker image build -t hpccsystems/platform-build:${HEAD} --build-arg BUILD_VER=${HEAD} --build-arg BASE_VER=7.8 --build-arg BUILD_TYPE=Debug platform-build/
+    else
+      docker image build -t hpccsystems/platform-build:${HEAD} --build-arg BUILD_VER=${PREV} --build-arg COMMIT=${HEAD} platform-build-incremental/
+    fi
     docker image build -t hpccsystems/platform-core:${HEAD} --build-arg BUILD_VER=${HEAD} platform-core-debug/  
     
     docker image build -t hpccsystems/roxie:${HEAD} --build-arg BUILD_VER=${HEAD} roxie/
