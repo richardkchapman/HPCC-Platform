@@ -33,7 +33,7 @@
 
 #include "rtlformat.hpp"
 
-#include "dalienv.hpp"
+//#include "dalienv.hpp"
 #include "rmtfile.hpp"
 #include "ccd.hpp"
 #include "ccdquery.hpp"

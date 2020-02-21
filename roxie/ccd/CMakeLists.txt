@@ -69,7 +69,6 @@ include_directories (
          ${HPCC_SOURCE_DIR}/common/workunit
          ${HPCC_SOURCE_DIR}/roxie/udplib
          ${HPCC_SOURCE_DIR}/roxie/roxie
-         ${HPCC_SOURCE_DIR}/common/environment
          ${HPCC_SOURCE_DIR}/ecl/hthor
          ${HPCC_SOURCE_DIR}/ecl/schedulectrl
          ${HPCC_SOURCE_DIR}/rtl/nbcd
@@ -120,7 +119,6 @@ target_link_libraries ( ccd
          deftype 
          thorhelper 
          jhtree 
-         environment 
          schedulectrl
          dllserver 
          workunit 

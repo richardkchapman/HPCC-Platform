@@ -17,7 +17,7 @@
 
 #include "jlib.hpp"
 #include "workunit.hpp"
-#include "dalienv.hpp"
+//#include "dalienv.hpp"
 #include "daclient.hpp"
 #include "dautils.hpp"
 #include "dllserver.hpp"
@@ -121,7 +121,7 @@ public:
     }
     virtual void notify(SubscriptionId subid, SDSNotifyFlags flags, unsigned valueLen, const void *valueData)
     {
-        return notify(subid, NULL, flags, valueLen, valueData);
+        notify(subid, NULL, flags, valueLen, valueData);
     }
     virtual void notify(SubscriptionId subid, const char *daliXpath, SDSNotifyFlags flags, unsigned valueLen, const void *valueData)
     {
@@ -758,7 +758,6 @@ public:
                     // Initialize client process
                     if (!initClientProcess(serverGroup, DCR_RoxyMaster, 0, NULL, NULL, timeout))
                         throw MakeStringException(ROXIE_DALI_ERROR, "Could not initialize dali client");
-                    setPasswordsFromSDS();
                     serverStatus = new CSDSServerStatus("RoxieServer");
                     serverStatus->queryProperties()->setProp("@cluster", roxieName.str());
                     serverStatus->commitProperties();
@@ -794,7 +793,6 @@ public:
                 delete serverStatus;
                 serverStatus = NULL;
                 closeDllServer();
-                closeEnvironment();
                 clientShutdownWorkUnit();
                 disconnectRoxieQueues();
                 ::closedownClientProcess(); // dali client closedown
