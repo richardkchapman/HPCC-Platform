@@ -36,10 +36,15 @@ global:
   # This will cause initContainers to be created to ensure that host mount points have correct uid/gid
   hostStorage: true
 
+  # Set to true if using hostPath storageClass
+  # This will cause initContainers to be created to ensure that host mount points have correct uid/gid
+  hostStorage: true
+
+
 dali:
 - name: mydali
 
-eclagent:
+xeclagent:
 - name: myeclagent
   replicas: 1
   containerPerAgent: true
@@ -53,7 +58,7 @@ esp:
 - name: myesp
   replicas: 1
 
-roxie:
+xroxie:
 - name: myroxie
   ports: [9876,0]
   numChannels: 2
@@ -65,5 +70,12 @@ roxie:
 thor:
 - name: thor1
   masterport: 20000
-  numSlaves: 2
+  numSlaves: 4
   slaveport: 20100
+  globalMemorySize: 4096
+  watchdogEnabled: true
+  watchdogProgressEnabled: true
+  maxActive: 2
+  eclagent:
+    replicas: 1
+    containerPerAgent: true

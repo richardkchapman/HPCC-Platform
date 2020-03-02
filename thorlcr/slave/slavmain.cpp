@@ -2038,6 +2038,11 @@ public:
                     {
                         stopped = true;
                         PROGLOG("Shutdown received");
+/*                        
+#ifdef _CONTAINERIZED
+                        exit(0);
+#endif
+*/
                         if (watchdog)
                             watchdog->stop();
                         mptag_t sdreplyTag;

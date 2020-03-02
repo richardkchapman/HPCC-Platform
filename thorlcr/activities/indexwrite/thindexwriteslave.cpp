@@ -41,6 +41,7 @@ class IndexWriteSlaveActivity : public ProcessSlaveActivity, public ILookAheadSt
     Owned<IPartDescriptor> partDesc, tlkDesc;
     IHThorIndexWriteArg *helper;
     Owned <IKeyBuilder> builder;
+    OwnedIFileIO builderFileIO;
     Owned<IRowStream> myInputStream;
     Owned<IPropertyTree> metadata;
     Linked<IEngineRowAllocator> outRowAllocator;
@@ -155,8 +156,8 @@ public:
         StringBuffer partFname;
         getPartFilename(partDesc, 0, partFname);
         bool compress=false;
-        OwnedIFileIO iFileIO = createMultipleWrite(this, partDesc, 0, TW_RenameToPrimary, compress, NULL, this, &abortSoon);
-        Owned<IFileIOStream> out = createBufferedIOStream(iFileIO);
+        builderFileIO.setown(createMultipleWrite(this, partDesc, 0, TW_RenameToPrimary, compress, NULL, this, &abortSoon));
+        Owned<IFileIOStream> out = createBufferedIOStream(builderFileIO);
         ActPrintLog("INDEXWRITE: created fixed output stream %s", partFname.str());
         unsigned flags = COL_PREFIX;
         if (TIWrowcompress & helper->getFlags())
@@ -213,7 +214,12 @@ public:
         try
         {
             if (builder)
+            {
                 builder->finish(metadata, &crc);
+                builder.clear();
+                builderFileIO->close();
+                builderFileIO.clear();
+            }
         }
         catch (IException *_e)
         {
@@ -229,7 +235,6 @@ public:
         try 
         { 
             metadata.clear();
-            builder.clear(); 
         }
         catch (IException *_e)
         {

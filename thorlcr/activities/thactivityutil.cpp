@@ -610,20 +610,7 @@ class CWriteHandler : implements IFileIO, public CInterface
     CFIPScope fipScope;
     unsigned twFlags;
 
-public:
-    IMPLEMENT_IINTERFACE_USING(CInterface);
-
-    CWriteHandler(CActivityBase &_activity, IPartDescriptor &_partDesc, IFile *_primary, IFileIO *_primaryio, ICopyFileProgress *_iProgress, unsigned _twFlags, bool *_aborted)
-        : activity(_activity), partDesc(_partDesc), primary(_primary), primaryio(_primaryio), iProgress(_iProgress), twFlags(_twFlags), aborted(_aborted), fipScope(primary->queryFilename())
-    {
-        RemoteFilename rfn;
-        partDesc.getFilename(0, rfn);
-        remote = !rfn.isLocal();
-        rfn.getPath(primaryName);
-        if (globals->getPropBool("@replicateAsync", true))
-            cancelReplicates(&activity, partDesc);
-    }
-    virtual void beforeDispose() override
+    void complete()
     {
         // Can't throw in destructor...
         // Note that if we do throw the CWriteHandler object is liable to be leaked...
@@ -669,8 +656,17 @@ public:
             {
                 try
                 {
+                    PROGLOG("primaryName=%s", primaryName.str());
                     OwnedIFile dstIFile = createIFile(primaryName.str());
-                    dstIFile->remove();
+                    if (dstIFile->exists())
+                    {
+                        PROGLOG("Exists...");
+                        dstIFile->remove();
+                    }
+                    else
+                        PROGLOG("Doesn't Exists...");
+
+                    PROGLOG("Renaming: %s, to %s", tmpIFile->queryFilename(), pathTail(primaryName.str()));
                     tmpIFile->rename(pathTail(primaryName.str()));
                 }
                 catch (IException *e)
@@ -692,15 +688,40 @@ public:
         if (partDesc.numCopies()>1)
             _doReplicate(&activity, partDesc, iProgress);
     }
+public:
+    IMPLEMENT_IINTERFACE_USING(CInterface);
+
+    CWriteHandler(CActivityBase &_activity, IPartDescriptor &_partDesc, IFile *_primary, IFileIO *_primaryio, ICopyFileProgress *_iProgress, unsigned _twFlags, bool *_aborted)
+        : activity(_activity), partDesc(_partDesc), primary(_primary), primaryio(_primaryio), iProgress(_iProgress), twFlags(_twFlags), aborted(_aborted), fipScope(primary->queryFilename())
+    {
+        RemoteFilename rfn;
+        partDesc.getFilename(0, rfn);
+        remote = !rfn.isLocal();
+        rfn.getPath(primaryName);
+        if (globals->getPropBool("@replicateAsync", true))
+            cancelReplicates(&activity, partDesc);
+    }
 // IFileIO impl.
-    virtual size32_t read(offset_t pos, size32_t len, void * data) { return primaryio->read(pos, len, data); }
-    virtual offset_t size() { return primaryio->size(); }
-    virtual size32_t write(offset_t pos, size32_t len, const void * data) { return primaryio->write(pos, len, data); }
-    virtual offset_t appendFile(IFile *file,offset_t pos=0,offset_t len=-1) { return primaryio->appendFile(file, pos, len); }
-    virtual unsigned __int64 getStatistic(StatisticKind kind) { return primaryio->getStatistic(kind); }
-    virtual void setSize(offset_t size) { primaryio->setSize(size); }
-    virtual void flush() { primaryio->flush(); }
-    virtual void close() { primaryio->close(); }
+    virtual size32_t read(offset_t pos, size32_t len, void * data) { dbgassertex(primaryio); return primaryio->read(pos, len, data); }
+    virtual offset_t size() { dbgassertex(primaryio); return primaryio->size(); }
+    virtual size32_t write(offset_t pos, size32_t len, const void * data) { dbgassertex(primaryio); return primaryio->write(pos, len, data); }
+    virtual offset_t appendFile(IFile *file,offset_t pos=0,offset_t len=-1) { dbgassertex(primaryio); return primaryio->appendFile(file, pos, len); }
+    virtual unsigned __int64 getStatistic(StatisticKind kind) { dbgassertex(primaryio); return primaryio->getStatistic(kind); }
+    virtual void setSize(offset_t size) { dbgassertex(primaryio); primaryio->setSize(size); }
+    virtual void flush() { dbgassertex(primaryio); primaryio->flush(); }
+    virtual void close()
+    {
+ unsigned p = activity.queryJob().getOptInt("pause");
+ if (p)
+ {
+     PROGLOG("Pausing: %u", p);
+     MilliSleep(p);
+     PROGLOG("Finished pausing");
+ }
+        dbgassertex(primaryio);
+        primaryio->close();
+        complete();
+    }
 };
 
 IFileIO *createMultipleWrite(CActivityBase *activity, IPartDescriptor &partDesc, unsigned recordSize, unsigned twFlags, bool &compress, ICompressor *ecomp, ICopyFileProgress *iProgress, bool *aborted, StringBuffer *_outLocationName)

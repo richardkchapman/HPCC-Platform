@@ -438,6 +438,7 @@ void CDiskWriteSlaveActivityBase::close()
             // ensure it is released/destroyed after releasing crit, since the IFileIO might involve a final copy and take considerable time.
             tmpFileIO.setown(outputIO.getClear());
         }
+        tmpFileIO->close();
 
         if (!rfsQueryParallel && dlfn.isExternal() && !lastNode())
         {

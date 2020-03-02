@@ -20,9 +20,24 @@
 #include "jlib.hpp"
 #include <assert.h>
 #include "jmutex.hpp"
-
+#include "jstring.hpp"
+#include "jlog.hpp"
 //===========================================================================
 
+void dosomething(IException *e)
+{
+    if (e)
+        EXCLOG(e, "dosomething");
+    else
+        PROGLOG("No e");
+    VStringBuffer s("ERROR2 - Exception in beforeDispose - object will be leaked: %u:", e->errorCode());
+    e->errorMessage(s);
+    PROGLOG("s=%s", s.str());
+
+    MilliSleep(1000*60*5);
+    
+    assert(!"blahblah");
+}
 bool CSimpleInterface::Release() const
 {
     return CSimpleInterfaceOf<CEmptyClass>::Release();

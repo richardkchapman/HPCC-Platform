@@ -53,13 +53,13 @@ Generate local config info into config section
 {{- .me.name -}}.yaml: |
   version: 1.0
   {{ .component }}:
-{{ toYaml .me | indent 4 -}}
+{{ toYaml .me | indent 4 }}
 {{- end -}}
 {{- end -}}
 
 {{- /* Generate a ConfigMap for a component */ -}}
 {{- /* Pass in a dictionary with root, component and me defined */ -}}
-{{- define "hpcc.generateConfigMap" }}
+{{- define "hpcc.generateConfigMap" -}}
 kind: ConfigMap 
 apiVersion: v1 
 metadata:
@@ -70,8 +70,8 @@ data:
     Global:
       imageVersion: {{ .root.Values.global.image.version | quote }}
       singleNode: {{ .root.Values.global.singleNode }}
-{{ include "hpcc.generateComponentConfigMap" . | indent 2 }}
-{{ end -}}
+{{ include "hpcc.generateComponentConfigMap" . | indent 2 -}}
+{{- end -}}
 
 {{- /* Add a ConfigMap volume for a component */ -}}
 {{- define "hpcc.addConfigVolume" -}}
@@ -113,9 +113,7 @@ volumeMounts:
 
 {{- /* Add config arg for a component */ -}}
 {{- define "hpcc.configArg" -}}
-{{- if or (hasKey . "configFile") (hasKey . "config") -}}
-"--config=/etc/config/{{ .name }}.yaml", {{ end -}}
-"--global=/etc/config/global.yaml"
+"--config=/etc/config/{{ .name }}.yaml", "--global=/etc/config/global.yaml"
 {{- end -}}
 
 {{- /* Add dali arg for a component */ -}}
