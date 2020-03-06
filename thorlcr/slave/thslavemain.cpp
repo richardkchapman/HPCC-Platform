@@ -448,7 +448,7 @@ int main( int argc, const char *argv[]  )
                 globals->setProp("@thorTempDirectory", tempDirStr.str());
             else
                 tempDirStr.append(globals->queryProp("@thorTempDirectory"));
-            addPathSepChar(tempDirStr).append(getMachinePortBase());
+            addPathSepChar(tempDirStr).append(mySlaveNum);
 
             logDiskSpace(); // Log before temp space is cleared
             SetTempDir(tempDirStr.str(), "thtmp", true);
