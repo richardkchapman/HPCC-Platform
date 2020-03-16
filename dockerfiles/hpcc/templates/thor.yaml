@@ -32,7 +32,7 @@ spec:
       containers:
       - name: {{ $eclAgentName | quote }}
         args: [
-                {{ include "hpcc.configArg" $eclAgentScope }},
+                {{ include "hpcc.configArg" . }},
                 {{ include "hpcc.daliArg" $ }},
                 {{ printf "\"--name=%s\"" .name }}
               ]
@@ -61,7 +61,7 @@ spec:
       containers:
       - name: {{ $thorAgentName | quote }}
         args: [
-                {{ include "hpcc.configArg" $thorScope }},
+                {{ include "hpcc.configArg" $thorAgentScope }},
                 {{ include "hpcc.daliArg" $ }},
                 {{ printf "\"--name=%s\"" .name }}
               ]
@@ -75,10 +75,11 @@ spec:
 {{- include "hpcc.generateConfigMap" (dict "root" $ "component" "thor" "me" $thorScope) }}
     hthor:
 {{ toYaml $hthorScope | indent 6 }}
-    eclagent: #NB: settings for thoragent(agentexec) that launches thormaster
-{{ toYaml $thorAgentScope | indent 6 }}
-{{ include "hpcc.generateComponentConfigMap" (dict "root" $ "component" "eclagent" "me" $eclAgentScope) | indent 2}}
+    eclagent: # main agent Q handler
+{{ toYaml $eclAgentScope | indent 6 }}
+{{ include "hpcc.generateComponentConfigMap" (dict "root" $ "component" "eclagent" "me" $thorAgentScope) | indent 2}}
       type: thor
+{{- if $eclAgentScope.containerPerAgent }}
   hthor-jobspec.yaml: |
     apiVersion: batch/v1
     kind: Job
@@ -103,7 +104,7 @@ spec:
                 #limit-cpu
             command: [
                         "hthor",
-                        {{ include "hpcc.configArg" $thorScope }},
+                        {{ include "hpcc.configArg" . }},
                         {{ include "hpcc.daliArg" $ }},
                         %args
                      ]
@@ -113,6 +114,8 @@ spec:
 {{ include "hpcc.addVolumes" $ | indent 10 }}
           restartPolicy: Never
       backoffLimit: 0
+{{- end }}
+{{- if $thorAgentScope.containerPerAgent }}
   thormaster-jobspec.yaml: |
     apiVersion: batch/v1
     kind: Job
@@ -129,7 +132,7 @@ spec:
 {{- include "hpcc.addSecurityContext" (dict "root" $ "me" .) | indent 12 }}
 {{ include "hpcc.addImageAttrs" (dict "root" $ "me" . "imagename" "thormaster") | indent 12 }}
             args: [
-                    {{ include "hpcc.configArg" $thorScope }},
+                    {{ include "hpcc.configArg" . }},
                     {{ include "hpcc.daliArg" $ }},
                     %args
                   ]
@@ -139,6 +142,7 @@ spec:
 {{ include "hpcc.addVolumes" $ | indent 10 }}
           restartPolicy: Never
       backoffLimit: 0
+{{- end }}
   thorslave-jobspec.yaml: |
     apiVersion: batch/v1
     kind: Job
@@ -155,7 +159,7 @@ spec:
 {{- include "hpcc.addSecurityContext" (dict "root" $ "me" .) | indent 12 }}
 {{ include "hpcc.addImageAttrs" (dict "root" $ "me" . "imagename" "thorslave") | indent 12 }}
             args: [
-                    {{ include "hpcc.configArg" $thorScope }},
+                    {{ include "hpcc.configArg" . }},
                     {{ include "hpcc.daliArg" $ }},
                     %args
                   ]
