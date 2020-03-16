@@ -34,8 +34,7 @@ spec:
         args: [
                 {{ include "hpcc.configArg" $eclAgentScope }},
                 {{ include "hpcc.daliArg" $ }},
-                {{ printf "\"--name=%s\"" .name }},
-                {{ printf "\"--processConfig=/etc/config/%s.yaml\"" $hthorName }}
+                {{ printf "\"--name=%s\"" .name }}
               ]
 {{- include "hpcc.addSecurityContext" (dict "root" $ "me" .) | indent 8 }}
 {{ include "hpcc.addImageAttrs" (dict "root" $ "me" . "imagename" "eclagent") | indent 8 }}
@@ -62,10 +61,9 @@ spec:
       containers:
       - name: {{ $thorAgentName | quote }}
         args: [
-                {{ include "hpcc.configArg" $thorAgentScope }},
+                {{ include "hpcc.configArg" $thorScope }},
                 {{ include "hpcc.daliArg" $ }},
-                {{ printf "\"--name=%s\"" .name }},
-                {{ printf "\"--processConfig=/etc/config/%s.yaml\"" .name }}
+                {{ printf "\"--name=%s\"" .name }}
               ]
 {{- include "hpcc.addSecurityContext" (dict "root" $ "me" .) | indent 8 }}
 {{ include "hpcc.addImageAttrs" (dict "root" $ "me" . "imagename" "eclagent") | indent 8 }}
@@ -75,10 +73,12 @@ spec:
 {{ include "hpcc.addVolumes" $ | indent 6 }}
 ---
 {{- include "hpcc.generateConfigMap" (dict "root" $ "component" "thor" "me" $thorScope) }}
+    hthor:
+{{ toYaml $hthorScope | indent 6 }}
+    eclagent: #NB: settings for thoragent(agentexec) that launches thormaster
+{{ toYaml $thorAgentScope | indent 6 }}
 {{ include "hpcc.generateComponentConfigMap" (dict "root" $ "component" "eclagent" "me" $eclAgentScope) | indent 2}}
-{{ include "hpcc.generateComponentConfigMap" (dict "root" $ "component" "eclagent" "me" $thorAgentScope) | indent 2}}
       type: thor
-{{ include "hpcc.generateComponentConfigMap" (dict "root" $ "component" "hthor" "me" $hthorScope) | indent 2}}
   hthor-jobspec.yaml: |
     apiVersion: batch/v1
     kind: Job
@@ -103,7 +103,7 @@ spec:
                 #limit-cpu
             command: [
                         "hthor",
-                        {{ include "hpcc.configArg" $hthorScope }},
+                        {{ include "hpcc.configArg" $thorScope }},
                         {{ include "hpcc.daliArg" $ }},
                         %args
                      ]
@@ -155,7 +155,7 @@ spec:
 {{- include "hpcc.addSecurityContext" (dict "root" $ "me" .) | indent 12 }}
 {{ include "hpcc.addImageAttrs" (dict "root" $ "me" . "imagename" "thorslave") | indent 12 }}
             args: [
-                    {{ include "hpcc.configArg" $thorAgentScope }},
+                    {{ include "hpcc.configArg" $thorScope }},
                     {{ include "hpcc.daliArg" $ }},
                     %args
                   ]
