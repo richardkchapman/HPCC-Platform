@@ -57,6 +57,7 @@ eclagent:
   prefix: hthor
   containerPerAgent: false
 - name: roxie
+  traceLevel: 100
   replicas: 1
   prefix: roxie
   containerPerAgent: false

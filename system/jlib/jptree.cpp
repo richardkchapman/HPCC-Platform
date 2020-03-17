@@ -7753,7 +7753,7 @@ static const char * extractOption(const char * option, const char * cur)
 
 static bool ignoreOption(const char * name)
 {
-    return streq(name, "config") || streq(name, "global") || streq(name, "outputconfig");
+    return false;//    return streq(name, "config") || streq(name, "global") || streq(name, "outputconfig");
 }
 
 static void applyCommandLineOption(IPropertyTree * config, const char * option, const char * value)
