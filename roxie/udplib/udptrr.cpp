@@ -112,7 +112,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         ISocket *flowSocket = nullptr;
         UdpSenderEntry *nextSender = nullptr;  // Used to form list of all senders that have outstanding requests
         unsigned timeouts = 0;
-        unsigned numPackets = 0;
 
         // Set by sniffer, used by receive_flow. But races are unimportant
         unsigned timeStamp = 0;               // When it was marked busy (0 means not busy)
@@ -363,8 +362,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             if (timeout < udpRequestToSendAckTimeout)
                 timeout = udpRequestToSendAckTimeout;
             currentRequester = requester;
-            requester->numPackets = max_transfer;
-            // parent.inflight += max_transfer;
             requester->requestToSend(max_transfer, myNode.getNodeAddress());
             return timeout;
         }
@@ -503,20 +500,13 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                     switch (msg.cmd)
                     {
                     case flowType::request_to_send:
-                        if (currentRequester)
+                        if (pendingRequests || currentRequester)
                             enqueueRequest(sender);   // timeout does not change - there's still an active request
-                        else if (pendingRequests)
-                        {
-                            enqueueRequest(sender);
-                            timeout = sendNextOk();
-                        }
                         else
                             timeout = okToSend(sender);
                         break;
 
                     case flowType::send_completed:
-                        // parent.inflight -= msg.packets;
-                        // DBGLOG("send_completed: inflight: %d msg packets: %u", (int)parent.inflight, msg.packets);
                         if (noteDone(sender) && pendingRequests)
                             timeout = sendNextOk();
                         else
@@ -524,8 +514,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                         break;
 
                     case flowType::request_to_send_more:
-                        // parent.inflight -= msg.packets;
-                        // DBGLOG("rts_more: inflight: %d msg packets: %u", (int)parent.inflight, msg.packets);
                         if (noteDone(sender))
                         {
                             if (pendingRequests)
@@ -550,24 +538,18 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                         // A timeout implies that there is an active permission to send, but nothing has happened.
                         // Could be a really busy (or crashed) slave, could be a lost packet
                         if (currentRequester)
-                        {
-                            // parent.inflight -= currentRequester->numPackets;
-                            // DBGLOG("timeout: inflight: %d req->numpkts: %u", (int)parent.inflight, currentRequester->numPackets);
                             timeout = timedOut(currentRequester);
-                        }
                     }
                     else if (running)
                     {
                         StringBuffer s;
                         DBGLOG("UdpReceiver: failed %i %s", flow_port, e->errorMessage(s).str());
-                        // parent.inflight = 0;
                     }
                     e->Release();
                 }
                 catch (...)
                 {
                     DBGLOG("UdpReceiver: receive_receive_flow::run unknown exception");
-                    // parent.inflight = 0;
                 }
             }
             return 0;
@@ -629,8 +611,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                     unsigned int res;
                     b = bufferManager->allocate();
                     receive_socket->read(b->data, sizeof(UdpPacketHeader), DATA_PAYLOAD, res, 5);
-                    // parent.inflight--;
-                    // MORE - reset it to zero if we fail to read data, or if avail_read returns 0.
                     UdpPacketHeader &hdr = *(UdpPacketHeader *) b->data;
                     assert(hdr.length == res && hdr.length > sizeof(hdr));
                     if (udpTraceLevel > 5) // don't want to interrupt this thread if we can help it
@@ -645,11 +625,6 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                 {
                     ::Release(b);
                     b = NULL;
-                    if (udpTraceLevel > 1 && parent.inflight)
-                    {
-                        DBGLOG("resetting inflight to 0 (was %d)", parent.inflight.load(std::memory_order_relaxed));
-                    }
-                    parent.inflight = 0;
                     if (running && e->errorCode() != JSOCKERR_timeout_expired)
                     {
                         StringBuffer s;
@@ -706,6 +681,8 @@ class CReceiveManager : implements IReceiveManager, public CInterface
     typedef std::map<ruid_t, CMessageCollator*> uid_map;
     uid_map         collators;
     SpinLock collatorsLock; // protects access to collators map
+
+#ifdef _USE_INFLIGHT
     // inflight is my best guess at how many packets may be sitting in socket buffers somewhere.
     // Incremented when I am notified about packets having been sent, decremented as they are read off the socket.
     std::atomic<int> inflight = {0};
@@ -737,6 +714,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             DBGLOG("UdpReceiver: adjusting free_slots to allow for %d in flight", i);
         return free - i;
     }
+#endif // _USE_INFLIGHT
 
     public:
     IMPLEMENT_IINTERFACE;
