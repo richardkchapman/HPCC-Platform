@@ -84,7 +84,7 @@ RUN apt-get install -y \
 RUN curl https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
 RUN apt-add-repository "deb https://deb.nodesource.com/node_10.x $(lsb_release -sc) main"
 RUN apt-get update
-RUN apt-get install nodejs
+RUN apt-get install -y nodejs
 
 RUN mkdir /home/temp
 WORKDIR /home/temp
