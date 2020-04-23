@@ -17,7 +17,7 @@
 
 # Build container image containing all 3rd-party tools required to build HPCC platform
 
-FROM ubuntu:18.04 as build
+FROM ubuntu:20.04 as build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt clean && \
     apt autoclean && \
@@ -97,5 +97,5 @@ WORKDIR /
 RUN rm -rf /home/temp
 RUN apt-get clean
 
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 COPY --from=build / /
