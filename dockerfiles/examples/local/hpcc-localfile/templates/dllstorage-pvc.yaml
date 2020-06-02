@@ -3,7 +3,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ printf "dll-%s-pvc" (include "hpcc-localfile.fullname" $) }}
 spec:
-  storageClassName: hostpath
+  storageClassName: manual
+  volumeName: {{ printf "dll-%s-pv" (include "hpcc-localfile.fullname" $) }}
   accessModes:
     - ReadWriteMany
   resources:
@@ -11,4 +12,4 @@ spec:
       storage: {{ .Values.dllStorage.size }}
   selector:
     matchLabels:
-      store: dll
+      store: {{ printf "dll-%s-pv" (include "hpcc-localfile.fullname" $) }}

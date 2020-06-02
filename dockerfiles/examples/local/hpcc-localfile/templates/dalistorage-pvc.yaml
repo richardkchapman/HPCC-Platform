@@ -3,7 +3,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ printf "dali-%s-pvc" (include "hpcc-localfile.fullname" $) }}
 spec:
-  storageClassName: hostpath
+  storageClassName: manual
+  volumeName: {{ printf "dali-%s-pv" (include "hpcc-localfile.fullname" $) }}
   accessModes:
     - ReadWriteOnce
   resources:
@@ -11,4 +12,4 @@ spec:
       storage: {{ .Values.daliStorage.size }}
   selector:
     matchLabels:
-      store: dali
+      store: {{ printf "dali-%s-pv" (include "hpcc-localfile.fullname" $) }}

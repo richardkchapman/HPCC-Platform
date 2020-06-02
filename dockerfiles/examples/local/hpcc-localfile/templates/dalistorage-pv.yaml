@@ -4,9 +4,9 @@ metadata:
   name: {{ printf "dali-%s-pv" (include "hpcc-localfile.fullname" $) }}
   labels:
     type: local
-    store: dali
+    store: {{ printf "dali-%s-pv" (include "hpcc-localfile.fullname" $) }}
 spec:
-  storageClassName: hostpath
+  storageClassName: manual
   capacity:
     storage: {{ .Values.daliStorage.size }}
   accessModes:

@@ -4,9 +4,9 @@ metadata:
   name: {{ printf "dll-%s-pv" (include "hpcc-localfile.fullname" $) }}
   labels:
     type: local
-    store: dll
+    store: {{ printf "dll-%s-pv" (include "hpcc-localfile.fullname" $) }}
 spec:
-  storageClassName: hostpath
+  storageClassName: manual
   capacity:
     storage: {{ .Values.dllStorage.size }}
   volumeMode: Filesystem

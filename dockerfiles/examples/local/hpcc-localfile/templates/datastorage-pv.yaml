@@ -4,9 +4,9 @@ metadata:
   name: {{ printf "data-%s-pv" (include "hpcc-localfile.fullname" $) }}
   labels:
     type: local
-    store: data
+    store: {{ printf "data-%s-pv" (include "hpcc-localfile.fullname" $) }}
 spec:
-  storageClassName: hostpath
+  storageClassName: manual
   capacity:
     storage: {{ .Values.dataStorage.size }}
   accessModes:
