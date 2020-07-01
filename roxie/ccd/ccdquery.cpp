@@ -94,16 +94,29 @@ public:
 private:
     void init(bool isExe)
     {
-        std::call_once(started, [this, isExe]()
+        Owned<IException> e;
+        std::call_once(started, [this, isExe, &e]()
         {
-            dll.setown(isExe ? createExeDllEntry(dllName) : queryRoxieDllServer().loadDll(dllName, DllLocationDirectory));
-            StringBuffer wuXML;
-            if (!selfTestMode && getEmbeddedWorkUnitXML(dll, wuXML))
+            try
             {
-                Owned<ILocalWorkUnit> localWU = createLocalWorkUnit(wuXML);
-                wu.setown(localWU->unlock());
+                dll.setown(isExe ? createExeDllEntry(dllName) : queryRoxieDllServer().loadDll(dllName, DllLocationDirectory));
+                StringBuffer wuXML;
+                if (!selfTestMode && getEmbeddedWorkUnitXML(dll, wuXML))
+                {
+                    Owned<ILocalWorkUnit> localWU = createLocalWorkUnit(wuXML);
+                    wu.setown(localWU->unlock());
+                }
+            }
+            catch (IException *E)
+            {
+                EXCLOG(E);
+                e.setown(E);
+                dll.clear();
+                wu.clear();
             }
         });
+        if (e)
+            throw e.getClear();
     }
 public:
     virtual void beforeDispose()
@@ -530,9 +543,9 @@ protected:
     unsigned libraryInterfaceHash;
     hash64_t hashValue;
 
-    static SpinLock queryMapCrit;
-    static CopyMapXToMyClass<hash64_t, hash64_t, CQueryFactory> queryMap;    // Active queries
-    static CopyMapXToMyClass<hash64_t, hash64_t, CQueryFactory> queryCache;  // Active and loading queries
+    static CriticalSection activeQueriesCrit;
+    static CopyMapXToMyClass<hash64_t, hash64_t, CQueryFactory> activeQueries;    // Active queries
+    static CopyMapXToMyClass<hash64_t, hash64_t, CQueryFactory> queryCache;       // Active and loading queries
 
     mutable CIArrayOf<TerminationCallbackInfo> callbacks;
     mutable CriticalSection callbacksCrit;
@@ -1121,16 +1134,27 @@ private:
 public:
     void init(const IPropertyTree *stateInfo)
     {
-        std::call_once(started, [this, stateInfo]()
+        Owned<IException> e;
+        std::call_once(started, [this, stateInfo, &e]()
         {
-            load(stateInfo);
-            if (sharedOnceContext && preloadOnceData)
+            try
             {
-                Owned<StringContextLogger> logctx = new StringContextLogger(id); // NB may get linked by the onceContext
-                sharedOnceContext->checkOnceDone(this, *logctx);
+                load(stateInfo);
+                if (sharedOnceContext && preloadOnceData)
+                {
+                    Owned<StringContextLogger> logctx = new StringContextLogger(id); // NB may get linked by the onceContext
+                    sharedOnceContext->checkOnceDone(this, *logctx);
+                }
+                addToMap();  // Publishes for slaves to see
             }
-            addToMap();  // Publishes for slaves to see
+            catch (IException *E)
+            {
+                EXCLOG(E);
+                e.setown(E);
+            }
         });
+        if (e)
+            throw e.getClear();
     }
 
     virtual IQueryFactory *lookupLibrary(const char *libraryName, unsigned expectedInterfaceHash, const IRoxieContextLogger &logctx) const
@@ -1150,10 +1174,10 @@ public:
                 queryCache.remove(hv);
         }
         {
-            SpinBlock b(queryMapCrit);
-            CQueryFactory *goer = queryMap.getValue(hv);
+            CriticalBlock b(activeQueriesCrit);
+            CQueryFactory *goer = activeQueries.getValue(hv);
             if (goer == this)
-                queryMap.remove(hv);
+                activeQueries.remove(hv);
         }
     }
 
@@ -1165,8 +1189,8 @@ public:
     static CQueryFactory *getQueryFactory(hash64_t hashValue, unsigned channelNo)
     {
         hash64_t hv = rtlHash64Data(sizeof(channelNo), &channelNo, hashValue);
-        SpinBlock b(queryMapCrit);
-        CQueryFactory *factory = queryMap.getValue(hv);
+        CriticalBlock b(activeQueriesCrit);
+        CQueryFactory *factory = activeQueries.getValue(hv);
         if (factory && factory->isAliveAndLink())
             return factory;
         else
@@ -1176,8 +1200,8 @@ public:
     void addToMap()
     {
         hash64_t hv = rtlHash64Data(sizeof(channelNo), &channelNo, hashValue);
-        SpinBlock b(queryMapCrit);
-        queryMap.setValue(hv, this);
+        CriticalBlock b(activeQueriesCrit);
+        activeQueries.setValue(hv, this);
     }
 
     static CQueryFactory *getCachedQuery(hash64_t hashValue, unsigned channelNo)
@@ -1646,8 +1670,8 @@ protected:
     }
 };
 
-SpinLock CQueryFactory::queryMapCrit;
-CopyMapXToMyClass<hash64_t, hash64_t, CQueryFactory> CQueryFactory::queryMap;     // Used to map hashes in packets to query factories
+CriticalSection CQueryFactory::activeQueriesCrit;
+CopyMapXToMyClass<hash64_t, hash64_t, CQueryFactory> CQueryFactory::activeQueries;     // Used to map hashes in packets to query factories
 
 CriticalSection CQueryFactory::queryCacheCrit;
 CopyMapXToMyClass<hash64_t, hash64_t, CQueryFactory> CQueryFactory::queryCache;   // Used to ensure a given query is ony created once
