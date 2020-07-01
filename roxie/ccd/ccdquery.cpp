@@ -128,18 +128,18 @@ public:
     }
     static const CQueryDll *getQueryDll(const char *dllName, bool isExe)
     {
-        CQueryDll *dll;
+        Owned<CQueryDll> dll;
         {
             CriticalBlock b(dllCacheLock);
-            dll = dllCache.getValue(dllName);
+            dll.setown(dllCache.getValue(dllName));
             if (!dll || !dll->isAliveAndLink())
             {
-                dll = new CQueryDll(dllName);
+                dll.setown(new CQueryDll(dllName));
                 dllCache.setValue(dllName, dll);
             }
         }
         dll->init(isExe);
-        return dll;
+        return dll.getClear();
     }
     static const IQueryDll *getWorkUnitDll(IConstWorkUnit *wu)
     {
@@ -1791,14 +1791,14 @@ extern IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *
 {
     IArrayOf<IResolvedFile> queryFiles; // Note - these should stay in scope long enough to ensure still cached when (if) query is loaded for real
     hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo, queryFiles, isDynamic);
-    CQueryFactory *ret;
+    Owned<CQueryFactory> ret;
     {
         CriticalBlock b(CQueryFactory::queryCacheCrit);
-        ret = CQueryFactory::getCachedQuery(hashValue, 0);
+        ret.setown(CQueryFactory::getCachedQuery(hashValue, 0));
         if (ret && !(ret->loadFailed() && (reloadRetriesFailed || forceRetry)))  // MORE - is there a race on loadFailed?
         {
             ::Release(dll);
-            ret = nullptr;
+            ret.clear();
         }
         if (!ret)
         {
@@ -1809,14 +1809,14 @@ extern IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *
                 IPropertyTree *workflow = dll->queryWorkUnit()->queryWorkflowTree();
                 if (workflow && workflow->hasProp("Item[@mode='once']"))
                     sharedOnceContext.setown(new CSharedOnceContext);
-                ret = new CRoxieServerQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, sharedOnceContext, isDynamic);
+                ret.setown(new CRoxieServerQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, sharedOnceContext, isDynamic));
             }
             else
-                ret = new CRoxieServerQueryFactory(id, NULL, dynamic_cast<const IRoxiePackage&>(package), hashValue, NULL, isDynamic);
+                ret.setown(new CRoxieServerQueryFactory(id, NULL, dynamic_cast<const IRoxiePackage&>(package), hashValue, NULL, isDynamic));
         }
     }
     ret->init(stateInfo);
-    return ret;
+    return ret.getClear();
 }
 
 extern IQueryFactory *createServerQueryFactoryFromWu(IConstWorkUnit *wu, const IQueryDll *_dll)
@@ -2063,12 +2063,12 @@ public:
 IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, const IRoxiePackage &package, unsigned channel, const IPropertyTree *stateInfo, bool isDynamic, bool forceRetry)
 {
     IArrayOf<IResolvedFile> queryFiles; // Note - these should stay in scope long enough to ensure still cached when (if) query is loaded for real
-    CQueryFactory *ret;
+    Owned<CQueryFactory> ret;
     hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo, queryFiles, isDynamic);
     {
         CriticalBlock b(CQueryFactory::queryCacheCrit);
-        ret = CQueryFactory::getCachedQuery(hashValue, hashValue);
-        if (ret && ret->isAliveAndLink())
+        ret.setown(CQueryFactory::getCachedQuery(hashValue, channel));
+        if (ret)
         {
             ::Release(dll);
         }
@@ -2077,10 +2077,10 @@ IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, con
             checkWorkunitVersionConsistency(dll);
             Owned<IQueryFactory> serverFactory = CQueryFactory::getCachedQuery(hashValue, 0);
             assertex(serverFactory);
-            ret = new CSlaveQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, serverFactory->querySharedOnceContext(), isDynamic);
+            ret.setown(new CSlaveQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, serverFactory->querySharedOnceContext(), isDynamic));
         }
         else
-            ret = new CSlaveQueryFactory(id, NULL, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, NULL, isDynamic);
+            ret.setown(new CSlaveQueryFactory(id, NULL, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, NULL, isDynamic));
     }
     ret->init(stateInfo);
     return ret;
