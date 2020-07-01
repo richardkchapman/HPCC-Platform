@@ -1289,8 +1289,10 @@ static hash64_t getQueryHash(const char *id, const IQueryDll *dll, const IRoxieP
     
     virtual void load(const IPropertyTree *stateInfo)
     {
+        if (!dll)
+            return;
         IConstWorkUnit *wu = dll->queryWorkUnit();
-        if (wu) // wu may be null in some unit test cases
+        if (wu) // wu and dll may be null in some unit test cases
         {
             libraryInterfaceHash = wu->getApplicationValueInt("LibraryModule", "interfaceHash", 0);
 
