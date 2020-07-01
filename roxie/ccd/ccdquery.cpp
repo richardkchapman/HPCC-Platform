@@ -27,6 +27,9 @@
 
 #include "thorplugin.hpp"
 
+#include <thread>
+#include <mutex>
+
 void ActivityArray::append(IActivityFactory &cur)
 {
     hash.setValue(cur.queryId(), activities.ordinality());
@@ -78,23 +81,30 @@ class CQueryDll : implements IQueryDll, public CInterface
     StringAttr dllName;
     Owned <ILoadedDllEntry> dll;
     Owned <IConstWorkUnit> wu;
+    std::once_flag started;
     static CriticalSection dllCacheLock;
     static CopyMapStringToMyClass<CQueryDll> dllCache;
 
 public:
     IMPLEMENT_IINTERFACE;
 
-    CQueryDll(const char *_dllName, ILoadedDllEntry *_dll) : dllName(_dllName), dll(_dll)
+    CQueryDll(const char *_dllName) : dllName(_dllName)
     {
-        StringBuffer wuXML;
-        if (!selfTestMode && getEmbeddedWorkUnitXML(dll, wuXML))
-        {
-            Owned<ILocalWorkUnit> localWU = createLocalWorkUnit(wuXML);
-            wu.setown(localWU->unlock());
-        }
-        CriticalBlock b(dllCacheLock);
-        dllCache.setValue(dllName, this);
     }
+private:
+    void init(bool isExe)
+    {
+        std::call_once(started, [this, isExe](){
+            dll.setown(isExe ? createExeDllEntry(dllName) : queryRoxieDllServer().loadDll(dllName, DllLocationDirectory));
+            StringBuffer wuXML;
+            if (!selfTestMode && getEmbeddedWorkUnitXML(dll, wuXML))
+            {
+                Owned<ILocalWorkUnit> localWU = createLocalWorkUnit(wuXML);
+                wu.setown(localWU->unlock());
+            }
+        });
+    }
+public:
     virtual void beforeDispose()
     {
         CriticalBlock b(dllCacheLock);
@@ -106,16 +116,18 @@ public:
     }
     static const CQueryDll *getQueryDll(const char *dllName, bool isExe)
     {
-        CriticalBlock b(dllCacheLock);
-        CQueryDll *dll = dllCache.getValue(dllName);
-        if (dll && dll->isAliveAndLink())
-            return dll;
-        else
+        CQueryDll *dll;
         {
-            Owned<ILoadedDllEntry> dll = isExe ? createExeDllEntry(dllName) : queryRoxieDllServer().loadDll(dllName, DllLocationDirectory);
-            assertex(dll != NULL);
-            return new CQueryDll(dllName, dll.getClear());
+            CriticalBlock b(dllCacheLock);
+            dll = dllCache.getValue(dllName);
+            if (!dll || !dll->isAliveAndLink())
+            {
+                dll = new CQueryDll(dllName);
+                dllCache.setValue(dllName, dll);
+            }
         }
+        dll->init(isExe);
+        return dll;
     }
     static const IQueryDll *getWorkUnitDll(IConstWorkUnit *wu)
     {
