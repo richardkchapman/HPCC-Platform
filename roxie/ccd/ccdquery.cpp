@@ -111,8 +111,6 @@ private:
             {
                 EXCLOG(E);
                 e.setown(E);
-                dll.clear();
-                wu.clear();
             }
         });
         if (e)
