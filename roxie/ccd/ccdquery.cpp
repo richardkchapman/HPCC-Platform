@@ -2083,7 +2083,7 @@ IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, con
             ret.setown(new CSlaveQueryFactory(id, NULL, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, NULL, isDynamic));
     }
     ret->init(stateInfo);
-    return ret;
+    return ret.getClear();
 }
 
 extern IQueryFactory *createSlaveQueryFactoryFromWu(IConstWorkUnit *wu, unsigned channelNo)
