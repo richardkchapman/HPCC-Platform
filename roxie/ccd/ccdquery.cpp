@@ -1795,9 +1795,8 @@ extern IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *
     {
         CriticalBlock b(CQueryFactory::queryCacheCrit);
         ret.setown(CQueryFactory::getCachedQuery(hashValue, 0));
-        if (ret && !(ret->loadFailed() && (reloadRetriesFailed || forceRetry)))  // MORE - is there a race on loadFailed?
+        if (ret && ret->loadFailed() && (reloadRetriesFailed || forceRetry))  // MORE - is there a race on loadFailed?
         {
-            ::Release(dll);
             ret.clear();
         }
         if (!ret)
