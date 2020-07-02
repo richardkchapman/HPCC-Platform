@@ -83,9 +83,11 @@ bundles: []
 
 dali:
 - name: mydali
+  disabled: true
 
 eclagent:
 - name: hthor
+  disabled: true
   ## replicas indicates how many eclagent pods should be started
   replicas: 1
   ## maxActive controls how many workunits may be active at once (per replica)
@@ -98,6 +100,7 @@ eclagent:
   type: hthor
 
 - name: roxie
+  disabled: true
   replicas: 1
   prefix: roxie
   maxActive: 20
@@ -106,6 +109,7 @@ eclagent:
     
 eclccserver:
 - name: myeclccserver
+  disabled: true
   replicas: 1
   ## Set to false if you want to launch each workunit compile in its own container, true to run as child processes in eclccserver pod.
   useChildProcesses: false
@@ -116,6 +120,7 @@ eclccserver:
     
 esp:
 - name: eclwatch
+  disabled: true
   ## Pre-configured esp applications include eclwatch, eclservices, and eclqueries
   application: eclwatch
   auth: none
@@ -148,6 +153,7 @@ roxie:
 - name: roxie-cluster
   disabled: false
   prefix: roxiecluster
+  lockDali: true
   services:
   - name: query
     port: 9876
@@ -167,6 +173,7 @@ roxie:
 
 thor:
 - name: thor
+  disabled: true
   numSlaves: 2
   globalMemorySize: 4096
   prefix: thor
