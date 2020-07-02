@@ -134,6 +134,7 @@ esp:
   public: true
 
 - name: eclservices
+  disabled: true
   application: eclservices
   auth: none
   tls: off
@@ -142,6 +143,7 @@ esp:
   public: false
 
 - name: eclqueries
+  disabled: true
   application: eclqueries
   auth: none
   tls: off

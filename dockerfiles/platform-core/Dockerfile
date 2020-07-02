@@ -42,6 +42,7 @@ RUN apt-get install -y \
   locales \
   python \ 
   psmisc \
+  r-base-core \
   zip \
   curl
 
