@@ -41,4 +41,4 @@ do
       failed=1
    fi
 done
-exit failed
+exit $failed
