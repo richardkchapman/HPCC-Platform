@@ -536,7 +536,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                             DBGLOG("UdpReceiver: received unrecognized flow control message cmd=%i", msg.cmd);
                         }
                         if (newTimeout)
-                            timeoutExpires =msTick() + newTimeout;
+                            timeoutExpires = now + newTimeout;   // should say msTick() but I want the bug back
                     }
                 }
                 catch (IException *e)
@@ -739,7 +739,8 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         if (i && udpTraceLevel > 1)
             DBGLOG("UdpReceiver: adjusting free_slots to allow for %d in flight", i);
         assert(free-i > 0) ;
-        return free - i;
+        //return free - i;
+        return 1;   // Provoke pathogenic behaviour
     }
 
     public:
