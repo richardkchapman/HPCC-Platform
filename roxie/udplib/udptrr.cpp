@@ -512,10 +512,13 @@ class CReceiveManager : implements IReceiveManager, public CInterface
 
                         case flowType::send_completed:
                             parent.inflight += msg.packets;
-                            if (noteDone(sender) && pendingRequests)   // This && looks wrong - noteDone returning false should mean we haven't seen the completed we wanted - so current timeout still applies. Or the one below is wrong...
-                                newTimeout = sendNextOk();
-                            else
-                                newTimeout = 5000;
+                            if (noteDone(sender))
+                            {
+                                if (pendingRequests)
+                                    newTimeout = sendNextOk();
+                                else
+                                    newTimeout = 5000;
+                            }
                             break;
 
                         case flowType::request_to_send_more:
@@ -536,7 +539,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                             DBGLOG("UdpReceiver: received unrecognized flow control message cmd=%i", msg.cmd);
                         }
                         if (newTimeout)
-                            timeoutExpires = now + newTimeout;   // should say msTick() but I want the bug back
+                            timeoutExpires = msTick() + newTimeout;
                     }
                 }
                 catch (IException *e)
@@ -633,6 +636,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                     }
                     else
                         receive_socket->read(b->data, 1, DATA_PAYLOAD, res, 5);
+                    // If we add the "doing" flow message (and packets don't overtake each other), then we can say inflight should not go -ve...
                     parent.inflight--;
                     // MORE - reset it to zero if we fail to read data, or if avail_read returns 0.
                     UdpPacketHeader &hdr = *(UdpPacketHeader *) b->data;
@@ -713,6 +717,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
     SpinLock collatorsLock; // protects access to collators map
     // inflight is my best guess at how many packets may be sitting in socket buffers somewhere.
     // Incremented when I am notified about packets having been sent, decremented as they are read off the socket.
+    // Will be -ve if send_done messages have been lost, and during the gap between ok_to_send and send_done
     std::atomic<int> inflight = {0};
 
     int free_slots()
@@ -725,7 +730,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             if (i < -input_queue->capacity())
             {
                 if (udpTraceLevel)
-                    DBGLOG("UdpReceiver: ERROR: inflight has more packets in queue but not counted (%d) than queue capacity (%d)", -i, input_queue->capacity());  // Should never happen
+                    DBGLOG("UdpReceiver: ERROR: inflight has more packets in queue but not counted (%d) than queue capacity (%d)", -i, input_queue->capacity());  // Should never happen unless losing flow packets
                 inflight = -input_queue->capacity();
             }
             i = 0;
@@ -733,7 +738,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         else if (i >= free)
         {
             if ((i > free) && (udpTraceLevel))
-                DBGLOG("UdpReceiver: ERROR: more packets in flight (%d) than slots free (%d)", i, free);  // Should never happen
+                DBGLOG("UdpReceiver: ERROR: more packets in flight (%d) than slots free (%d)", i, free);  // Should never happen unless losing data packets
             inflight = i = free-1;
         }
         if (i && udpTraceLevel > 1)
