@@ -191,7 +191,7 @@ public:
 #endif
         }
         MemoryBuffer encryptBuffer;
-        sendDoing(toSend.size());
+//        sendDoing(toSend.size());
         for (DataBuffer *buffer: toSend)
         {
             UdpPacketHeader *header = (UdpPacketHeader*) buffer->data;
