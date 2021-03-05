@@ -2447,7 +2447,7 @@ public:
     virtual IMessagePacker *createOutputStream(RoxiePacketHeader &header, bool outOfBand, const IRoxieContextLogger &logctx)
     {
         unsigned qnum = outOfBand ? 0 : ((header.retries & ROXIE_FASTLANE) || !fastLaneQueue) ? 1 : 2;
-        if (logctx.queryTraceLevel() > 8)
+     //   if (logctx.queryTraceLevel() > 8)
         {
             StringBuffer s; logctx.CTXLOG("Creating Output Stream for reply packet on Q=%d - %s", qnum, header.toString(s).str());
         }

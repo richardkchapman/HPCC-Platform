@@ -52,7 +52,7 @@ using roxiemem::OwnedConstRoxieRow;
 using roxiemem::OwnedRoxieString;
 using roxiemem::IRowManager;
 
-#define maxContinuationSize 48000 // note - must fit in the 2-byte length field... but also needs to be possible to send back from Roxie server->agent in one packet
+#define maxContinuationSize 400 // note - must fit in the 2-byte length field... but also needs to be possible to send back from Roxie server->agent in one packet
 
 size32_t serializeRow(IOutputRowSerializer * serializer, IMessagePacker *output, const void *unserialized)
 {
