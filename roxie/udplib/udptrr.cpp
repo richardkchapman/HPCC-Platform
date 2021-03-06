@@ -122,6 +122,9 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         // Set by sniffer, used by receive_flow. But races are unimportant
         unsigned timeStamp = 0;               // When it was marked busy (0 means not busy)
 
+        // Updated by receive_data thread, read atomically by receive_flow
+        PacketTracker packetsSeen;
+
         UdpSenderEntry(const IpAddress &_dest, unsigned port) : dest(_dest)
         {
             SocketEndpoint ep(port, dest);
@@ -174,6 +177,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                 msg.cmd = maxTransfer ? flowType::ok_to_send : flowType::request_received;
                 msg.destNode = returnAddress;
                 msg.max_data = maxTransfer;
+                msg.seen = this->packetsSeen.copy();
                 if (udpTraceLevel > 1)
                 {
                     StringBuffer ipStr;
@@ -632,6 +636,9 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                     // MORE - reset it to zero if we fail to read data, or if avail_read returns 0.
                     UdpPacketHeader &hdr = *(UdpPacketHeader *) b->data;
                     assert(hdr.length == res && hdr.length > sizeof(hdr));
+                    UdpSenderEntry *sender = &parent.sendersTable[hdr.node];
+                    sender->packetsSeen.noteSeen(hdr.sendSeq);
+
                     if (udpTraceLevel > 5) // don't want to interrupt this thread if we can help it
                     {
                         StringBuffer s;

@@ -21,6 +21,82 @@
 #include "jmutex.hpp"
 #include "roxiemem.hpp"
 #include "jcrc.hpp"
+#include <limits>
+
+class PacketTracker
+{
+public:
+    typedef unsigned sequence_t;
+#define SEQF
+
+private:
+    sequence_t lastUnseen = 0;        // Sequence number of highest packet we have not yet seen
+    uint64_t seen = 0;                // bitmask representing whether we have seen (lastUnseen+n)
+public:
+    void noteSeen(sequence_t seq)
+    {
+        // Four cases: less than lastUnseen, equal to, within 64 of, or higher
+        // Be careful to think about wrapping. Less than and higher can really only be distinguished by the magnitude of the difference
+        unsigned delta = seq - lastUnseen;
+        if (delta==0)  // This should be the common case if packets are arriving reliably in order
+        {
+            for(;;)
+            {
+                lastUnseen++;
+                bool nextSeen = (seen & 1) != 0;
+                seen >>= 1;
+                if (!nextSeen)
+                    break;
+            }
+        }
+        else if (delta <= 64)
+            seen |= (1l<<(delta-1));
+        else if (delta > std::numeric_limits<sequence_t>::max() / 2)
+        {
+            // we've gone backwards... has sender reset, or has something (else) gone horribly wrong?
+            // Assume sender has restarted...
+            lastUnseen = seq;
+            seen = 0;
+        }
+        else
+        {
+            // We've gone forwards too far to track. Ideally this should not be happening either.
+            // Either way if things are this out of sequence it may end up causing us to think we went backwards next time
+            // Until resend is enabled, this actually tells us we have lost some packets...
+#ifdef _DEBUG
+            DBGLOG("Lost packet(s) %" SEQF "u to %" SEQF "u mask %" I64F "x", lastUnseen, seq-64, seen);
+#endif
+            lastUnseen = seq-64;
+            seen = (seen >> (delta-64)) | (1l<<63);
+        }
+    }
+    const PacketTracker copy() const
+    {
+        // we don't want to put locks on the read or write, but we want to be able to read a consistent pair of values
+        // Probably needs some atomics...
+        PacketTracker ret;
+        for (;;)
+        {
+            ret.lastUnseen = lastUnseen;
+            ret.seen = seen;
+            if (ret.lastUnseen == lastUnseen)
+                return ret;
+        }
+    }
+    bool hasSeen(sequence_t seq) const
+    {
+        // Careful about wrapping!
+        unsigned delta = seq - lastUnseen;
+        if (!delta)
+            return true;
+        else if (delta <= 64)
+            return seen & (1<<(delta-1));
+        else if (delta > std::numeric_limits<sequence_t>::max() / 2)
+            return true;
+        else
+            return false;
+    }
+};
 
 extern roxiemem::IDataBufferManager *bufferManager;
 
@@ -39,6 +115,7 @@ struct UdpPacketHeader
     ServerIdentifier  node;        // Node this message came from
     unsigned       msgSeq;      // sequence number of messages ever sent from given node, used with ruid to tell which packets are from same message
     unsigned       pktSeq;      // sequence number of this packet within the message (top bit signifies final packet)
+    PacketTracker::sequence_t sendSeq;  // sequence number of this packet among all those send from this node to this target
     // information below is duplicated in the Roxie packet header - we could remove? However, would make aborts harder, and at least ruid is needed at receive end
     ruid_t         ruid;        // The uid allocated by the server to this agent transaction
     unsigned       msgId;       // sub-id allocated by the server to this request within the transaction
@@ -204,6 +281,7 @@ struct UdpPermitToSendMsg
     flowType::flowCmd cmd;
     unsigned short max_data;
     ServerIdentifier destNode;
+    PacketTracker seen;
 };
 
 struct UdpRequestToSendMsg
@@ -232,4 +310,6 @@ inline bool checkTraceLevel(unsigned category, unsigned level)
 {
     return (udpTraceLevel >= level);
 }
+
+
 #endif
