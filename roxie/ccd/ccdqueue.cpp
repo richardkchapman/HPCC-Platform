@@ -2845,8 +2845,8 @@ public:
 
         IpAddress snifferIp;
         getChannelIp(snifferIp, snifferChannel);
-        if (udpMaxSlotsPerClient > udpQueueSize)
-            udpMaxSlotsPerClient = udpQueueSize;
+        if (udpMaxSlotsPerClient > 32)
+            udpMaxSlotsPerClient = 32;
         unsigned serverFlowPort = topology->getPropInt("@serverFlowPort", CCD_SERVER_FLOW_PORT);
         unsigned dataPort = topology->getPropInt("@dataPort", CCD_DATA_PORT);
         unsigned clientFlowPort = topology->getPropInt("@clientFlowPort", CCD_CLIENT_FLOW_PORT);

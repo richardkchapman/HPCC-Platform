@@ -84,7 +84,89 @@ static byte key[32] = {
     0x87, 0x47, 0x01, 0xe6, 0x66, 0x62, 0x2f, 0xbe, 0xc1, 0xd5, 0x9f, 0x4a, 0x53, 0x27, 0xae, 0xa1,
 };
 
+class UdpResendList
+{
+private:
+    DataBuffer **entries = nullptr;
+    unsigned *timeSent = nullptr;
+    unsigned resendTimeout;
+    unsigned size;
+    unsigned tail = 0;   // where we will find oldest entry
+    unsigned head = 0;   // where we will find newest entry
+    unsigned count = 0;  // number of entries, and differentiate full from empty above
+public:
+    UdpResendList(unsigned _size, unsigned _resendTimeout) : size(_size), resendTimeout(_resendTimeout)
+    {
+        entries = new DataBuffer *[size];
+        timeSent = new unsigned[size];
+        for (unsigned i = 0 ; i < size; i++)
+        {
+            entries[i] = nullptr;
+            timeSent[i] = 0;
+        }
+    }
+    void append(DataBuffer *buf)
+    {
+        UdpPacketHeader *header = (UdpPacketHeader*) buf->data;
+        header->pktSeq |= UDP_PACKET_RESENT;
+        DBGLOG("append %d", header->sendSeq);
+        if (count==size)
+        {
+            ::Release(entries[tail]);
+            tail++;
+            if (tail == size)
+                tail = 0;
+        }
+        else
+            count++;
+        entries[head] = buf;
+        timeSent[head] = msTick();
+        head++;
+        if (head == size)
+            head = 0;
+    }
+    void noteRead(const PacketTracker seen, std::vector<DataBuffer *> &toSend, unsigned maxSend)
+    {
+        if (!count)
+            return;
+        seen.dump();
+        unsigned srcidx = tail;
+        unsigned destidx = tail;
+        unsigned now = msTick();
+        do
+        {
+            UdpPacketHeader *header = (UdpPacketHeader*) entries[srcidx]->data;
+            if (seen.hasSeen(header->sendSeq))
+            {
+                ::Release(entries[srcidx]);
+                entries[srcidx] = nullptr;
+                count--;
+            }
+            else
+            {
+                destidx++;
+                if (destidx == size)
+                    destidx = 0;
+                if (toSend.size() < maxSend && now-timeSent[srcidx] >= resendTimeout)
+                {
+                    DBGLOG("Resending %u", header->sendSeq);
+                    toSend.push_back(entries[srcidx]);
+                }
+            }
+            srcidx++;
+            if (srcidx==size)
+                srcidx = 0;
+            entries[destidx] = entries[srcidx];
+            timeSent[destidx] = timeSent[srcidx];
 
+        }  while (srcidx != head);
+        head = destidx;
+    }
+    bool numActive() const
+    {
+        return count;
+    }
+};
 
 class UdpReceiverEntry : public IUdpReceiverEntry
 {
@@ -125,6 +207,7 @@ private:
     }
 
     const IpAddress sourceIP;
+    UdpResendList *resendList = nullptr;
 public:
     const IpAddress ip;
     unsigned timeouts = 0;      // Number of consecutive timeouts
@@ -138,10 +221,11 @@ public:
     }
 
     std::atomic<unsigned> packetsQueued = { 0 };
+    std::atomic<sequence_t> nextSendSequence = {0};
 
     void sendDone(unsigned packets)
     {
-        bool dataRemaining = packetsQueued.load(std::memory_order_relaxed);
+        bool dataRemaining = packetsQueued.load(std::memory_order_relaxed) || (resendList && resendList->numActive());
         // If dataRemaining says 0, but someone adds a row in this window, the request_to_send will be sent BEFORE the send_completed
         // So long as receiver handles that, are we good?
         if (dataRemaining)
@@ -177,12 +261,16 @@ public:
         unsigned maxPackets = permit.max_data;
         std::vector<DataBuffer *> toSend;
         unsigned totalSent = 0;
+        if (resendList)
+            resendList->noteRead(permit.seen, toSend, maxPackets);
+        unsigned resending = toSend.size();
         while (toSend.size() < maxPackets && packetsQueued.load(std::memory_order_relaxed))
         {
             DataBuffer *buffer = popQueuedData();
             if (!buffer)
                 break;  // Suggests data was aborted before we got to pop it
             UdpPacketHeader *header = (UdpPacketHeader*) buffer->data;
+            header->sendSeq = nextSendSequence++;
             toSend.push_back(buffer);
             totalSent += header->length;
 #if defined(__linux__) || defined(__APPLE__)
@@ -203,6 +291,11 @@ public:
             }
             try
             {
+#ifdef _DEBUG
+                if (((header->pktSeq & UDP_PACKET_RESENT)==0) && (header->pktSeq==0 || header->pktSeq==10 || ((header->pktSeq&UDP_PACKET_COMPLETE) != 0)))
+                    DBGLOG("Deliberately dropping packet %" SEQF "u", header->sendSeq);
+                else
+#endif
                 if (encrypted)
                 {
                     aesEncrypt(key, sizeof(key), buffer->data, length, encryptBuffer.clear());
@@ -221,7 +314,15 @@ public:
             {
                 DBGLOG("UdpSender: write exception - unknown exception");
             }
-            ::Release(buffer);
+            if (resendList)
+            {
+                if (resending)
+                    resending--;   //Don't add the ones I am resending back onto list - they are still there!
+                else
+                    resendList->append(buffer);
+            }
+            else
+                ::Release(buffer);
         }
         sendDone(toSend.size());
         return totalSent;
@@ -370,6 +471,7 @@ public:
                 DBGLOG("UdpSender: added entry for ip=%s to receivers table - send_flow_port=%d", ip.getIpText(ipStr).str(), _sendFlowPort);
             }
         }
+        resendList = new UdpResendList(64, 10);
     }
 
     ~UdpReceiverEntry()

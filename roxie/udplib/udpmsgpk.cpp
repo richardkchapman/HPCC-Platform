@@ -142,8 +142,9 @@ public:
         // Optimize the (very) common case where I need to add to the end
         DataBuffer *finger;
         DataBuffer *prev;
-        if (tail && (pktHdr->pktSeq > ((UdpPacketHeader*) tail->data)->pktSeq))
+        if (tail && (pktseq > ((UdpPacketHeader*) tail->data)->pktSeq))
         {
+            assert(tail->msgNext == nullptr);
             finger = nullptr;
             prev = tail;
             tail = dataBuff;
@@ -157,8 +158,8 @@ public:
                 if (pktHdr->pktSeq <= oldHdr->pktSeq)
                 {
                     // discard duplicated incoming packet - should be uncommon unless we requested a resend for a packet already in flight
-                   // if (checkTraceLevel(TRACE_MSGPACK, 5))
-                        DBGLOG("UdpCollator: Discarding duplicate incoming packet");
+                    if (checkTraceLevel(TRACE_MSGPACK, 5))
+                        DBGLOG("UdpCollator: Discarding duplicate incoming packet %d (we have all up to %d)", pktHdr->pktSeq, oldHdr->pktSeq);
                     dataBuff->Release();
                     return false;
                 }
@@ -172,7 +173,7 @@ public:
             }
             while (finger)
             {
-    #ifdef _DEBUG
+#ifdef _DEBUG
                 scans++;
                 if (scans==1000000)
                 {
@@ -187,13 +188,13 @@ public:
                         DBGLOG("lastContiguousPacket is NULL , last packet seen is %u", pktHdr->pktSeq & UDP_PACKET_SEQUENCE_MASK);
                     scans = 0;
                 }
-    #endif
+#endif
                 UdpPacketHeader *oldHdr = (UdpPacketHeader*) finger->data;
                 if (pktHdr->pktSeq == oldHdr->pktSeq)
                 {
                     // discard duplicated incoming packet - should be uncommon unless we requested a resend for a packet already in flight
-                   // if (checkTraceLevel(TRACE_MSGPACK, 5))
-                        DBGLOG("UdpCollator: Discarding duplicate incoming packet");
+                    if (checkTraceLevel(TRACE_MSGPACK, 5))
+                        DBGLOG("UdpCollator: Discarding duplicate incoming packet %d", pktHdr->pktSeq);
                     dataBuff->Release();
                     return false;
                 }
@@ -214,7 +215,11 @@ public:
             prev->msgNext = dataBuff;
         }
         else
-            firstPacket = tail = dataBuff;
+        {
+            firstPacket = dataBuff;
+            if (!tail)
+                tail = dataBuff;
+        }
         dataBuff->msgNext = finger;
         numPackets++;
         if (prev == lastContiguousPacket)

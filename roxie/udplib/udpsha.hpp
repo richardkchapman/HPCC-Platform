@@ -21,6 +21,10 @@
 #include "jmutex.hpp"
 #include "roxiemem.hpp"
 #include "jcrc.hpp"
+#include <limits>
+
+typedef unsigned sequence_t;
+#define SEQF
 
 extern roxiemem::IDataBufferManager *bufferManager;
 
@@ -29,19 +33,104 @@ typedef bool (*PKT_CMP_FUN) (const void *pkData, const void *key);
 
 // Flag bits in pktSeq field
 #define UDP_PACKET_COMPLETE           0x80000000  // Packet completes a single agent request
-#define UDP_PACKET_RESERVED           0x40000000  // Not used - could move UDP_SEQUENCE_COMPLETE here?
+#define UDP_PACKET_RESENT             0x40000000  // Packet is a repeat of one that the server may have missed
 #define UDP_PACKET_SEQUENCE_MASK      0x3fffffff
 
-struct UdpPacketHeader 
+struct UdpPacketHeader
 {
     unsigned short length;      // total length of packet including the header, data, and meta
     unsigned short metalength;  // length of metadata (comes after header and data)
     ServerIdentifier  node;        // Node this message came from
     unsigned       msgSeq;      // sequence number of messages ever sent from given node, used with ruid to tell which packets are from same message
     unsigned       pktSeq;      // sequence number of this packet within the message (top bit signifies final packet)
+    sequence_t     sendSeq;     // sequence number of this packet among all those send from this node to this target
     // information below is duplicated in the Roxie packet header - we could remove? However, would make aborts harder, and at least ruid is needed at receive end
     ruid_t         ruid;        // The uid allocated by the server to this agent transaction
     unsigned       msgId;       // sub-id allocated by the server to this request within the transaction
+};
+
+class PacketTracker
+{
+    // Some more things we can consider:
+    // 1. sendSeq gives us some insight into lost packets that might help is get inflight calcuation right (if it is still needed)
+    // 2. If we can definitively declare that a packet is lost, we can fail that messageCollator earlier (and thus get the resend going earlier)
+    // 3. Worth seeing why resend doesn't use same collator. We could skip sending (though would still need to calculate) the bit we already had...
+
+private:
+    sequence_t lastUnseen = 0;        // Sequence number of highest packet we have not yet seen
+    unsigned __int64 seen = 0;        // bitmask representing whether we have seen (lastUnseen+n)
+public:
+    bool noteSeen(UdpPacketHeader &hdr)
+    {
+        bool resent = false;
+        if (hdr.pktSeq & UDP_PACKET_RESENT)
+        {
+            resent = true;
+            hdr.pktSeq &= ~UDP_PACKET_RESENT;
+        }
+        // Four cases: less than lastUnseen, equal to, within 64 of, or higher
+        // Be careful to think about wrapping. Less than and higher can't really be distinguished, but we treat resent differently from original
+        unsigned delta = hdr.sendSeq - lastUnseen;
+        if (udpTraceLevel > 5)
+            DBGLOG("PacketTracker::noteSeen %" SEQF "u: delta %d", hdr.sendSeq, delta);
+        dump();
+        if (delta==0)  // This should be the common case if packets are arriving reliably in order
+        {
+            for(;;)
+            {
+                lastUnseen++;
+                bool nextSeen = (seen & 1) != 0;
+                seen >>= 1;
+                if (!nextSeen)
+                    break;
+            }
+        }
+        else if (delta <= 64)
+            seen |= (1l<<(delta-1));
+        else if (resent)
+            return true;
+        else
+        {
+            // We've gone forwards too far to track, or backwards because server restarted
+            lastUnseen = hdr.sendSeq;
+            seen = 0;
+        }
+        dump();
+        return false;
+    }
+    const PacketTracker copy() const
+    {
+        // we don't want to put locks on the read or write, but we want to be able to read a consistent pair of values
+        // Probably needs some atomics...
+        PacketTracker ret;
+        for (;;)
+        {
+            ret.lastUnseen = lastUnseen;
+            ret.seen = seen;
+            if (ret.lastUnseen == lastUnseen)
+                return ret;
+        }
+    }
+    bool hasSeen(sequence_t seq) const
+    {
+        // Careful about wrapping!
+        unsigned delta = seq - lastUnseen;
+        if (udpTraceLevel > 5)
+           DBGLOG("PacketTracker::hasSeen - have I seen %u, %u", seq, delta);
+        dump();
+        if (!delta)
+            return false;
+        else if (delta <= 64)
+            return seen & (1l<<(delta-1));
+        else if (delta > std::numeric_limits<sequence_t>::max() / 2)
+            return true;
+        else
+            return false;
+    }
+    void dump() const
+    {
+        DBGLOG("PacketTracker lastUnseen=%" SEQF "u, seen=%" I64F "x", lastUnseen, seen);
+    }
 };
 
 class queue_t 
@@ -204,6 +293,7 @@ struct UdpPermitToSendMsg
     flowType::flowCmd cmd;
     unsigned short max_data;
     ServerIdentifier destNode;
+    PacketTracker seen;
 };
 
 struct UdpRequestToSendMsg
@@ -232,4 +322,6 @@ inline bool checkTraceLevel(unsigned category, unsigned level)
 {
     return (udpTraceLevel >= level);
 }
+
+
 #endif
