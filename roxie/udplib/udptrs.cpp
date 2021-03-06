@@ -117,6 +117,8 @@ public:
     }
     void noteRead(const PacketTracker seen, std::vector<DataBuffer *> &toSend, unsigned maxSend)
     {
+	// MORE - consider NOT resending all right away - if the flow control messages are overtaking the data then we may want 
+	// to delay resending anything that's not going to be lost when we do this send... or based on time
         if (!count)
             return;
         unsigned idx = tail;
