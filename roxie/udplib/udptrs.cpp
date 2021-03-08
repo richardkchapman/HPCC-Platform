@@ -125,13 +125,17 @@ public:
         if (head == size)
             head = 0;
     }
-    void noteRead(const PacketTracker seen, std::vector<DataBuffer *> &toSend, unsigned maxSend)
+
+    // This function does two things:
+    // 1. Updates the circular buffer to release any packets that are confirmed delivered
+    // 2. Appends any packets that need resending to the toSend list
+
+    void noteRead(const PacketTracker seen, std::vector<DataBuffer *> &toSend, unsigned space, unsigned newAvailable)
     {
         if (!count)
             return;
-        seen.dump();
         unsigned srcidx = tail;
-        unsigned destidx = tail;
+        unsigned destidx = tail;  // Used to close up any gaps created by removed entries
         unsigned now = msTick();
         do
         {
@@ -139,7 +143,7 @@ public:
             if (seen.hasSeen(header->sendSeq))
             {
                 ::Release(entries[srcidx]);
-                entries[srcidx] = nullptr;
+                entries[srcidx] = nullptr;   //Not strictly necessary but good hygiene
                 count--;
             }
             else
@@ -147,10 +151,16 @@ public:
                 destidx++;
                 if (destidx == size)
                     destidx = 0;
-                if (toSend.size() < maxSend && now-timeSent[srcidx] >= resendTimeout)
+                // The current table entry is not marked as seen by receiver. Should we resend it?
+                if (space &&                  // Not if there's no more room in this send
+                    (now-timeSent[srcidx] >= resendTimeout ||   // Not if it was sent so recently it's reasonable that it has not arrived yet
+                     seen.willBeLost(header->sendSeq, std::max(space, newAvailable)))        // Unless this is our last chance
+                   )
                 {
-                    DBGLOG("Resending %u", header->sendSeq);
+                    if (udpTraceLevel > 1)
+                        DBGLOG("Resending %u", header->sendSeq);
                     toSend.push_back(entries[srcidx]);
+                    space--;
                 }
             }
             srcidx++;
@@ -262,7 +272,7 @@ public:
         std::vector<DataBuffer *> toSend;
         unsigned totalSent = 0;
         if (resendList)
-            resendList->noteRead(permit.seen, toSend, maxPackets);
+            resendList->noteRead(permit.seen, toSend, maxPackets, packetsQueued.load(std::memory_order_relaxed));
         unsigned resending = toSend.size();
         while (toSend.size() < maxPackets && packetsQueued.load(std::memory_order_relaxed))
         {
