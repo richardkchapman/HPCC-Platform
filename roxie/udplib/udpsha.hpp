@@ -49,21 +49,19 @@ struct UdpPacketHeader
     unsigned       msgId;       // sub-id allocated by the server to this request within the transaction
 };
 
-#define USE_128BIT_TRACKER
+#define TRACKER_BITS 1024
+
+// Some more things we can consider:
+// 1. sendSeq gives us some insight into lost packets that might help is get inflight calcuation right (if it is still needed)
+// 2. If we can definitively declare that a packet is lost, we can fail that messageCollator earlier (and thus get the resend going earlier)
+// 3. Worth seeing why resend doesn't use same collator. We could skip sending (though would still need to calculate) the bit we already had...
 
 class PacketTracker
 {
-    // Some more things we can consider:
-    // 1. sendSeq gives us some insight into lost packets that might help is get inflight calcuation right (if it is still needed)
-    // 2. If we can definitively declare that a packet is lost, we can fail that messageCollator earlier (and thus get the resend going earlier)
-    // 3. Worth seeing why resend doesn't use same collator. We could skip sending (though would still need to calculate) the bit we already had...
-
+    // This uses a circular buffer indexed by seq to store information about which packets we have seen
 private:
-    sequence_t lastUnseen = 0;        // Sequence number of highest packet we have not yet seen
-    unsigned __int64 seen1 = 0;        // bitmask representing whether we have seen (lastUnseen+n)
-#ifdef USE_128BIT_TRACKER
-    unsigned __int64 seen2 = 0;        // rest of bitmask
-#endif
+    sequence_t lastUnseen = 0;                     // Sequence number of highest packet we have not yet seen
+    unsigned __int64 seen[TRACKER_BITS/64] = {0};  // bitmask representing whether we have seen (lastUnseen+n)
 public:
     bool noteSeen(UdpPacketHeader &hdr);
     const PacketTracker copy() const;

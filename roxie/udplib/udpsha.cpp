@@ -316,14 +316,16 @@ extern UDPLIB_API void queryMemoryPoolStats(StringBuffer &memStats)
 bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
 {
     bool resent = false;
-    if (hdr.pktSeq & UDP_PACKET_RESENT)
+    sequence_t seq = hdr.pktSeq;
+    if (seq & UDP_PACKET_RESENT)
     {
         resent = true;
-        hdr.pktSeq &= ~UDP_PACKET_RESENT;
+        seq &= ~UDP_PACKET_RESENT;
+        hdr.pktSeq = seq;    // Perhaps a bit iffy
     }
-    // Four cases: less than lastUnseen, equal to, within 64 of, or higher
+    // Four cases: less than lastUnseen, equal to, within TRACKER_BITS of, or higher
     // Be careful to think about wrapping. Less than and higher can't really be distinguished, but we treat resent differently from original
-    unsigned delta = hdr.sendSeq - lastUnseen;
+    unsigned delta = seq - lastUnseen;
     if (udpTraceLevel > 5)
     {
         DBGLOG("PacketTracker::noteSeen %" SEQF "u: delta %d", hdr.sendSeq, delta);
@@ -334,23 +336,19 @@ bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
         for(;;)
         {
             lastUnseen++;
-            bool nextSeen = (seen1 & 1) != 0;
-            seen1 >>= 1;
-#ifdef USE_128BIT_TRACKER
-            unsigned __int64 carry = seen2 & 1;
-            seen2 >>= 1;
-            seen1 |= carry<<63;
-#endif
+            unsigned idx = lastUnseen % (TRACKER_BITS/64);
+            unsigned bit = lastUnseen % 64;
+            bool nextSeen = (seen[idx] & (1l<<bit)) != 0;
             if (!nextSeen)
                 break;
         }
     }
-    else if (delta <= 64)
-        seen1 |= (1l<<(delta-1));
-#ifdef USE_128BIT_TRACKER
-    else if (delta <= 128)
-        seen2 |= (1l<<(delta-65));
-#endif
+    else if (delta <= TRACKER_BITS)
+    {
+        unsigned idx = seq % (TRACKER_BITS/64);
+        unsigned bit = seq % 64;
+        seen[idx] |= (1l<<bit);
+    }
     else if (resent)
         return true;
     else
@@ -358,11 +356,8 @@ bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
         // We've gone forwards too far to track, or backwards because server restarted
         // We have taken steps to try to avoid the former...
         // In theory could try to preserve SOME information in the former case, but as it shouldn't happen, can we be bothered?
-        lastUnseen = hdr.sendSeq;
-        seen1 = 0;
-#ifdef USE_128BIT_TRACKER
-        seen2 = 0;
-#endif
+        lastUnseen = seq;
+        memset(seen, 0, sizeof(seen));
     }
     return false;
 }
@@ -371,14 +366,12 @@ const PacketTracker PacketTracker::copy() const
 {
     // we don't want to put locks on the read or write, but we want to be able to read a consistent set of values
     // Probably needs some atomics...
+    // Do we still need this loop now that consistency is generally better
     PacketTracker ret;
     for (;;)
     {
         ret.lastUnseen = lastUnseen;
-        ret.seen1 = seen1;
-#ifdef USE_128BIT_TRACKER
-        ret.seen2 = seen2;
-#endif
+        memcpy(ret.seen, seen, sizeof(seen));
         if (ret.lastUnseen == lastUnseen)
             return ret;
     }
@@ -389,17 +382,19 @@ bool PacketTracker::hasSeen(sequence_t seq) const
     // Careful about wrapping!
     unsigned delta = seq - lastUnseen;
     if (udpTraceLevel > 5)
+    {
        DBGLOG("PacketTracker::hasSeen - have I seen %u, %u", seq, delta);
-    dump();
+       dump();
+    }
     if (!delta)
         return false;
-    else if (delta <= 64)
-        return seen1 & (1l<<(delta-1));
-#ifdef USE_128BIT_TRACKER
-    else if (delta <= 128)
-        return seen2 & (1l<<(delta-65));
-#endif
-    else if (delta > std::numeric_limits<sequence_t>::max() / 2)  // Or we could just make delta a signed int?
+    else if (delta <= TRACKER_BITS)
+    {
+        unsigned idx = seq % (TRACKER_BITS/64);
+        unsigned bit = seq % 64;
+        return seen[idx] & (1l<<bit);
+    }
+    else if (delta > std::numeric_limits<sequence_t>::max() / 2)  // Or we could just make delta a signed int? But code above would have to check >0
         return true;
     else
         return false;
@@ -410,21 +405,13 @@ bool PacketTracker::hasSeen(sequence_t seq) const
 bool PacketTracker::willBeLost(sequence_t seq, unsigned sendNew) const
 {
     assert(!hasSeen(seq));  // otherwise why even ask
-#ifdef USE_128BIT_TRACKER
-    assert(seq-lastUnseen <= 128);
-#else
-    assert(seq-lastUnseen <= 64);
-#endif
+    assert(seq-lastUnseen <= TRACKER_BITS);
     return lastUnseen + sendNew <= seq;
 }
 
 void PacketTracker::dump() const
 {
-#ifdef USE_128BIT_TRACKER
-    DBGLOG("PacketTracker lastUnseen=%" SEQF "u, seen=%" I64F "x%" I64F "x", lastUnseen, seen1, seen2);
-#else
-    DBGLOG("PacketTracker lastUnseen=%" SEQF "u, seen=%" I64F "x", lastUnseen, seen1);
-#endif
+    DBGLOG("PacketTracker lastUnseen=%" SEQF "u, seen[0]=%" I64F "x", lastUnseen, seen[0]);
 }
 
 
