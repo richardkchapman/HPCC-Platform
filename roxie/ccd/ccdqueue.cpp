@@ -3061,6 +3061,14 @@ public:
     {
         return totalBytesReceived;
     }
+    virtual unsigned queryDuplicates() const
+    {
+        return 0;
+    }
+    virtual unsigned queryResends() const
+    {
+        return 0;
+    }
 };
 
 class RoxieLocalReceiveManager : implements ILocalReceiveManager, public CInterface

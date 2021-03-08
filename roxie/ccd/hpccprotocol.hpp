@@ -99,7 +99,7 @@ interface IHpccProtocolMsgSink : extends IInterface
     virtual StringArray &getTargetNames(StringArray &targets) = 0;
 
     virtual void noteQuery(IHpccProtocolMsgContext *msgctx, const char *peer, bool failed, unsigned bytesOut, unsigned elapsed, unsigned memused, unsigned agentsReplyLen, bool continuationNeeded) = 0;
-    virtual void onQueryMsg(IHpccProtocolMsgContext *msgctx, IPropertyTree *msg, IHpccProtocolResponse *protocol, unsigned flags, PTreeReaderOptions readFlags, const char *target, unsigned idx, unsigned &memused, unsigned &agentReplyLen) = 0;
+    virtual void onQueryMsg(IHpccProtocolMsgContext *msgctx, IPropertyTree *msg, IHpccProtocolResponse *protocol, unsigned flags, PTreeReaderOptions readFlags, const char *target, unsigned idx, unsigned &memused, unsigned &agentReplyLen, unsigned &agentDuplicates, unsigned &agentResends) = 0;
 };
 
 interface IHpccProtocolListener : extends IInterface

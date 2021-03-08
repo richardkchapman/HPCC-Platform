@@ -637,6 +637,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                     {
                         receive_socket->read(encryptedBuffer, 1, max_payload, res, 5);
                         res = aesDecrypt(key, sizeof(key), encryptedBuffer, res, b->data, DATA_PAYLOAD);
+                        // MORE - Not here - this is the high priority socket reader thread
                     }
                     else
                         receive_socket->read(b->data, 1, DATA_PAYLOAD, res, 5);

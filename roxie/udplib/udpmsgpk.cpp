@@ -123,7 +123,7 @@ public:
         return ret;
     }
 
-    bool insert(DataBuffer *dataBuff)  // returns true if message is complete.
+    bool insert(DataBuffer *dataBuff, std::atomic<unsigned> &duplicates, std::atomic<unsigned> &resends)  // returns true if message is complete.
     {
         bool res = false;
         assert(dataBuff->msgNext == NULL);
@@ -131,6 +131,12 @@ public:
         unsigned pktseq = pktHdr->pktSeq;
         if ((pktseq & UDP_PACKET_SEQUENCE_MASK) > maxSeqSeen)
             maxSeqSeen = pktseq & UDP_PACKET_SEQUENCE_MASK;
+        if (pktseq & UDP_PACKET_RESENT)
+        {
+            pktseq &= ~UDP_PACKET_RESENT;
+            pktHdr->pktSeq = pktseq;
+            resends++;
+        }
 
         if (checkTraceLevel(TRACE_MSGPACK, 5))
         {
@@ -161,6 +167,7 @@ public:
                     if (checkTraceLevel(TRACE_MSGPACK, 5))
                         DBGLOG("UdpCollator: Discarding duplicate incoming packet %d (we have all up to %d)", pktHdr->pktSeq, oldHdr->pktSeq);
                     dataBuff->Release();
+                    duplicates++;
                     return false;
                 }
                 finger = lastContiguousPacket->msgNext;
@@ -514,7 +521,17 @@ CMessageCollator::~CMessageCollator()
 
 unsigned CMessageCollator::queryBytesReceived() const
 {
-    return totalBytesReceived; // Arguably should lock, but can't be bothered. Never going to cause an issue in practice.
+    return totalBytesReceived;
+}
+
+unsigned CMessageCollator::queryDuplicates() const
+{
+    return totalDuplicates;
+}
+
+unsigned CMessageCollator::queryResends() const
+{
+    return totalResends;
 }
 
 bool CMessageCollator::attach_databuffer(DataBuffer *dataBuff)
@@ -573,7 +590,7 @@ void CMessageCollator::collate(DataBuffer *dataBuff)
         mapping.setValue(puid, pkSqncr);
         pkSqncr->Release();
     }
-    bool isComplete = pkSqncr->insert(dataBuff);
+    bool isComplete = pkSqncr->insert(dataBuff, totalDuplicates, totalResends);
     if (isComplete)
     {
         pkSqncr->Link();

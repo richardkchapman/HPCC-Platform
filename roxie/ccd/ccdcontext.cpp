@@ -1184,7 +1184,9 @@ protected:
     Owned<IPropertyTree> probeQuery;
     unsigned lastWuAbortCheck;
     unsigned startTime;
-    unsigned totAgentsReplyLen;
+    std::atomic<unsigned> totAgentsReplyLen;
+    std::atomic<unsigned> totAgentsDuplicates;
+    std::atomic<unsigned> totAgentsResends;
     CCycleTimer elapsedTimer;
 
     QueryOptions options;
@@ -1676,10 +1678,11 @@ public:
         return *rowManager;
     }
 
-    virtual void addAgentsReplyLen(unsigned len)
+    virtual void addAgentsReplyLen(unsigned len, unsigned duplicates, unsigned resends)
     {
-        CriticalBlock b(statsCrit); // MORE: change to atomic_add, or may not need it at all?
         totAgentsReplyLen += len;
+        totAgentsDuplicates += duplicates;
+        totAgentsResends += resends;
     }
 
     virtual const char *loadResource(unsigned id)
@@ -2792,9 +2795,19 @@ public:
         return rowManager->getMemoryUsage();
     }
 
-    virtual unsigned getAgentsReplyLen()
+    virtual unsigned getAgentsReplyLen() const
     {
         return totAgentsReplyLen;
+    }
+
+    virtual unsigned getAgentsDuplicates() const
+    {
+        return totAgentsDuplicates;
+    }
+
+    virtual unsigned getAgentsResends() const
+    {
+        return totAgentsResends;
     }
 
     virtual void process()

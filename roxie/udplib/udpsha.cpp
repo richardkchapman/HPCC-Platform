@@ -318,10 +318,7 @@ bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
     bool resent = false;
     sequence_t seq = hdr.sendSeq;
     if (hdr.pktSeq & UDP_PACKET_RESENT)
-    {
         resent = true;
-        hdr.pktSeq &= ~UDP_PACKET_RESENT;;    // Perhaps a bit iffy
-    }
     // Four cases: less than lastUnseen, equal to, within TRACKER_BITS of, or higher
     // Be careful to think about wrapping. Less than and higher can't really be distinguished, but we treat resent differently from original
     bool duplicate = false;

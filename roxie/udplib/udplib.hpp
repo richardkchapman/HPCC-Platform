@@ -125,6 +125,8 @@ interface IMessageCollator : extends IInterface
     virtual void interrupt(IException *E = NULL) = 0;
     virtual ruid_t queryRUID() const = 0;
     virtual unsigned queryBytesReceived() const = 0;
+    virtual unsigned queryDuplicates() const = 0;
+    virtual unsigned queryResends() const = 0;
 };
 
 interface IReceiveManager : extends IInterface 

@@ -969,7 +969,7 @@ public:
     {
     }
 
-    virtual void onQueryMsg(IHpccProtocolMsgContext *msgctx, IPropertyTree *msg, IHpccProtocolResponse *protocol, unsigned flags, PTreeReaderOptions readFlags, const char *target, unsigned idx, unsigned &memused, unsigned &agentReplyLen)
+    virtual void onQueryMsg(IHpccProtocolMsgContext *msgctx, IPropertyTree *msg, IHpccProtocolResponse *protocol, unsigned flags, PTreeReaderOptions readFlags, const char *target, unsigned idx, unsigned &memused, unsigned &agentReplyLen, unsigned &agentsDuplicates, unsigned &agentsResends)
     {
         UNIMPLEMENTED;
     }
@@ -1228,6 +1228,8 @@ public:
         bool failed = true; // many paths to failure, only one to success...
         unsigned memused = 0;
         unsigned agentsReplyLen = 0;
+        unsigned agentsDuplicates = 0;
+        unsigned agentsResends = 0;
         unsigned priority = (unsigned) -2;
         try
         {
@@ -1264,6 +1266,8 @@ public:
                 ctx->process();
                 memused = (unsigned)(ctx->getMemoryUsage() / 0x100000);
                 agentsReplyLen = ctx->getAgentsReplyLen();
+                agentsDuplicates = ctx->getAgentsDuplicates();
+                agentsResends = ctx->getAgentsResends();
                 ctx->done(false);
                 failed = false;
             }
@@ -1271,6 +1275,8 @@ public:
             {
                 memused = (unsigned)(ctx->getMemoryUsage() / 0x100000);
                 agentsReplyLen = ctx->getAgentsReplyLen();
+                agentsDuplicates = ctx->getAgentsDuplicates();
+                agentsResends = ctx->getAgentsResends();
                 ctx->done(true);
                 throw;
             }
@@ -1736,7 +1742,8 @@ public:
         return checkGetRoxieMsgContext(msgctx);
     }
 
-    virtual void onQueryMsg(IHpccProtocolMsgContext *msgctx, IPropertyTree *msg, IHpccProtocolResponse *protocol, unsigned flags, PTreeReaderOptions xmlReadFlags, const char *target, unsigned idx, unsigned &memused, unsigned &agentsReplyLen)
+    virtual void onQueryMsg(IHpccProtocolMsgContext *msgctx, IPropertyTree *msg, IHpccProtocolResponse *protocol, unsigned flags, PTreeReaderOptions xmlReadFlags,
+                            const char *target, unsigned idx, unsigned &memused, unsigned &agentsReplyLen, unsigned &agentsDuplicates, unsigned &agentsResends)
     {
         RoxieProtocolMsgContext *roxieMsgCtx = checkGetRoxieMsgContext(msgctx, msg);
         IQueryFactory *f = roxieMsgCtx->queryQueryFactory();
@@ -1753,6 +1760,8 @@ public:
             protocol->finalize(idx);
             memused += (unsigned)(ctx->getMemoryUsage() / 0x100000);
             agentsReplyLen += ctx->getAgentsReplyLen();
+            agentsDuplicates += ctx->getAgentsDuplicates();
+            agentsResends += ctx->getAgentsResends();
         }
         else
         {
@@ -1761,12 +1770,16 @@ public:
                 ctx->process();
                 memused = (unsigned)(ctx->getMemoryUsage() / 0x100000);
                 agentsReplyLen = ctx->getAgentsReplyLen();
+                agentsDuplicates = ctx->getAgentsDuplicates();
+                agentsResends = ctx->getAgentsResends();
                 ctx->done(false);
             }
             catch(...)
             {
                 memused = (unsigned)(ctx->getMemoryUsage() / 0x100000);
                 agentsReplyLen = ctx->getAgentsReplyLen();
+                agentsDuplicates = ctx->getAgentsDuplicates();
+                agentsResends = ctx->getAgentsResends();
                 ctx->done(true);
                 throw;
             }
