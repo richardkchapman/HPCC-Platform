@@ -84,46 +84,36 @@ static byte key[32] = {
     0x87, 0x47, 0x01, 0xe6, 0x66, 0x62, 0x2f, 0xbe, 0xc1, 0xd5, 0x9f, 0x4a, 0x53, 0x27, 0xae, 0xa1,
 };
 
+// UdpResentList keeps a copy of up to TRACKER_BITS previously sent packets so we can send them again
+
 class UdpResendList
 {
 private:
-    DataBuffer **entries = nullptr;
-    unsigned *timeSent = nullptr;
+    DataBuffer *entries[TRACKER_BITS] = { nullptr };
+    unsigned timeSent[TRACKER_BITS] = { 0 };
     unsigned resendTimeout;
-    unsigned size;
-    unsigned tail = 0;   // where we will find oldest entry
-    unsigned head = 0;   // where we will find newest entry
-    unsigned count = 0;  // number of entries, and differentiate full from empty above
+    sequence_t first;
+    unsigned count = 0;  // number of non-null entries
 public:
-    UdpResendList(unsigned _size, unsigned _resendTimeout) : size(_size), resendTimeout(_resendTimeout)
+    UdpResendList(unsigned _resendTimeout) : resendTimeout(_resendTimeout)
     {
-        entries = new DataBuffer *[size];
-        timeSent = new unsigned[size];
-        for (unsigned i = 0 ; i < size; i++)
-        {
-            entries[i] = nullptr;
-            timeSent[i] = 0;
-        }
     }
     void append(DataBuffer *buf)
     {
         UdpPacketHeader *header = (UdpPacketHeader*) buf->data;
+        sequence_t seq = header->sendSeq;
         header->pktSeq |= UDP_PACKET_RESENT;
-        DBGLOG("append %d", header->sendSeq);
-        if (count==size)
+        DBGLOG("append %d", seq);
+        if (seq - first > TRACKER_BITS)     // We hold one less than we are tracking the seen state of - is that a problem? We effectively know the state of TRACKER_BITS+1
         {
-            ::Release(entries[tail]);
-            tail++;
-            if (tail == size)
-                tail = 0;
+            // This shouldn't happen if we have steps in place to block ending new until we are sure old have been delivered
+            UNIMPLEMENTED;
         }
-        else
-            count++;
-        entries[head] = buf;
-        timeSent[head] = msTick();
-        head++;
-        if (head == size)
-            head = 0;
+        unsigned idx = seq % TRACKER_BITS;
+        assert(entries[idx] == nullptr);
+        entries[idx] = buf;
+        timeSent[idx] = msTick();
+        count++;
     }
 
     // This function does two things:
@@ -134,43 +124,35 @@ public:
     {
         if (!count)
             return;
-        unsigned srcidx = tail;
-        unsigned destidx = tail;  // Used to close up any gaps created by removed entries
         unsigned now = msTick();
-        do
+        sequence_t seq = first;
+        unsigned checked = 0;
+        while (checked < count && space)
         {
-            UdpPacketHeader *header = (UdpPacketHeader*) entries[srcidx]->data;
+            unsigned idx = seq % TRACKER_BITS;
+            UdpPacketHeader *header = (UdpPacketHeader*) entries[idx]->data;
+            assert(seq == header->sendSeq);
             if (seen.hasSeen(header->sendSeq))
             {
-                ::Release(entries[srcidx]);
-                entries[srcidx] = nullptr;   //Not strictly necessary but good hygiene
+                ::Release(entries[idx]);
+                entries[idx] = nullptr;
                 count--;
+                if (seq==first)
+                    first++;
             }
             else
             {
-                destidx++;
-                if (destidx == size)
-                    destidx = 0;
                 // The current table entry is not marked as seen by receiver. Should we resend it?
-                if (space &&                  // Not if there's no more room in this send
-                    (now-timeSent[srcidx] >= resendTimeout ||   // Not if it was sent so recently it's reasonable that it has not arrived yet
-                     seen.willBeLost(header->sendSeq, std::max(space, newAvailable)))        // Unless this is our last chance
-                   )
-                {
-                    if (udpTraceLevel > 1)
-                        DBGLOG("Resending %u", header->sendSeq);
-                    toSend.push_back(entries[srcidx]);
-                    space--;
-                }
+                if (now-timeSent[idx] >= resendTimeout)
+                    break;   // Not if it was sent so recently it's reasonable that it has not arrived yet
+                if (udpTraceLevel > 1)
+                    DBGLOG("Resending %u", header->sendSeq);
+                toSend.push_back(entries[idx]);
+                space--;
+                checked++;
             }
-            srcidx++;
-            if (srcidx==size)
-                srcidx = 0;
-            entries[destidx] = entries[srcidx];
-            timeSent[destidx] = timeSent[srcidx];
-
-        }  while (srcidx != head);
-        head = destidx;
+            seq++;
+        }
     }
     bool numActive() const
     {
@@ -481,7 +463,7 @@ public:
                 DBGLOG("UdpSender: added entry for ip=%s to receivers table - send_flow_port=%d", ip.getIpText(ipStr).str(), _sendFlowPort);
             }
         }
-        resendList = new UdpResendList(64, 10);
+        resendList = new UdpResendList(10);
     }
 
     ~UdpReceiverEntry()

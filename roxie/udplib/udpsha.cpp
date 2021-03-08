@@ -316,12 +316,11 @@ extern UDPLIB_API void queryMemoryPoolStats(StringBuffer &memStats)
 bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
 {
     bool resent = false;
-    sequence_t seq = hdr.pktSeq;
-    if (seq & UDP_PACKET_RESENT)
+    sequence_t seq = hdr.sendSeq;
+    if (hdr.pktSeq & UDP_PACKET_RESENT)
     {
         resent = true;
-        seq &= ~UDP_PACKET_RESENT;
-        hdr.pktSeq = seq;    // Perhaps a bit iffy
+        hdr.pktSeq &= ~UDP_PACKET_RESENT;;    // Perhaps a bit iffy
     }
     // Four cases: less than lastUnseen, equal to, within TRACKER_BITS of, or higher
     // Be careful to think about wrapping. Less than and higher can't really be distinguished, but we treat resent differently from original
