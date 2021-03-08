@@ -763,8 +763,8 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         if (i && udpTraceLevel > 1)
             DBGLOG("UdpReceiver: adjusting free_slots to allow for %d in flight", i);
         assert(free-i > 0) ;
-        //return free - i;
-        return 1;   // Provoke pathogenic behaviour
+        return free - i;
+        //return 1;   // Provoke pathogenic behaviour
     }
 
     public:

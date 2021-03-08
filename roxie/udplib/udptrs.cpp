@@ -108,7 +108,6 @@ public:
         header->pktSeq |= UDP_PACKET_RESENT;
         if (!count)
         {
-            DBGLOG("Adding packet %u to empty tracker", seq);
             first = seq;
         }
         else if (seq - first > TRACKER_BITS)
@@ -127,7 +126,7 @@ public:
     // 1. Updates the circular buffer to release any packets that are confirmed delivered
     // 2. Appends any packets that need resending to the toSend list
 
-    void noteRead(const PacketTracker seen, std::vector<DataBuffer *> &toSend, unsigned space, unsigned newAvailable)
+    void noteRead(const PacketTracker seen, std::vector<DataBuffer *> &toSend, unsigned space, unsigned nextSendSequence)
     {
         if (!count)
             return;
@@ -144,9 +143,6 @@ public:
                 assert(seq == header->sendSeq);
                 if (seen.hasSeen(header->sendSeq))
                 {
-                    if (seq==10)
-                        DBGLOG("10");
-                    DBGLOG("Releasing packet %u", header->sendSeq);
                     ::Release(entries[idx]);
                     entries[idx] = nullptr;
                     count--;
@@ -155,10 +151,10 @@ public:
                 else
                 {
                     // The current table entry is not marked as seen by receiver. Should we resend it?
-                    if (now-timeSent[idx] >= resendTimeout)
+                    if (now-timeSent[idx] >= resendTimeout || maxTracked()==nextSendSequence)
                     {
                         timeSent[idx] = now;
-                        //if (udpTraceLevel > 1)
+                        if (udpTraceLevel > 1)
                             DBGLOG("Resending %u", header->sendSeq);
                         packetsResent++;
                         toSend.push_back(entries[idx]);
@@ -173,11 +169,11 @@ public:
         {
             while (entries[first % TRACKER_BITS] == nullptr)
                 first++;
-            DBGLOG("Updated first to %u", first);
         }
     }
     unsigned maxTracked() const
     {
+        assert(count);                    // Meaningless to call this if count is 0
         return first + TRACKER_BITS - 1;  // Highest sendSeq value we can track without losing any data
     }
     bool numActive() const
@@ -282,7 +278,7 @@ public:
         unsigned totalSent = 0;
         if (resendList)
         {
-            resendList->noteRead(permit.seen, toSend, maxPackets, packetsQueued.load(std::memory_order_relaxed));
+            resendList->noteRead(permit.seen, toSend, maxPackets, nextSendSequence.load(std::memory_order_relaxed));
             // Don't send any packet that would end up overwriting an active packet in out resend list
             if (resendList->numActive())
             {
@@ -291,7 +287,9 @@ public:
                 {
                     maxPackets = sendLimit;
                     // DBGLOG("Can't send more than %d new packets or we will overwrite unreceived packets - setting maxPackets to %d", sendLimit, maxPackets);
-                    // MORE - if it's 0, what do we do ? Loop badly...
+                    // MORE - if it's 0, what do we do ? Loop badly, requesting send permission constantly until finally times out...
+                    // What could we do better? Send (some that we think may need resending) anyway?
+                    // If we have seen others with higher sequence numbers have been received, that should be enough to send without delay
                 }
             }
         }
