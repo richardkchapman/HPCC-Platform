@@ -49,7 +49,7 @@ struct UdpPacketHeader
     unsigned       msgId;       // sub-id allocated by the server to this request within the transaction
 };
 
-#define TRACKER_BITS 1024
+#define TRACKER_BITS 64
 
 // Some more things we can consider:
 // 1. sendSeq gives us some insight into lost packets that might help is get inflight calcuation right (if it is still needed)
@@ -60,14 +60,13 @@ class PacketTracker
 {
     // This uses a circular buffer indexed by seq to store information about which packets we have seen
 private:
-    sequence_t lastUnseen = 0;                     // Sequence number of highest packet we have not yet seen
-    unsigned __int64 seen[TRACKER_BITS/64] = {0};  // bitmask representing whether we have seen (lastUnseen+n)
+    sequence_t base = 0;                           // Sequence number of first packet represented in the array
+    unsigned __int64 seen[TRACKER_BITS/64] = {0};  // bitmask representing whether we have seen (base+n)
 public:
+    // Note that we have seen this packet, and return indicating whether we had already seen it
     bool noteSeen(UdpPacketHeader &hdr);
     const PacketTracker copy() const;
     bool hasSeen(sequence_t seq) const;
-    // Would sending N new packets knock this packet off the recorded list?
-    bool willBeLost(sequence_t seq, unsigned sendNew) const;
     void dump() const;
 };
 

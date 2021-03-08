@@ -86,6 +86,9 @@ static byte key[32] = {
 
 // UdpResentList keeps a copy of up to TRACKER_BITS previously sent packets so we can send them again
 
+RelaxedAtomic<unsigned> packetsResent;
+unsigned udpResendTimeout;  // in millseconds
+
 class UdpResendList
 {
 private:
@@ -103,10 +106,14 @@ public:
         UdpPacketHeader *header = (UdpPacketHeader*) buf->data;
         sequence_t seq = header->sendSeq;
         header->pktSeq |= UDP_PACKET_RESENT;
-        DBGLOG("append %d", seq);
-        if (seq - first > TRACKER_BITS)     // We hold one less than we are tracking the seen state of - is that a problem? We effectively know the state of TRACKER_BITS+1
+        if (!count)
         {
-            // This shouldn't happen if we have steps in place to block ending new until we are sure old have been delivered
+            DBGLOG("Adding packet %u to empty tracker", seq);
+            first = seq;
+        }
+        else if (seq - first > TRACKER_BITS)
+        {
+            // This shouldn't happen if we have steps in place to block ending new until we are sure old have been delivered.
             UNIMPLEMENTED;
         }
         unsigned idx = seq % TRACKER_BITS;
@@ -127,32 +134,51 @@ public:
         unsigned now = msTick();
         sequence_t seq = first;
         unsigned checked = 0;
+        bool released = false;
         while (checked < count && space)
         {
             unsigned idx = seq % TRACKER_BITS;
-            UdpPacketHeader *header = (UdpPacketHeader*) entries[idx]->data;
-            assert(seq == header->sendSeq);
-            if (seen.hasSeen(header->sendSeq))
+            if (entries[idx])
             {
-                ::Release(entries[idx]);
-                entries[idx] = nullptr;
-                count--;
-                if (seq==first)
-                    first++;
-            }
-            else
-            {
-                // The current table entry is not marked as seen by receiver. Should we resend it?
-                if (now-timeSent[idx] >= resendTimeout)
-                    break;   // Not if it was sent so recently it's reasonable that it has not arrived yet
-                if (udpTraceLevel > 1)
-                    DBGLOG("Resending %u", header->sendSeq);
-                toSend.push_back(entries[idx]);
-                space--;
-                checked++;
+                UdpPacketHeader *header = (UdpPacketHeader*) entries[idx]->data;
+                assert(seq == header->sendSeq);
+                if (seen.hasSeen(header->sendSeq))
+                {
+                    if (seq==10)
+                        DBGLOG("10");
+                    DBGLOG("Releasing packet %u", header->sendSeq);
+                    ::Release(entries[idx]);
+                    entries[idx] = nullptr;
+                    count--;
+                    released = true;
+                }
+                else
+                {
+                    // The current table entry is not marked as seen by receiver. Should we resend it?
+                    if (now-timeSent[idx] >= resendTimeout)
+                    {
+                        timeSent[idx] = now;
+                        //if (udpTraceLevel > 1)
+                            DBGLOG("Resending %u", header->sendSeq);
+                        packetsResent++;
+                        toSend.push_back(entries[idx]);
+                        space--;
+                    }
+                    checked++;
+                }
             }
             seq++;
         }
+        if (released && count)
+        {
+            while (entries[first % TRACKER_BITS] == nullptr)
+                first++;
+            DBGLOG("Updated first to %u", first);
+        }
+    }
+    unsigned maxTracked() const
+    {
+        return first + TRACKER_BITS - 1;  // Highest sendSeq value we can track without losing any data
     }
     bool numActive() const
     {
@@ -217,6 +243,7 @@ public:
 
     void sendDone(unsigned packets)
     {
+//        DBGLOG("sendDone %d", packets);
         bool dataRemaining = packetsQueued.load(std::memory_order_relaxed) || (resendList && resendList->numActive());
         // If dataRemaining says 0, but someone adds a row in this window, the request_to_send will be sent BEFORE the send_completed
         // So long as receiver handles that, are we good?
@@ -254,7 +281,20 @@ public:
         std::vector<DataBuffer *> toSend;
         unsigned totalSent = 0;
         if (resendList)
+        {
             resendList->noteRead(permit.seen, toSend, maxPackets, packetsQueued.load(std::memory_order_relaxed));
+            // Don't send any packet that would end up overwriting an active packet in out resend list
+            if (resendList->numActive())
+            {
+                unsigned sendLimit = resendList->maxTracked()-nextSendSequence;
+                if (maxPackets > sendLimit)
+                {
+                    maxPackets = sendLimit;
+                    // DBGLOG("Can't send more than %d new packets or we will overwrite unreceived packets - setting maxPackets to %d", sendLimit, maxPackets);
+                    // MORE - if it's 0, what do we do ? Loop badly...
+                }
+            }
+        }
         unsigned resending = toSend.size();
         while (toSend.size() < maxPackets && packetsQueued.load(std::memory_order_relaxed))
         {
@@ -271,7 +311,6 @@ public:
 #endif
         }
         MemoryBuffer encryptBuffer;
-//        sendDoing(toSend.size());
         for (DataBuffer *buffer: toSend)
         {
             UdpPacketHeader *header = (UdpPacketHeader*) buffer->data;
@@ -463,7 +502,7 @@ public:
                 DBGLOG("UdpSender: added entry for ip=%s to receivers table - send_flow_port=%d", ip.getIpText(ipStr).str(), _sendFlowPort);
             }
         }
-        resendList = new UdpResendList(10);
+        resendList = new UdpResendList(udpResendTimeout);
     }
 
     ~UdpReceiverEntry()

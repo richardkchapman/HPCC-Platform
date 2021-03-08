@@ -969,6 +969,9 @@ int CCD_API roxie_main(int argc, const char *argv[], const char * defaultYaml)
             udpSnifferEnabled = false;
         }
 #endif
+
+        udpResendTimeout = topology->getPropInt("@udpResendTimeout", 10);
+
         int ttlTmp = topology->getPropInt("@multicastTTL", 1);
         if (ttlTmp < 0)
         {

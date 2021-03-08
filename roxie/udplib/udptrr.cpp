@@ -652,9 +652,9 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                         if (udpTraceLevel > 5) // don't want to interrupt this thread if we can help it
                         {
                             StringBuffer s;
-                            DBGLOG("UdpReceiver: discarding unwanted resent packet %" SEQF "u from %s", hdr.sendSeq, hdr.node.getTraceText(s).str());
-                            unwantedDiscarded++;
+                            DBGLOG("UdpReceiver: discarding unwanted resent packet %" SEQF "u %u from %s", hdr.sendSeq, hdr.pktSeq, hdr.node.getTraceText(s).str());
                         }
+                        unwantedDiscarded++;
                         ::Release(b);
                     }
                     else

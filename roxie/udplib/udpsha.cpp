@@ -324,41 +324,50 @@ bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
     }
     // Four cases: less than lastUnseen, equal to, within TRACKER_BITS of, or higher
     // Be careful to think about wrapping. Less than and higher can't really be distinguished, but we treat resent differently from original
-    unsigned delta = seq - lastUnseen;
+    bool duplicate = false;
+    unsigned delta = seq - base;
     if (udpTraceLevel > 5)
     {
         DBGLOG("PacketTracker::noteSeen %" SEQF "u: delta %d", hdr.sendSeq, delta);
         dump();
     }
-    if (delta==0)  // This should be the common case if packets are arriving reliably in order
-    {
-        for(;;)
-        {
-            lastUnseen++;
-            unsigned idx = lastUnseen % (TRACKER_BITS/64);
-            unsigned bit = lastUnseen % 64;
-            bool nextSeen = (seen[idx] & (1l<<bit)) != 0;
-            if (!nextSeen)
-                break;
-        }
-    }
-    else if (delta <= TRACKER_BITS)
+    if (delta < TRACKER_BITS)
     {
         unsigned idx = seq % (TRACKER_BITS/64);
         unsigned bit = seq % 64;
-        seen[idx] |= (1l<<bit);
+        __uint64 bitm = 1l<<bit;
+        duplicate = (seen[idx] & bitm) != 0;
+        seen[idx] |= bitm;
+        if (seq==base)
+        {
+            while (seen[idx] & bitm)
+            {
+                seen[idx] &= ~bitm;
+                base++;
+                idx = base % (TRACKER_BITS/64);
+                bit = base % 64;
+                bitm = 1l<<bit;
+            }
+        }
     }
     else if (resent)
-        return true;
+        // Don't treat a resend that goes out of range as indicative of a restart - it probably just means
+        // that the resend was not needed and the original moved things on when it arrived
+        duplicate = true;
     else
     {
         // We've gone forwards too far to track, or backwards because server restarted
         // We have taken steps to try to avoid the former...
         // In theory could try to preserve SOME information in the former case, but as it shouldn't happen, can we be bothered?
-        lastUnseen = seq;
+#ifdef _DEBUG
+        DBGLOG("Received packet %" SEQF "u will cause loss of information in PacketTracker", seq);
+        dump();
+        //assert(false);
+#endif
+        base = seq+1;
         memset(seen, 0, sizeof(seen));
     }
-    return false;
+    return duplicate;
 }
 
 const PacketTracker PacketTracker::copy() const
@@ -369,9 +378,9 @@ const PacketTracker PacketTracker::copy() const
     PacketTracker ret;
     for (;;)
     {
-        ret.lastUnseen = lastUnseen;
+        ret.base = base;
         memcpy(ret.seen, seen, sizeof(seen));
-        if (ret.lastUnseen == lastUnseen)
+        if (ret.base == base)
             return ret;
     }
 }
@@ -379,15 +388,13 @@ const PacketTracker PacketTracker::copy() const
 bool PacketTracker::hasSeen(sequence_t seq) const
 {
     // Careful about wrapping!
-    unsigned delta = seq - lastUnseen;
+    unsigned delta = seq - base;
     if (udpTraceLevel > 5)
     {
        DBGLOG("PacketTracker::hasSeen - have I seen %u, %u", seq, delta);
        dump();
     }
-    if (!delta)
-        return false;
-    else if (delta <= TRACKER_BITS)
+    if (delta < TRACKER_BITS)
     {
         unsigned idx = seq % (TRACKER_BITS/64);
         unsigned bit = seq % 64;
@@ -399,20 +406,77 @@ bool PacketTracker::hasSeen(sequence_t seq) const
         return false;
 }
 
-// Would sending N new packets knock this packet off the recorded list?
-
-bool PacketTracker::willBeLost(sequence_t seq, unsigned sendNew) const
-{
-    assert(!hasSeen(seq));  // otherwise why even ask
-    assert(seq-lastUnseen <= TRACKER_BITS);
-    return lastUnseen + sendNew <= seq;
-}
-
 void PacketTracker::dump() const
 {
-    DBGLOG("PacketTracker lastUnseen=%" SEQF "u, seen[0]=%" I64F "x", lastUnseen, seen[0]);
+    DBGLOG("PacketTracker base=%" SEQF "u, seen[0]=%" I64F "x", base, seen[0]);
 }
 
+#ifdef _USE_CPPUNIT
+#include "unittests.hpp"
+
+class PacketTrackerTest : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE(PacketTrackerTest);
+        CPPUNIT_TEST(testNoteSeen);
+    CPPUNIT_TEST_SUITE_END();
+
+    void testNoteSeen()
+    {
+        PacketTracker p;
+        UdpPacketHeader hdr;
+        hdr.pktSeq = 0;
+        // Some simple tests
+        CPPUNIT_ASSERT(!p.hasSeen(0));
+        CPPUNIT_ASSERT(!p.hasSeen(1));
+        hdr.sendSeq = 0;
+        CPPUNIT_ASSERT(!p.noteSeen(hdr));
+        CPPUNIT_ASSERT(p.hasSeen(0));
+        CPPUNIT_ASSERT(!p.hasSeen(1));
+        CPPUNIT_ASSERT(!p.hasSeen(2000));
+        CPPUNIT_ASSERT(!p.hasSeen(2001));
+        hdr.pktSeq = UDP_PACKET_RESENT;
+        CPPUNIT_ASSERT(p.noteSeen(hdr));
+        hdr.pktSeq = 0;
+        hdr.sendSeq = 2000;
+        CPPUNIT_ASSERT(!p.noteSeen(hdr));
+        CPPUNIT_ASSERT(p.hasSeen(0));
+        CPPUNIT_ASSERT(p.hasSeen(1));
+        CPPUNIT_ASSERT(p.hasSeen(2000));
+        CPPUNIT_ASSERT(!p.hasSeen(2001));
+        hdr.sendSeq = 0;
+        CPPUNIT_ASSERT(!p.noteSeen(hdr));
+        CPPUNIT_ASSERT(p.hasSeen(0));
+        CPPUNIT_ASSERT(!p.hasSeen(1));
+        CPPUNIT_ASSERT(!p.hasSeen(2000));
+        CPPUNIT_ASSERT(!p.hasSeen(2001));
+
+        PacketTracker p2;
+        hdr.sendSeq = 1;
+        CPPUNIT_ASSERT(!p2.noteSeen(hdr));
+        CPPUNIT_ASSERT(!p2.hasSeen(0));
+        CPPUNIT_ASSERT(p2.hasSeen(1));
+        hdr.sendSeq = TRACKER_BITS-1;  // This is the highest value we can record without losing information
+        CPPUNIT_ASSERT(!p2.noteSeen(hdr));
+        CPPUNIT_ASSERT(!p2.hasSeen(0));
+        CPPUNIT_ASSERT(p2.hasSeen(1));
+        CPPUNIT_ASSERT(p2.hasSeen(TRACKER_BITS-1));
+        CPPUNIT_ASSERT(!p2.hasSeen(TRACKER_BITS));
+        CPPUNIT_ASSERT(!p2.hasSeen(TRACKER_BITS+1));
+        hdr.sendSeq = TRACKER_BITS;
+        p2.noteSeen(hdr);
+        CPPUNIT_ASSERT(p2.hasSeen(0));
+        CPPUNIT_ASSERT(p2.hasSeen(1));
+        CPPUNIT_ASSERT(p2.hasSeen(TRACKER_BITS-1));
+        CPPUNIT_ASSERT(p2.hasSeen(TRACKER_BITS));
+        CPPUNIT_ASSERT(!p2.hasSeen(TRACKER_BITS+1));
+        CPPUNIT_ASSERT(!p2.hasSeen(TRACKER_BITS+2));
+    }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION( PacketTrackerTest );
+CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( PacketTrackerTest, "PacketTrackerTest" );
+
+#endif
 
 /*
 Crazy thoughts on network-wide flow control

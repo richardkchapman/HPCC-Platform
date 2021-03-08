@@ -295,6 +295,11 @@ public:
     void dump()
     {
         DBGLOG("Contains %d packets, lastSeq = %d", numPackets, maxSeqSeen);
+        if (lastContiguousPacket)
+        {
+            UdpPacketHeader *hdr = (UdpPacketHeader*) lastContiguousPacket->data;
+            DBGLOG("lastContiguousPacket is %u %" SEQF "u", hdr->pktSeq, hdr->sendSeq);
+        }
     }
 
 };

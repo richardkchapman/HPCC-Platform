@@ -178,6 +178,9 @@ extern UDPLIB_API bool udpSnifferEnabled;
 extern UDPLIB_API unsigned udpSnifferReadThreadPriority;
 extern UDPLIB_API unsigned udpSnifferSendThreadPriority;
 
+
 extern UDPLIB_API void stopAeronDriver();
 
+extern UDPLIB_API unsigned udpResendTimeout;  // in millseconds
+extern UDPLIB_API RelaxedAtomic<unsigned> packetsResent;
 #endif
