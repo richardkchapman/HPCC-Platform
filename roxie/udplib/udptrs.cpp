@@ -196,9 +196,9 @@ private:
     int     currentQNumPkts = 0;         // Current Queue Number of Consecutive Processed Packets.
     int     *maxPktsPerQ = nullptr;      // to minimise power function re-calc for every packet
 
-    void sendRequest(flowType::flowCmd cmd, unsigned packets )
+    void sendRequest(flowType::flowCmd cmd, unsigned packets, sequence_t sendSeq )
     {
-        UdpRequestToSendMsg msg = { cmd, static_cast<unsigned short>(packets), sourceIP };
+        UdpRequestToSendMsg msg = { cmd, static_cast<unsigned short>(packets), sendSeq, sourceIP };
         try
         {
             if (udpTraceLevel > 3)
@@ -246,12 +246,12 @@ public:
         if (dataRemaining)
         {
             requestExpiryTime = msTick() + udpRequestToSendAckTimeout;
-            sendRequest(flowType::request_to_send_more, packets);
+            sendRequest(flowType::request_to_send_more, packets, nextSendSequence);
         }
         else
         {
             requestExpiryTime = 0;
-            sendRequest(flowType::send_completed, packets);
+            sendRequest(flowType::send_completed, packets, nextSendSequence);
         }
         timeouts = 0;
     }
@@ -259,7 +259,7 @@ public:
     void requestToSend()
     {
         requestExpiryTime = msTick() + udpRequestToSendAckTimeout;
-        sendRequest(flowType::request_to_send, 0);
+        sendRequest(flowType::request_to_send, 0, nextSendSequence);
     }
 
     void requestAcknowledged()

@@ -125,6 +125,10 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         // Updated by receive_data thread, read atomically by receive_flow
         PacketTracker packetsSeen;
 
+        // Only used by receive_data thread
+        sequence_t prevSeq = 0;
+        unsigned inflight = 0;
+
         UdpSenderEntry(const IpAddress &_dest, unsigned port) : dest(_dest)
         {
             SocketEndpoint ep(port, dest);
@@ -168,6 +172,20 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             }
         }
 
+        int noteInFlight(unsigned packets, sequence_t seq)
+        {
+            // inflight tracks my best guess for how many packets are in flight from this sender
+            // list packets and lost flow packets may this a little inexact, so try to make sure we self-correct
+            // return value reflects how much our estimate changed based on the latest information
+            unsigned oldInflight = inflight;
+            int delta = seq-prevSeq;
+            prevSeq = seq;
+            if (delta > 0 && delta <= packets)   // check that it's reasonable, so we don't go crazy on lost flow packets or restarts
+                inflight += delta;
+            else
+                inflight = 0;
+            return inflight - oldInflight;
+        }
 
         void requestToSend(unsigned maxTransfer, const IpAddress &returnAddress)
         {
@@ -515,7 +533,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                             break;
 
                         case flowType::send_completed:
-                            parent.inflight += msg.packets;
+                            parent.inflight += sender->noteInFlight(msg.packets, msg.sendSeq);
                             if (noteDone(sender))
                             {
                                 if (pendingRequests)
@@ -526,7 +544,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                             break;
 
                         case flowType::request_to_send_more:
-                            parent.inflight += msg.packets;
+                            parent.inflight += sender->noteInFlight(msg.packets, msg.sendSeq);
                             if (noteDone(sender))
                             {
                                 if (pendingRequests)
@@ -641,14 +659,11 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                     }
                     else
                         receive_socket->read(b->data, 1, DATA_PAYLOAD, res, 5);
-                    // If we add the "doing" flow message (and packets don't overtake each other), then we can say inflight should not go -ve...
-                    // We may be able to use sequence numbers as a sanity-check on inflight too
-                    parent.inflight--;
-                    // MORE - reset it to zero if we fail to read data, or if avail_read returns 0. Or just scrap it.
+
                     UdpPacketHeader &hdr = *(UdpPacketHeader *) b->data;
                     assert(hdr.length == res && hdr.length > sizeof(hdr));
                     UdpSenderEntry *sender = &parent.sendersTable[hdr.node];
-                    if (sender->packetsSeen.noteSeen(hdr))
+                    if (sender->packetsSeen.noteSeen(hdr, parent.inflight))
                     {
                         if (udpTraceLevel > 5) // don't want to interrupt this thread if we can help it
                         {
@@ -742,7 +757,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
 
     int free_slots()
     {
-        int free = input_queue->free_slots();  // May block if collator thread is not removing from my queue fast enough
+        int free = input_queue->free_slots();  // May block if collator thread is not removing from my queue fast enough (priority-inversion problem!)
         // Ignore inflight if negative (can happen because we read some inflight before we see the send_done)
         int i = inflight.load(std::memory_order_relaxed);
         if (i < 0)

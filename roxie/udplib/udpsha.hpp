@@ -49,7 +49,7 @@ struct UdpPacketHeader
     unsigned       msgId;       // sub-id allocated by the server to this request within the transaction
 };
 
-#define TRACKER_BITS 64
+#define TRACKER_BITS 64 // Power of two recommended
 
 // Some more things we can consider:
 // 1. sendSeq gives us some insight into lost packets that might help is get inflight calcuation right (if it is still needed)
@@ -61,10 +61,10 @@ class PacketTracker
     // This uses a circular buffer indexed by seq to store information about which packets we have seen
 private:
     sequence_t base = 0;                           // Sequence number of first packet represented in the array
-    unsigned __int64 seen[TRACKER_BITS/64] = {0};  // bitmask representing whether we have seen (base+n)
+    unsigned __int64 seen[(TRACKER_BITS+63)/64] = {0};  // bitmask representing whether we have seen (base+n)
 public:
     // Note that we have seen this packet, and return indicating whether we had already seen it
-    bool noteSeen(UdpPacketHeader &hdr);
+    bool noteSeen(UdpPacketHeader &hdr, std::atomic<int> &inflight);
     const PacketTracker copy() const;
     bool hasSeen(sequence_t seq) const;
     void dump() const;
@@ -237,6 +237,7 @@ struct UdpRequestToSendMsg
 {
     flowType::flowCmd cmd;
     unsigned short packets;
+    sequence_t sendSeq;
     ServerIdentifier sourceNode;
 };
 

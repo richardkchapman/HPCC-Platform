@@ -313,7 +313,7 @@ extern UDPLIB_API void queryMemoryPoolStats(StringBuffer &memStats)
 }
 
 
-bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
+bool PacketTracker::noteSeen(UdpPacketHeader &hdr, std::atomic<int> &inflight)
 {
     bool resent = false;
     sequence_t seq = hdr.sendSeq;
@@ -346,6 +346,8 @@ bool PacketTracker::noteSeen(UdpPacketHeader &hdr)
                 bitm = 1l<<bit;
             }
         }
+        if (!duplicate)
+            inflight--;
     }
     else if (resent)
         // Don't treat a resend that goes out of range as indicative of a restart - it probably just means
@@ -419,6 +421,7 @@ class PacketTrackerTest : public CppUnit::TestFixture
 
     void testNoteSeen()
     {
+        std::atomic<int> inflight;
         PacketTracker p;
         UdpPacketHeader hdr;
         hdr.pktSeq = 0;
@@ -426,22 +429,22 @@ class PacketTrackerTest : public CppUnit::TestFixture
         CPPUNIT_ASSERT(!p.hasSeen(0));
         CPPUNIT_ASSERT(!p.hasSeen(1));
         hdr.sendSeq = 0;
-        CPPUNIT_ASSERT(!p.noteSeen(hdr));
+        CPPUNIT_ASSERT(!p.noteSeen(hdr, inflight));
         CPPUNIT_ASSERT(p.hasSeen(0));
         CPPUNIT_ASSERT(!p.hasSeen(1));
         CPPUNIT_ASSERT(!p.hasSeen(2000));
         CPPUNIT_ASSERT(!p.hasSeen(2001));
         hdr.pktSeq = UDP_PACKET_RESENT;
-        CPPUNIT_ASSERT(p.noteSeen(hdr));
+        CPPUNIT_ASSERT(p.noteSeen(hdr, inflight));
         hdr.pktSeq = 0;
         hdr.sendSeq = 2000;
-        CPPUNIT_ASSERT(!p.noteSeen(hdr));
+        CPPUNIT_ASSERT(!p.noteSeen(hdr, inflight));
         CPPUNIT_ASSERT(p.hasSeen(0));
         CPPUNIT_ASSERT(p.hasSeen(1));
         CPPUNIT_ASSERT(p.hasSeen(2000));
         CPPUNIT_ASSERT(!p.hasSeen(2001));
         hdr.sendSeq = 0;
-        CPPUNIT_ASSERT(!p.noteSeen(hdr));
+        CPPUNIT_ASSERT(!p.noteSeen(hdr, inflight));
         CPPUNIT_ASSERT(p.hasSeen(0));
         CPPUNIT_ASSERT(!p.hasSeen(1));
         CPPUNIT_ASSERT(!p.hasSeen(2000));
@@ -449,18 +452,18 @@ class PacketTrackerTest : public CppUnit::TestFixture
 
         PacketTracker p2;
         hdr.sendSeq = 1;
-        CPPUNIT_ASSERT(!p2.noteSeen(hdr));
+        CPPUNIT_ASSERT(!p2.noteSeen(hdr, inflight));
         CPPUNIT_ASSERT(!p2.hasSeen(0));
         CPPUNIT_ASSERT(p2.hasSeen(1));
         hdr.sendSeq = TRACKER_BITS-1;  // This is the highest value we can record without losing information
-        CPPUNIT_ASSERT(!p2.noteSeen(hdr));
+        CPPUNIT_ASSERT(!p2.noteSeen(hdr, inflight));
         CPPUNIT_ASSERT(!p2.hasSeen(0));
         CPPUNIT_ASSERT(p2.hasSeen(1));
         CPPUNIT_ASSERT(p2.hasSeen(TRACKER_BITS-1));
         CPPUNIT_ASSERT(!p2.hasSeen(TRACKER_BITS));
         CPPUNIT_ASSERT(!p2.hasSeen(TRACKER_BITS+1));
         hdr.sendSeq = TRACKER_BITS;
-        p2.noteSeen(hdr);
+        p2.noteSeen(hdr, inflight);
         CPPUNIT_ASSERT(p2.hasSeen(0));
         CPPUNIT_ASSERT(p2.hasSeen(1));
         CPPUNIT_ASSERT(p2.hasSeen(TRACKER_BITS-1));
