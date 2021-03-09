@@ -70,50 +70,39 @@ ServerIdentifier myNode;
 
 //---------------------------------------------------------------------------------------------
 
-void queue_t::set_queue_size(unsigned int queue_s) 
+void queue_t::set_queue_size(unsigned _limit)
 {
-    queue_size = queue_s;
-    element_count = queue_size;
-    elements = new queue_element[queue_size];
-    free_space.signal(queue_size);
-    active_buffers = 0;
-    first = 0;
-    last = 0;
+    limit = _limit;
+    free_space.signal(limit);
 }
 
-queue_t::queue_t(unsigned int queue_s) 
+queue_t::queue_t(unsigned _limit)
 {
-    set_queue_size(queue_s);
-    signal_free_sl = 0;
+    set_queue_size(_limit);
 }
 
-queue_t::queue_t() 
-{
-    signal_free_sl = 0;
-    queue_size = 0;
-    element_count = 0;
-    elements = nullptr;
-    active_buffers = 0;
-    first = 0;
-    last = 0;
-}
 
 queue_t::~queue_t() 
 {
-    delete [] elements; 
+    while (head)
+    {
+        auto p = head;
+        head = head->msgNext;
+        ::Release(p);
+    }
 }
 
 int queue_t::free_slots() 
 {
     int res=0;
-    while (!res) 
+    while (res <= 0)
     {
         c_region.enter();
-        res = queue_size - active_buffers;
-        if (!res) 
+        res = limit - count;
+        if (res <= 0)
             signal_free_sl++;
         c_region.leave();
-        if (!res) 
+        if (res <= 0)
         {
             while (!free_sl.wait(3000))
             {
@@ -135,14 +124,23 @@ void queue_t::pushOwn(DataBuffer *buf)
     while (!free_space.wait(3000))
     {
         if (udpTraceLevel >= 1)
-            DBGLOG("queue_t::pushOwn blocked for 3 seconds waiting for free_space semaphore, activeBuffers == %d", active_buffers);
+            DBGLOG("queue_t::pushOwn blocked for 3 seconds waiting for free_space semaphore, count == %d", count);
     }
-    c_region.enter();
-    int next = (last + 1) % element_count;
-    elements[last].data = buf;
-    last = next;
-    active_buffers++;
-    c_region.leave();
+    // Could probably be done lock-free, which given one thread using this is high priority might avoid some
+    // potential priority-inversion issues. Or we might consider using PI-aware futexes here?
+    {
+        CriticalBlock b(c_region);
+        assert(!tail->msgNext);
+        assert(!buf->msgNext);
+        if (tail)
+            tail->msgNext = buf;
+        else
+        {
+            assert(!head);
+            head = buf;
+        }
+        tail = buf;
+    }
     data_avail.signal();
 }
 
@@ -150,15 +148,18 @@ DataBuffer *queue_t::pop(bool block)
 {
     if (!data_avail.wait(block ? INFINITE : 0))
         return nullptr;
-    DataBuffer *ret = NULL; 
+    DataBuffer *ret = nullptr;
     bool must_signal;
     {
         CriticalBlock b(c_region);
-        if (!active_buffers) 
-            return NULL;
-        ret = elements[first].data;
-        first = (first + 1) % element_count;
-        active_buffers--;
+        if (!count)
+            return nullptr;
+        ret = head;
+        head = head->msgNext;
+        if (!head)
+            tail = nullptr;
+        ret->msgNext = nullptr;
+        count--;
         must_signal = signal_free_sl>0;
         if (must_signal) 
             signal_free_sl--;
@@ -177,35 +178,41 @@ unsigned queue_t::removeData(const void *key, PKT_CMP_FUN pkCmpFn)
     unsigned signalFreeSlots = 0;
     {
         CriticalBlock b(c_region);
-        if (active_buffers)
+        if (count)
         {
-            unsigned destix = first;
-            unsigned ix = first;
-            for (;;)
+            DataBuffer *prev = nullptr;
+            DataBuffer *finger = head;
+            while (finger)
             {
-                if (elements[ix].data && (!key || !pkCmpFn || pkCmpFn((const void*) elements[ix].data, key)))
+                if (!key || !pkCmpFn || pkCmpFn((const void*) finger, key))
                 {
-                    ::Release(elements[ix].data);
+                    auto temp = finger;
+                    finger = finger->next;
+                    ::Release(temp);
+                    if (prev==nullptr)
+                    {
+                        assert(head==temp);
+                        head = finger;
+                    }
+                    else
+                        prev->msgNext = finger;
+                    if (temp==tail)
+                        tail = prev;
                     signalFree++;
-                    active_buffers--;
+                    count--;
                     removed++;
                 }
                 else
-                    elements[destix++] = elements[ix];
-                ix++;
-                if (ix==element_count)
-                    ix = 0;
-                if (destix==element_count)
-                    destix = 0;
-                if (ix == last)
-                    break;
+                {
+                    prev = finger;
+                    finger = finger->next;
+                }
             }
             if (signalFree && signal_free_sl)
             {
                 signal_free_sl--;
                 signalFreeSlots++;
             }
-            last = destix;
         }
     }
     if (signalFree)
@@ -220,22 +227,14 @@ bool queue_t::dataQueued(const void *key, PKT_CMP_FUN pkCmpFn)
 {
     bool ret = false;
     CriticalBlock b(c_region);
-    if (active_buffers) 
+    DataBuffer *finger = head;
+    while (finger)
     {
-        unsigned ix = first;
-        for (;;)
+        if (pkCmpFn((const void*) finger, key))
         {
-            if (elements[ix].data && pkCmpFn((const void*) elements[ix].data, key))
-            {
-                ret = true;
-                break;
-            }
-            ix++;
-            if (ix==element_count)
-                ix = 0;
-            if (ix==last)
-                break;
-        }           
+            ret = true;
+            break;
+        }
     }
     return ret;
 }

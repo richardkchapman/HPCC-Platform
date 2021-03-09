@@ -70,46 +70,39 @@ public:
     void dump() const;
 };
 
+using roxiemem::DataBuffer;
+
+// queue_t is used to hold a fifo queue of DataBuffer elements to be sent or collated.
+// Originally implemented as a circular buffer, but we don't want to block adding even if full (we do however want to avoid requesting more if full)
+// so now reimplemented as a single-linked list. There is a field in the DataBuffers that can be used for chaining them together that is used
+// in a few other places, e.g. collator
+
 class queue_t 
 {
+    DataBuffer *head = nullptr;      // We add at tail and remove from head
+    DataBuffer *tail = nullptr;
 
-    class queue_element 
-    {
-    public:
-        roxiemem::DataBuffer  *data;
-        queue_element() 
-        {
-            data = NULL;
-        }
-    };
-
-    queue_element   *elements;
-    unsigned int    element_count;
+    unsigned count = 0;
+    unsigned limit = 0;
     
-    unsigned        first;
-    unsigned        last;
     CriticalSection c_region;
-    int             active_buffers;
-    int             queue_size;
     InterruptableSemaphore data_avail;
     Semaphore       free_space;
     Semaphore       free_sl;
-    unsigned        signal_free_sl;
-
-    void removeElement(int ix);
+    unsigned        signal_free_sl = 0;   // Should probably be atomic?
     
 public: 
     void interrupt();
-    void pushOwn(roxiemem::DataBuffer *buffer);
-    roxiemem::DataBuffer *pop(bool block);
+    void pushOwn(DataBuffer *buffer);
+    DataBuffer *pop(bool block);
     bool dataQueued(const void *key, PKT_CMP_FUN pkCmpFn);
     unsigned removeData(const void *key, PKT_CMP_FUN pkCmpFn);
-    int  free_slots(); //block if no free slots
-    void set_queue_size(unsigned int queue_size); //must be called immediately after constructor if default constructor is used
+    int  free_slots();                   // block if no free slots
+    void set_queue_size(unsigned limit); //must be called immediately after constructor if default constructor is used
     queue_t(unsigned int queue_size);
-    queue_t();
+    queue_t() {};
     ~queue_t();
-    inline int capacity() const { return queue_size; }
+    inline int capacity() const { return limit; }
 };
 
 

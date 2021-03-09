@@ -758,28 +758,33 @@ class CReceiveManager : implements IReceiveManager, public CInterface
     int free_slots()
     {
         int free = input_queue->free_slots();  // May block if collator thread is not removing from my queue fast enough (priority-inversion problem!)
-        // Ignore inflight if negative (can happen because we read some inflight before we see the send_done)
-        int i = inflight.load(std::memory_order_relaxed);
-        if (i < 0)
+        if (false)  // useInflightEstimation)
         {
-            if (i < -input_queue->capacity())
+            // Ignore inflight if negative (can happen because we read some inflight before we see the send_done)
+            int i = inflight.load(std::memory_order_relaxed);
+            if (i < 0)
             {
-                if (udpTraceLevel)
-                    DBGLOG("UdpReceiver: ERROR: inflight has more packets in queue but not counted (%d) than queue capacity (%d)", -i, input_queue->capacity());  // Should never happen unless losing flow packets
-                inflight = -input_queue->capacity();
+                if (i < -input_queue->capacity())
+                {
+                    if (udpTraceLevel)
+                        DBGLOG("UdpReceiver: ERROR: inflight has more packets in queue but not counted (%d) than queue capacity (%d)", -i, input_queue->capacity());  // Should never happen unless losing flow packets
+                    inflight = -input_queue->capacity();
+                }
+                i = 0;
             }
-            i = 0;
+            else if (i >= free)
+            {
+                if ((i > free) && (udpTraceLevel))
+                    DBGLOG("UdpReceiver: ERROR: more packets in flight (%d) than slots free (%d)", i, free);  // Should never happen unless losing data packets
+                inflight = i = free-1;
+            }
+            if (i && udpTraceLevel > 1)
+                DBGLOG("UdpReceiver: adjusting free_slots to allow for %d in flight", i);
+            assert(free-i > 0) ;
+            return free - i;
         }
-        else if (i >= free)
-        {
-            if ((i > free) && (udpTraceLevel))
-                DBGLOG("UdpReceiver: ERROR: more packets in flight (%d) than slots free (%d)", i, free);  // Should never happen unless losing data packets
-            inflight = i = free-1;
-        }
-        if (i && udpTraceLevel > 1)
-            DBGLOG("UdpReceiver: adjusting free_slots to allow for %d in flight", i);
-        assert(free-i > 0) ;
-        return free - i;
+        else
+            return free;
         //return 1;   // Provoke pathogenic behaviour
     }
 
