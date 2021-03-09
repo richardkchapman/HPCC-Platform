@@ -403,6 +403,7 @@ public:
 
     inline void pushData(unsigned queue, DataBuffer *buffer)
     {
+        output_queue[queue].free_slots();     // pushOwn no longer blocks
         output_queue[queue].pushOwn(buffer);
         if (!packetsQueued++)
             requestToSend();

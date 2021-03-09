@@ -87,9 +87,8 @@ class queue_t
     
     CriticalSection c_region;
     InterruptableSemaphore data_avail;
-    Semaphore       free_space;
-    Semaphore       free_sl;
-    unsigned        signal_free_sl = 0;   // Should probably be atomic?
+    Semaphore       free_sl;              // Signalled when (a) someone is waiting for it and (b) count changes from >= limit to < limit
+    unsigned        signal_free_sl = 0;   // Number of people waiting in free_sl. Should probably be atomic?
     
 public: 
     void interrupt();

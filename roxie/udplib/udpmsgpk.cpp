@@ -582,7 +582,7 @@ bool CMessageCollator::attach_data(const void *data, unsigned len)
 void CMessageCollator::collate(DataBuffer *dataBuff)
 {
     PUID puid = GETPUID(dataBuff);
-    // MORE - I think we leak a PackageSequencer for messages that we only receive parts of - maybe only an issue for "catchall" case
+    // MORE - we leak (at least until query terminates) a PackageSequencer for messages that we only receive parts of - maybe only an issue for "catchall" case
     PackageSequencer *pkSqncr = mapping.getValue(puid);
     if (!pkSqncr)
     {

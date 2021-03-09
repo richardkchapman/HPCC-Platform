@@ -73,7 +73,6 @@ ServerIdentifier myNode;
 void queue_t::set_queue_size(unsigned _limit)
 {
     limit = _limit;
-    free_space.signal(limit);
 }
 
 queue_t::queue_t(unsigned _limit)
@@ -121,25 +120,27 @@ void queue_t::interrupt()
 
 void queue_t::pushOwn(DataBuffer *buf)
 {
-    while (!free_space.wait(3000))
-    {
-        if (udpTraceLevel >= 1)
-            DBGLOG("queue_t::pushOwn blocked for 3 seconds waiting for free_space semaphore, count == %d", count);
-    }
     // Could probably be done lock-free, which given one thread using this is high priority might avoid some
     // potential priority-inversion issues. Or we might consider using PI-aware futexes here?
     {
         CriticalBlock b(c_region);
-        assert(!tail->msgNext);
         assert(!buf->msgNext);
         if (tail)
+        {
+            assert(!tail->msgNext);
             tail->msgNext = buf;
+        }
         else
         {
             assert(!head);
             head = buf;
         }
         tail = buf;
+        count++;
+#ifdef _DEBUG
+        if (count > limit)
+            DBGLOG("queue_t::pushOwn set count to %u", count);
+#endif
     }
     data_avail.signal();
 }
@@ -149,7 +150,7 @@ DataBuffer *queue_t::pop(bool block)
     if (!data_avail.wait(block ? INFINITE : 0))
         return nullptr;
     DataBuffer *ret = nullptr;
-    bool must_signal;
+    unsigned signalFreeSlots = 0;
     {
         CriticalBlock b(c_region);
         if (!count)
@@ -160,13 +161,14 @@ DataBuffer *queue_t::pop(bool block)
             tail = nullptr;
         ret->msgNext = nullptr;
         count--;
-        must_signal = signal_free_sl>0;
-        if (must_signal) 
+        if (count < limit && signal_free_sl)
+        {
             signal_free_sl--;
+            signalFreeSlots++;
+        }
     }
-    free_space.signal();
-    if (must_signal) 
-        free_sl.signal();
+    if (signalFreeSlots)
+        free_sl.signal(signalFreeSlots);
     return ret;
 }
 
@@ -174,7 +176,6 @@ DataBuffer *queue_t::pop(bool block)
 unsigned queue_t::removeData(const void *key, PKT_CMP_FUN pkCmpFn)
 {
     unsigned removed = 0;
-    unsigned signalFree = 0;
     unsigned signalFreeSlots = 0;
     {
         CriticalBlock b(c_region);
@@ -198,8 +199,12 @@ unsigned queue_t::removeData(const void *key, PKT_CMP_FUN pkCmpFn)
                         prev->msgNext = finger;
                     if (temp==tail)
                         tail = prev;
-                    signalFree++;
                     count--;
+                    if (count < limit && signal_free_sl)
+                    {
+                        signal_free_sl--;
+                        signalFreeSlots++;
+                    }
                     removed++;
                 }
                 else
@@ -208,15 +213,8 @@ unsigned queue_t::removeData(const void *key, PKT_CMP_FUN pkCmpFn)
                     finger = finger->next;
                 }
             }
-            if (signalFree && signal_free_sl)
-            {
-                signal_free_sl--;
-                signalFreeSlots++;
-            }
         }
     }
-    if (signalFree)
-        free_space.signal(signalFree);
     if (signalFreeSlots)
         free_sl.signal(signalFreeSlots);
     return removed;

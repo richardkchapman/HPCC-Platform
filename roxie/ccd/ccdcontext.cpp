@@ -1184,9 +1184,9 @@ protected:
     Owned<IPropertyTree> probeQuery;
     unsigned lastWuAbortCheck;
     unsigned startTime;
-    std::atomic<unsigned> totAgentsReplyLen;
-    std::atomic<unsigned> totAgentsDuplicates;
-    std::atomic<unsigned> totAgentsResends;
+    std::atomic<unsigned> totAgentsReplyLen = {0};
+    std::atomic<unsigned> totAgentsDuplicates = {0};
+    std::atomic<unsigned> totAgentsResends = {0};
     CCycleTimer elapsedTimer;
 
     QueryOptions options;
@@ -1266,6 +1266,8 @@ public:
         aborted = false;
         exceptionLogged = false;
         totAgentsReplyLen = 0;
+        totAgentsDuplicates = 0;
+        totAgentsResends = 0;
 
         allocatorMetaCache.setown(createRowAllocatorCache(this));
         rowManager.setown(roxiemem::createRowManager(options.memoryLimit, this, logctx, allocatorMetaCache, false));
@@ -2585,6 +2587,8 @@ protected:
     void init()
     {
         totAgentsReplyLen = 0;
+        totAgentsDuplicates = 0;
+        totAgentsResends = 0;
         isRaw = false;
         isBlocked = false;
         isNative = true;
