@@ -96,6 +96,7 @@ public:
     DataBuffer *pop(bool block);
     bool dataQueued(const void *key, PKT_CMP_FUN pkCmpFn);
     unsigned removeData(const void *key, PKT_CMP_FUN pkCmpFn);
+    unsigned available();                // non-blocking
     int  free_slots();                   // block if no free slots
     void set_queue_size(unsigned limit); //must be called immediately after constructor if default constructor is used
     queue_t(unsigned int queue_size);

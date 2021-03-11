@@ -175,8 +175,6 @@ extern UDPLIB_API unsigned udpMaxRetryTimedoutReqs;
 extern UDPLIB_API unsigned udpRequestToSendTimeout;
 extern UDPLIB_API unsigned udpRequestToSendAckTimeout;
 
-extern UDPLIB_API unsigned udpRetryBusySenders;
-extern UDPLIB_API bool udpSnifferEnabled;
 extern UDPLIB_API unsigned udpSnifferReadThreadPriority;
 extern UDPLIB_API unsigned udpSnifferSendThreadPriority;
 

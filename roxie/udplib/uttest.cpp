@@ -44,11 +44,9 @@ void usage()
         "--jumboFrames\n"
         "--useAeron\n"
         "--udpLocalWriteSocketSize nn\n"
-        "--udpRetryBusySenders nn\n"
         "--maxPacketsPerSender nn\n"
         "--udpQueueSize nn\n"
         "--udpRTSTimeout nn\n"
-        "--udpSnifferEnabled 0|1\n"     
         "--udpTraceCategories nn\n"
         "--udpTraceLevel nn\n"
         "--dontSendToSelf\n"
@@ -681,26 +679,12 @@ int main(int argc, char * argv[] )
                     usage();
                 udpLocalWriteSocketSize = atoi(argv[c]);
             }
-            else if (strcmp(ip, "--udpRetryBusySenders")==0)
-            {
-                c++;
-                if (c==argc)
-                    usage();
-                udpRetryBusySenders = atoi(argv[c]);
-            }
             else if (strcmp(ip, "--maxPacketsPerSender")==0)
             {
                 c++;
                 if (c==argc)
                     usage();
                 maxPacketsPerSender = atoi(argv[c]);
-            }
-            else if (strcmp(ip, "--udpSnifferEnabled")==0)
-            {
-                c++;
-                if (c==argc)
-                    usage();
-                udpSnifferEnabled = atoi(argv[c]) != 0;
             }
             else if (strcmp(ip, "--udpTraceLevel")==0)
             {

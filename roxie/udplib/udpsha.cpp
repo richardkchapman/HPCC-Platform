@@ -91,6 +91,14 @@ queue_t::~queue_t()
     }
 }
 
+unsigned queue_t::available()
+{
+    CriticalBlock b(c_region);
+    if (count < limit)
+        return count - limit;
+    return 0;
+}
+
 int queue_t::free_slots() 
 {
     int res=0;

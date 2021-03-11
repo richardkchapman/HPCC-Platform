@@ -88,6 +88,7 @@ static byte key[32] = {
 
 RelaxedAtomic<unsigned> packetsResent;
 unsigned udpResendTimeout;  // in millseconds
+static unsigned lastResentReport = 0;
 
 class UdpResendList
 {
@@ -157,6 +158,12 @@ public:
                         if (udpTraceLevel > 1)
                             DBGLOG("Resending %u", header->sendSeq);
                         packetsResent++;
+                        if (now-lastResentReport > 5000)
+                        {
+                            lastResentReport = now;
+                            DBGLOG("%u packets resent", packetsResent.load(std::memory_order_relaxed));
+                        }
+
                         toSend.push_back(entries[idx]);
                         space--;
                     }
