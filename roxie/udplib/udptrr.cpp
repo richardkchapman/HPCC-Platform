@@ -121,6 +121,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
         flowType::flowCmd state = flowType::send_completed;
         unsigned timeouts = 0;
         unsigned timeStamp = 0;                // When we last sent okToSend
+        std::atomic<sequence_t> nextFlowSequence = {0};
 
         // Updated by receive_data thread, read atomically by receive_flow
         PacketTracker packetsSeen;
@@ -193,6 +194,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             {
                 UdpPermitToSendMsg msg;
                 msg.cmd = flowType::request_received;
+                msg.flowSeq = nextFlowSequence++;
                 msg.destNode = returnAddress;
                 msg.max_data = 0;
                 msg.seen = this->packetsSeen.copy();
@@ -217,6 +219,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
             {
                 UdpPermitToSendMsg msg;
                 msg.cmd = maxTransfer ? flowType::ok_to_send : flowType::request_received;
+                msg.flowSeq = nextFlowSequence++;
                 msg.destNode = returnAddress;
                 msg.max_data = maxTransfer;
                 msg.seen = this->packetsSeen.copy();
@@ -427,7 +430,7 @@ class CReceiveManager : implements IReceiveManager, public CInterface
                         if (udpTraceLevel > 5)
                         {
                             StringBuffer ipStr;
-                            DBGLOG("UdpReceiver: received %s msg from node=%s", flowType::name(msg.cmd), msg.sourceNode.getTraceText(ipStr).str());
+                            DBGLOG("UdpReceiver: received %s msg %u from node=%s", flowType::name(msg.cmd), msg.flowSeq, msg.sourceNode.getTraceText(ipStr).str());
                         }
                         UdpSenderEntry *sender = &parent.sendersTable[msg.sourceNode];
                         switch (msg.cmd)

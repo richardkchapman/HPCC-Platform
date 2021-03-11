@@ -222,6 +222,7 @@ struct UdpPermitToSendMsg
 {
     flowType::flowCmd cmd;
     unsigned short max_data;
+    sequence_t flowSeq;
     ServerIdentifier destNode;
     PacketTracker seen;
 };
@@ -230,7 +231,7 @@ struct UdpRequestToSendMsg
 {
     flowType::flowCmd cmd;
     unsigned short packets;
-    sequence_t sendSeq;
+    sequence_t flowSeq;
     ServerIdentifier sourceNode;
 };
 

@@ -211,7 +211,7 @@ private:
             if (udpTraceLevel > 3)
             {
                 StringBuffer s;
-                DBGLOG("UdpSender: sending flowType::%s msg to node=%s", flowType::name(cmd), ip.getIpText(s).str());
+                DBGLOG("UdpSender: sending flowType::%s msg %u to node=%s", flowType::name(cmd), sendSeq, ip.getIpText(s).str());
             }
             send_flow_socket->write(&msg, sizeof(UdpRequestToSendMsg));
         }
@@ -243,6 +243,7 @@ public:
 
     std::atomic<unsigned> packetsQueued = { 0 };
     std::atomic<sequence_t> nextSendSequence = {0};
+    std::atomic<sequence_t> nextFlowSequence = {0};
 
     void sendDone(unsigned packets)
     {
@@ -253,12 +254,12 @@ public:
         if (dataRemaining)
         {
             requestExpiryTime = msTick() + udpRequestToSendAckTimeout;
-            sendRequest(flowType::request_to_send_more, packets, nextSendSequence);
+            sendRequest(flowType::request_to_send_more, packets, nextFlowSequence++);
         }
         else
         {
             requestExpiryTime = 0;
-            sendRequest(flowType::send_completed, packets, nextSendSequence);
+            sendRequest(flowType::send_completed, packets, nextFlowSequence++);
         }
         timeouts = 0;
     }
@@ -266,7 +267,7 @@ public:
     void requestToSend()
     {
         requestExpiryTime = msTick() + udpRequestToSendAckTimeout;
-        sendRequest(flowType::request_to_send, 0, nextSendSequence);
+        sendRequest(flowType::request_to_send, 0, nextFlowSequence++);
     }
 
     void requestAcknowledged()
@@ -667,7 +668,7 @@ class CSendManager : implements ISendManager, public CInterface
                             if (udpTraceLevel > 1) 
                             {
                                 StringBuffer s;
-                                DBGLOG("UdpSender: received ok_to_send msg max %d packets from node=%s", f.max_data, f.destNode.getTraceText(s).str());
+                                DBGLOG("UdpSender: received ok_to_send msg max %d packets from node=%s seq %u", f.max_data, f.destNode.getTraceText(s).str(), f.flowSeq);
                             }
                             parent.data->ok_to_send(f);
                             break;
@@ -676,7 +677,7 @@ class CSendManager : implements ISendManager, public CInterface
                             if (udpTraceLevel > 1)
                             {
                                 StringBuffer s;
-                                DBGLOG("UdpSender: received request_received msg from node=%s", f.destNode.getTraceText(s).str());
+                                DBGLOG("UdpSender: received request_received msg from node=%s seq %u", f.destNode.getTraceText(s).str(), f.flowSeq);
                             }
                             parent.receiversTable[f.destNode].requestAcknowledged();
                             break;
@@ -807,7 +808,7 @@ class CSendManager : implements ISendManager, public CInterface
                 if (udpTraceLevel > 1) 
                 {
                     StringBuffer s;
-                    DBGLOG("UdpSender: sent %u bytes to node=%s", payload, permit.destNode.getTraceText(s).str());
+                    DBGLOG("UdpSender: sent %u bytes to node=%s under permit %u", payload, permit.destNode.getTraceText(s).str(), permit.flowSeq);
                 }
             }
             if (udpTraceLevel > 0)
