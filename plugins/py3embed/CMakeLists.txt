@@ -57,6 +57,10 @@ if (CONTAINERIZED)
 install(
     TARGETS py3embed
     DESTINATION plugins)
+# Continue to copy to old location for now for ease of migration of queries from bare-metal
+install(
+    TARGETS py3embed
+    DESTINATION versioned/python3)   # Could probably do using a hard link?
 else()
 install(
     TARGETS py3embed
