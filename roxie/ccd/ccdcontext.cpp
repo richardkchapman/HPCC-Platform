@@ -2738,7 +2738,13 @@ public:
             {
                 // MORE - can we accumulate results from several runs?
                 statsWu.setown(daliHelper->createWorkUnit());
-                queryExtendedWU(statsWu)->copyWorkUnit(_factory->queryWorkUnit(), false, true);
+                //queryExtendedWU(statsWu)->copyWorkUnit(_factory->queryWorkUnit(), false, true);
+                StringBuffer dllFileName;
+                splitFilename(_factory->queryDll()->queryName(), nullptr, nullptr, &dllFileName, nullptr, false);
+#ifndef _WIN32
+                dllFileName.replaceString(SharedObjectPrefix, "");
+#endif
+                queryExtendedWU(statsWu)->queryPTree()->setProp("@clonedFromWorkunit", dllFileName);
                 WorkunitUpdate wu(&statsWu->lock());
                 addTimeStamp(wu, SSTglobal, NULL, StWhenStarted);
                 wu->setState(WUStateRunning);
