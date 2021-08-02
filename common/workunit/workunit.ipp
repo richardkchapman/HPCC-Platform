@@ -186,7 +186,7 @@ public:
     void beforeDispose();
     
     IPropertyTree *getUnpackedTree(bool includeProgress) const;
-    IPropertyTree *queryIndirectTree() const;
+    IPropertyTree *queryMergedTree() const;
 
     ISecManager *querySecMgr() { return secMgr.get(); }
     ISecUser *querySecUser() { return secUser.get(); }

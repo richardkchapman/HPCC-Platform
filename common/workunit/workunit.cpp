@@ -9472,7 +9472,7 @@ bool CLocalWorkUnit::switchThorQueue(const char *cluster, IQueueSwitcher *qs)
 
 IPropertyTree *CLocalWorkUnit::getUnpackedTree(bool includeProgress) const
 {
-    Owned<IPropertyTree> ret = createPTreeFromIPT(queryIndirectTree());
+    Owned<IPropertyTree> ret = createPTreeFromIPT(queryMergedTree());
     Owned<IConstWUGraphIterator> graphIter = &getGraphs(GraphTypeAny);
     ForEach(*graphIter)
     {
@@ -9492,7 +9492,7 @@ IPropertyTree *CLocalWorkUnit::getUnpackedTree(bool includeProgress) const
     return ret.getClear();
 }
 
-IPropertyTree *CLocalWorkUnit::queryIndirectTree() const
+IPropertyTree *CLocalWorkUnit::queryMergedTree() const
 {
     if (indirectTree)
         return indirectTree;
@@ -9503,14 +9503,15 @@ IPropertyTree *CLocalWorkUnit::queryIndirectTree() const
         indirectTree.setown(createPTreeFromIPT(p));
         Owned<IWorkUnitFactory> factory = getWorkUnitFactory();
         Owned<IConstWorkUnit> donor = factory->openWorkUnit(p->queryProp("@clonedFromWorkunit"));
-        copyTree(indirectTree, queryExtendedWU(donor)->queryPTree(), "Graphs");
+        if (donor)
+            copyTree(indirectTree, queryExtendedWU(donor)->queryPTree(), "Graphs");
         return indirectTree;
     }
 }
 
 void CLocalWorkUnit::_loadGraphs(bool heavy) const
 {
-    Owned<IPropertyTreeIterator> iter = queryIndirectTree()->getElements("Graphs/Graph");
+    Owned<IPropertyTreeIterator> iter = queryMergedTree()->getElements("Graphs/Graph");
     ForEach(*iter)
     {
         IPropertyTree &graph = iter->query();
@@ -9589,9 +9590,9 @@ IStringVal& CLocalWUGraph::getXGMML(IStringVal &str, bool mergeProgress) const
 unsigned CLocalWorkUnit::getGraphCount() const
 {
     CriticalBlock block(crit);
-    if (queryIndirectTree()->hasProp("Graphs"))
+    if (queryMergedTree()->hasProp("Graphs"))
     {
-        return queryIndirectTree()->queryPropTree("Graphs")->numChildren();
+        return queryMergedTree()->queryPropTree("Graphs")->numChildren();
     }
     return 0;
 }
@@ -9800,7 +9801,7 @@ IConstWUGraph* CLocalWorkUnit::getGraph(const char *qname) const
     CriticalBlock block(crit);
     VStringBuffer xpath("Graphs/Graph[@name='%s']", qname);
     // NOTE - this would go wrong if we had other graphs of same name but different type. Ignore for now.
-    IPTree *graph = queryIndirectTree()->queryPropTree(xpath);
+    IPTree *graph = queryMergedTree()->queryPropTree(xpath);
     if (graph)
         return new CLocalWUGraph(*this, LINK(graph));
     return NULL;

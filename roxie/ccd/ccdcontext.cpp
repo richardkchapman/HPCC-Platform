@@ -1299,7 +1299,7 @@ public:
     // interface IRoxieServerContext
     virtual bool collectingDetailedStatistics() const
     {
-        return (graphStats != nullptr);
+        return (workUnit != nullptr) || (statsWu != nullptr);
     }
 
     virtual void noteStatistic(StatisticKind kind, unsigned __int64 value) const
@@ -2738,12 +2738,13 @@ public:
             {
                 // MORE - can we accumulate results from several runs?
                 statsWu.setown(daliHelper->createWorkUnit());
-                //queryExtendedWU(statsWu)->copyWorkUnit(_factory->queryWorkUnit(), false, true);
+                // Rather than copying the entire workunit, for example via
+                //    queryExtendedWU(statsWu)->copyWorkUnit(_factory->queryWorkUnit(), false, true);
+                // we create a blank workunit with a reference to the original workunit that allows the graph info to be patched in as needed
                 StringBuffer dllFileName;
                 splitFilename(_factory->queryDll()->queryName(), nullptr, nullptr, &dllFileName, nullptr, false);
-#ifndef _WIN32
-                dllFileName.replaceString(SharedObjectPrefix, "");
-#endif
+                if (strlen(SharedObjectPrefix))
+                    dllFileName.replaceString(SharedObjectPrefix, "");
                 queryExtendedWU(statsWu)->queryPTree()->setProp("@clonedFromWorkunit", dllFileName);
                 WorkunitUpdate wu(&statsWu->lock());
                 addTimeStamp(wu, SSTglobal, NULL, StWhenStarted);
