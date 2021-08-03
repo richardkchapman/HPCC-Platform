@@ -182,8 +182,8 @@ void doDescheduleWorkkunit(char const * wuid)
  * Graph progress support
  */
 
-CWuGraphStats::CWuGraphStats(IPropertyTree *_progress, StatisticCreatorType _creatorType, const char * _creator, unsigned wfid, const char * _rootScope, unsigned _id)
-    : progress(_progress), creatorType(_creatorType), creator(_creator), id(_id)
+CWuGraphStats::CWuGraphStats(std::function<IPropertyTree *()> _progressLambda, StatisticCreatorType _creatorType, const char * _creator, unsigned wfid, const char * _rootScope, unsigned _id)
+    : progressLambda(_progressLambda), creatorType(_creatorType), creator(_creator), id(_id)
 {
     StatsScopeId graphScopeId;
     verifyex(graphScopeId.setScopeText(_rootScope));
@@ -212,6 +212,7 @@ void CWuGraphStats::beforeDispose()
     tag.append("sg").append(id);
 
     //Replace the particular subgraph statistics added by this creator
+    Owned<IPropertyTree> progress = progressLambda();
     IPropertyTree * subgraph = progress->setPropTree(tag);
     subgraph->setProp("@c", queryCreatorTypeName(creatorType));
     subgraph->setProp("@creator", creator);
@@ -3637,18 +3638,18 @@ extern IConstWorkUnitInfo *createConstWorkUnitInfo(IPropertyTree &p)
 {
     return new CLightweightWorkunitInfo(p);
 }
-
+/*
 class CDaliWuGraphStats : public CWuGraphStats
 {
 public:
     CDaliWuGraphStats(IRemoteConnection *_conn, StatisticCreatorType _creatorType, const char * _creator, unsigned _wfid, const char * _rootScope, unsigned _id)
-        : CWuGraphStats(LINK(_conn->queryRoot()), _creatorType, _creator, _wfid, _rootScope, _id), conn(_conn)
+        : CWuGraphStats([_conn]{ return LINK(_conn->queryRoot()); }, _creatorType, _creator, _wfid, _rootScope, _id), conn(_conn)
     {
     }
 protected:
     Owned<IRemoteConnection> conn;
 };
-
+*/
 CWorkUnitWatcher::CWorkUnitWatcher(IWorkUnitSubscriber *_subscriber, WUSubscribeOptions flags, const char *wuid) : subscriber(_subscriber)
 {
     abortId = 0;
@@ -3936,7 +3937,11 @@ public:
     }
     virtual IWUGraphStats *updateStats(const char *graphName, StatisticCreatorType creatorType, const char * creator, unsigned _wfid, unsigned subgraph) const override
     {
-        return new CDaliWuGraphStats(getWritableProgressConnection(graphName, _wfid), creatorType, creator, _wfid, graphName, subgraph);
+        return new CWuGraphStats([this, graphName, _wfid]
+          {
+               Owned<IRemoteConnection> conn = getWritableProgressConnection(graphName, _wfid);
+               return LINK(conn->queryRoot());
+          }, creatorType, creator, _wfid, graphName, subgraph);
     }
     virtual void import(IPropertyTree *wuTree, IPropertyTree *graphProgressTree)
     {
@@ -9853,7 +9858,7 @@ void CLocalWorkUnit::setNodeState(const char *graphName, WUGraphIDType nodeId, W
 }
 IWUGraphStats *CLocalWorkUnit::updateStats(const char *graphName, StatisticCreatorType creatorType, const char * creator, unsigned _wfid, unsigned subgraph) const
 {
-    return new CWuGraphStats(LINK(p), creatorType, creator, _wfid, graphName, subgraph);
+    return new CWuGraphStats([this]{ return LINK(p); }, creatorType, creator, _wfid, graphName, subgraph);
 }
 
 void CLocalWUGraph::setName(const char *str)

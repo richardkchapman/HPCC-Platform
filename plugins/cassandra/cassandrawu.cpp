@@ -2746,7 +2746,8 @@ public:
     {
     public:
         CCassandraWuGraphStats(const CCassandraWorkUnit *_parent, StatisticCreatorType _creatorType, const char * _creator, unsigned _wfid, const char * _rootScope, unsigned _id)
-        : CWuGraphStats(createPTree(_rootScope), _creatorType, _creator, _wfid, _rootScope, _id),
+        : CWuGraphStats([this]{ return LINK(progress);}, _creatorType, _creator, _wfid, _rootScope, _id),
+          progress(createPTree(_rootScope)),
           parent(_parent)
         {
         }
@@ -2757,6 +2758,7 @@ public:
         }
 
     protected:
+        Owned<IPropertyTree> progress;
         Linked<const CCassandraWorkUnit> parent;
         StringAttr wuid;
     };

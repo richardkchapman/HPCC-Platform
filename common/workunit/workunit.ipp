@@ -658,11 +658,12 @@ public:
 class WORKUNIT_API CWuGraphStats : public CInterfaceOf<IWUGraphStats>
 {
 public:
-    CWuGraphStats(IPropertyTree *_progress, StatisticCreatorType _creatorType, const char * _creator, unsigned wfid, const char * _rootScope, unsigned _id);
+    CWuGraphStats(std::function<IPropertyTree *()> _progressLambda, StatisticCreatorType _creatorType, const char * _creator, unsigned wfid, const char * _rootScope, unsigned _id);
     virtual void beforeDispose();
     virtual IStatisticGatherer & queryStatsBuilder();
 protected:
-    Owned<IPropertyTree> progress;
+//    Owned<IPropertyTree> progress;
+    std::function<IPropertyTree *()> progressLambda;
     Owned<IStatisticGatherer> collector;
     StringAttr creator;
     StatisticCreatorType creatorType;
