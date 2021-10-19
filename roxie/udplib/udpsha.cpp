@@ -637,16 +637,23 @@ class PacketTrackerTest : public CppUnit::TestFixture
             }
             else
             {
+                unsigned counter = 0;
                 for (int i = 0; i < 10000; i++)
                 {
                     for (int j = 0; j < 4; j++)
-                        q.pop(true)->Release();
+                    {
+                        auto popped = q.pop(true);
+                        popped->Release();
+                        if (counter++ % 1000 == 0)
+                            popped->Release();
+                    }
                     Sleep(1);
                 }
             }
 
         });
     }
+
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION( PacketTrackerTest );

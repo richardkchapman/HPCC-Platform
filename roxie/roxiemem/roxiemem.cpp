@@ -6239,12 +6239,14 @@ void DataBuffer::Release()
 {
     if (count.load(std::memory_order_relaxed)==2 && mgr)
         mgr->noteDataBuffReleased((DataBuffer*) this);
-    if (count.fetch_sub(1, std::memory_order_release) == 1)
+    auto presub = count.fetch_sub(1, std::memory_order_release);
+    if (presub == 1)
     {
         //No acquire fence - released() is assumed not to access the data in this buffer
         //If it does it should contain an acquire fence
         released();
     }
+    assert (presub!=0 && presub < 0x7fffffff);
 }
 
 void DataBuffer::released()
@@ -6384,13 +6386,16 @@ public:
             {
                 DataBufferBottom *bottom = curBlock;
                 CriticalBlock c(bottom->crit);
-                if (bottom->freeChain)
+                if (bottom->freeChainHead)
                 {
                     dataBuffersActive.fetch_add(1);
                     curBlock->Link();
-                    DataBuffer *x = bottom->freeChain;
-                    bottom->freeChain = x->next;
+                    DataBuffer *x = bottom->freeChainHead;
+                    bottom->freeChainHead = x->next;
+                    if (bottom->freeChainHead == nullptr)
+                        bottom->freeChainTail = nullptr;
                     x->next = NULL;
+                    assert(x->count == 0);
                     if (memTraceLevel >= 4)
                         DBGLOG("RoxieMemMgr: CDataBufferManager::allocate() reallocated DataBuffer - addr=%p", x);
                     return ::new(x) DataBuffer();
@@ -6429,7 +6434,7 @@ public:
                 for (;;)
                 {
                     CriticalBlock c(finger->crit);
-                    if (finger->freeChain)
+                    if (finger->freeChainHead)
                     {
                         finger->Link(); // Link once for the reference we save in curBlock
                                         // Release (to dec ref count) when no more free blocks in the page
@@ -6440,8 +6445,10 @@ public:
                             nextOffset = HEAP_ALIGNMENT_SIZE; // only use the free chain to allocate
                             dataBuffersActive.fetch_add(1);
                             finger->Link(); // and once for the value we are about to return
-                            DataBuffer *x = finger->freeChain;
-                            finger->freeChain = x->next;
+                            DataBuffer *x = finger->freeChainHead;
+                            finger->freeChainHead = x->next;
+                            if (!finger->freeChainHead)
+                                finger->freeChainTail = nullptr;
                             x->next = NULL;
                             if (memTraceLevel >= 4)
                                 DBGLOG("RoxieMemMgr: CDataBufferManager::allocate() reallocated DataBuffer - addr=%p", x);
@@ -6493,14 +6500,19 @@ DataBufferBottom::DataBufferBottom(CDataBufferManager *_owner, DataBufferBottom 
         prevBottom = this;
         nextBottom = this;
     }
-    freeChain = NULL;
+    freeChainHead = NULL;
+    freeChainTail = NULL;
 }
 
 void DataBufferBottom::addToFreeChain(DataBuffer * buffer)
 {
     CriticalBlock b(crit);
-    buffer->next = freeChain;
-    freeChain = buffer;
+    if (freeChainTail)
+        freeChainTail->next = buffer;
+    else
+        freeChainHead = buffer;
+    buffer->next = nullptr;
+    freeChainTail = buffer;
 }
 
 void DataBufferBottom::Release()

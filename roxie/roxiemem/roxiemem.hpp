@@ -240,7 +240,8 @@ private:
     std::atomic_uint okToFree;      // use uint since it is more efficient on some architectures
     DataBufferBottom *nextBottom;   // Used when chaining them together in CDataBufferManager 
     DataBufferBottom *prevBottom;   // Used when chaining them together in CDataBufferManager 
-    DataBuffer *freeChain;
+    DataBuffer *freeChainHead = nullptr;
+    DataBuffer *freeChainTail = nullptr;
     CriticalSection crit;
 
     void released();
