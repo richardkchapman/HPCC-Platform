@@ -6406,7 +6406,7 @@ public:
                     curBlock->Link();
                     DataBuffer *x = ::new(nextBase+nextOffset) DataBuffer();
                     nextOffset += DATA_ALIGNMENT_SIZE;
-                    if (nextOffset == HEAP_ALIGNMENT_SIZE)
+                    if (true) //nextOffset == HEAP_ALIGNMENT_SIZE)
                     {
                         // MORE: May want to delete this "if" logic !!
                         //       and let it be handled in the similar logic of "else" part below.
@@ -6529,6 +6529,7 @@ void DataBufferBottom::released()
 {
     // Not safe to free here as owner may be in the middle of allocating from it
     // instead, give owner a hint that it's worth thinking about freeing this page next time it is safe
+    MilliSleep(20);
     unsigned expected = 0;
     if (count.compare_exchange_strong(expected, DEAD_PSEUDO_COUNT, std::memory_order_release))
     {

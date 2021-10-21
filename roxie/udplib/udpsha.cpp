@@ -442,13 +442,16 @@ void PacketTracker::dump() const
 
 #ifdef _USE_CPPUNIT
 #include "unittests.hpp"
+#include <random>
 
 class PacketTrackerTest : public CppUnit::TestFixture
 {
     CPPUNIT_TEST_SUITE(PacketTrackerTest);
-    CPPUNIT_TEST(testNoteSeen);
-    CPPUNIT_TEST(testReplay);
-    CPPUNIT_TEST(testQueue);
+//    CPPUNIT_TEST(testNoteSeen);
+//    CPPUNIT_TEST(testReplay);
+//    CPPUNIT_TEST(testQueue);
+      // CPPUNIT_TEST(testAllocate);
+      CPPUNIT_TEST(testAllocate2);
     CPPUNIT_TEST_SUITE_END();
 
     void testNoteSeen()
@@ -620,13 +623,25 @@ class PacketTrackerTest : public CppUnit::TestFixture
         t(p,29,0x4000001d);
     }
 
+    Owned<IDataBufferManager> dbm;
+    bool initialized = false;
+
+    void testInit()
+    {
+        if (!initialized)
+        {
+            udpTraceLevel=1;
+            roxiemem::setTotalMemoryLimit(false, false, false, 20*1024*1024, 0, NULL, NULL);
+            dbm.setown(roxiemem::createDataBufferManager(roxiemem::DATA_ALIGNMENT_SIZE));
+            initialized = true;
+        }
+    }
+
     void testQueue()
     {
-        udpTraceLevel=1;
-        roxiemem::setTotalMemoryLimit(false, false, false, 20*1024*1024, 0, NULL, NULL);
-        Owned<IDataBufferManager> dbm = roxiemem::createDataBufferManager(roxiemem::DATA_ALIGNMENT_SIZE);
+        testInit();
         queue_t q(5);
-        asyncFor(5, [&q, &dbm](int tno){
+        asyncFor(5, [&q, this](int tno){
             if (tno)
             {
                 for (int i = 0; i < 10000; i++)
@@ -644,8 +659,8 @@ class PacketTrackerTest : public CppUnit::TestFixture
                     {
                         auto popped = q.pop(true);
                         popped->Release();
-                        if (counter++ % 1000 == 0)
-                            popped->Release();
+             //           if (counter++ % 1000 == 0)
+               //             popped->Release();
                     }
                     Sleep(1);
                 }
@@ -654,6 +669,86 @@ class PacketTrackerTest : public CppUnit::TestFixture
         });
     }
 
+    static constexpr const unsigned TEST_SIZE = 500;
+    static constexpr const unsigned NUM_THREADS = 5;
+    static constexpr const unsigned RUNTIME_SECONDS = 6000;
+
+    void testAllocate()
+    {
+        testInit();
+        std::atomic<DataBuffer *> buffs[TEST_SIZE];
+        for (int i = 0; i < TEST_SIZE; i++)
+            buffs[i] = nullptr;
+        bool aborted = false;
+        int threshold = TEST_SIZE/2;
+        asyncFor(NUM_THREADS, [&buffs, &aborted, &threshold, this](int tno){
+            if (tno)
+            {
+                std::random_device rd;  //Will be used to obtain a seed for the random number engine
+                std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
+                std::uniform_int_distribution<> distrib(0, TEST_SIZE-1);
+                while (!aborted)
+                {
+                    unsigned idx = distrib(gen);
+                    unsigned chance = distrib(gen);
+                    DataBuffer *db = chance < threshold ? dbm->allocate() : nullptr;
+                    DataBuffer *current = buffs[idx].load(std::memory_order_relaxed);
+                    while (!buffs[idx].compare_exchange_strong(current, db, std::memory_order_relaxed))
+                        ;
+                    if (current)
+                        current->Release();
+                }
+            }
+            else
+            {
+                while (threshold > 0)
+                {
+                    Sleep(1000);
+                    if (TEST_SIZE < 60)
+                        threshold--;
+                    else
+                        threshold -= TEST_SIZE/60;
+                    StringBuffer x;dbm->poolStats(x);
+                    printf("Threshold %u, stats %s\n", threshold, x.str());
+                }
+
+                aborted = true;
+            }
+        });
+    }
+
+    void testAllocate2()
+    {
+        testInit();
+        bool aborted = false;
+        DataBuffer *first = dbm->allocate();
+        for (unsigned i = 0; i < 3; i++)
+        {
+            dbm->allocate();
+        }
+        first->Release();
+        asyncFor(NUM_THREADS, [&aborted, this](int tno){
+            if (tno)
+            {
+                while (!aborted)
+                {
+                    dbm->allocate()->Release();
+                }
+            }
+            else
+            {
+                for (int sec = 0; sec < RUNTIME_SECONDS; sec++)
+                {
+                    Sleep(1000);
+                    StringBuffer x;
+                    dbm->poolStats(x);
+                    printf("%s\n", x.str());
+                }
+                Sleep(10000);
+                aborted = true;
+            }
+        });
+    }
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION( PacketTrackerTest );
