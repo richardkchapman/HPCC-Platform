@@ -683,7 +683,7 @@ fake read socket that
 bool isUdpTestMode = false;
 bool udpTestUseUdpSockets = true;
 bool udpTestSocketJitter = false;
-unsigned udpTestSocketDelay = 0;
+unsigned __int64 udpTestSocketDelay = 0;
 bool udpTestVariableDelay = false;
 
 
@@ -697,8 +697,8 @@ public:
     {
         while (running)
         {
-            unsigned shortestDelay = udpTestSocketDelay;
-            unsigned now = msTick();
+            unsigned __int64 shortestDelay = udpTestSocketDelay;
+            unsigned __int64 now = nsTick();
             {
                 CriticalBlock b(allWriteSocketsCrit);
                 ForEachItemIn(idx, allWriteSockets)
@@ -707,7 +707,10 @@ public:
                     shortestDelay = std::min(shortestDelay, ws.writeDelayed(now));
                 }
             }
-            MilliSleep(shortestDelay);
+            timespec sleepTime;
+            sleepTime.tv_sec = 0;
+            sleepTime.tv_nsec = shortestDelay;
+            nanosleep(&sleepTime, NULL);
         }
         return 0;
     }
@@ -725,9 +728,9 @@ private:
     std::atomic<bool> running = { false };
 } delayedWriter;
 
-CSimulatedQueueWriteSocket::CSimulatedQueueWriteSocket(const SocketEndpoint &ep) : destEp(ep), delay(udpTestSocketDelay), jitter(udpTestSocketJitter)
+CSimulatedQueueWriteSocket::CSimulatedQueueWriteSocket(const SocketEndpoint &ep) : destEp(ep), delayNs(udpTestSocketDelay), jitter(udpTestSocketJitter)
 {
-    if (delay)
+    if (delayNs)
     {
         CriticalBlock b(allWriteSocketsCrit);
         if (!allWriteSockets.length())
@@ -738,7 +741,7 @@ CSimulatedQueueWriteSocket::CSimulatedQueueWriteSocket(const SocketEndpoint &ep)
 
 CSimulatedQueueWriteSocket::~CSimulatedQueueWriteSocket()
 {
-    if (delay)
+    if (delayNs)
     {
         CriticalBlock b(allWriteSocketsCrit);
         allWriteSockets.zap(*this);
@@ -752,14 +755,14 @@ CSimulatedQueueWriteSocket* CSimulatedQueueWriteSocket::udp_connect(const Socket
     return new CSimulatedQueueWriteSocket(ep);
 }
 
-unsigned CSimulatedQueueWriteSocket::writeDelayed(unsigned now)
+unsigned __int64 CSimulatedQueueWriteSocket::writeDelayed(unsigned __int64 nowNs)
 {
     CriticalBlock b(crit);
     while (dueTimes.size())
     {
-        int delay = dueTimes.front() - now;
-        if (delay > 0)
-            return delay;
+        __int64 delayNs = dueTimes.front() - nowNs;
+        if (delayNs > 0)
+            return delayNs;
         unsigned jitteredSize = 0;
         const void *jitteredBuff = nullptr;
         if (jitter && dueTimes.size()>1 && rand() % 100 == 0)
@@ -790,17 +793,17 @@ unsigned CSimulatedQueueWriteSocket::writeDelayed(unsigned now)
         packets.pop();
         packetSizes.pop();
     }
-    return (unsigned) -1;
+    return (unsigned __int64) -1;
 }
 
 size32_t CSimulatedQueueWriteSocket::write(void const* buf, size32_t size)
 {
-    if (delay)
+    if (delayNs)
     {
         CriticalBlock b(crit);
         packetSizes.push(size);
         packets.push(memcpy(malloc(size), buf, size));
-        dueTimes.push(msTick() + delay * (udpTestVariableDelay && size>200 ? 1 : 3));
+        dueTimes.push(nsTick() + delayNs * (udpTestVariableDelay && size>200 ? 1 : 3));
     }
     else
     {

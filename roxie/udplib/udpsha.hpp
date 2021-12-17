@@ -286,7 +286,7 @@ extern unsigned flowPacketsSent[flowType::max_flow_cmd];
 extern UDPLIB_API bool isUdpTestMode;
 extern UDPLIB_API bool udpTestUseUdpSockets;
 extern UDPLIB_API bool udpTestSocketJitter;
-extern UDPLIB_API unsigned udpTestSocketDelay;
+extern UDPLIB_API unsigned __int64 udpTestSocketDelay;
 extern UDPLIB_API bool udpTestVariableDelay;
 
 class CSocketSimulator : public CInterfaceOf<ISocket>
@@ -413,7 +413,7 @@ class CSimulatedQueueWriteSocket : public CSocketSimulator
     std::queue<unsigned> dueTimes;
     std::queue<unsigned> packetSizes;
     std::queue<const void *> packets;
-    unsigned delay = 0;
+    unsigned __int64 delayNs = 0;
     bool jitter = false;
 public:
     static CSimulatedQueueWriteSocket*  udp_connect( const SocketEndpoint &ep);
@@ -421,7 +421,9 @@ public:
     virtual void set_send_buffer_size(size32_t sz) override {};
     virtual void close() override {};
 
-    unsigned writeDelayed(unsigned now);
+    unsigned __int64 writeDelayed(unsigned __int64 nowNs);
+    virtual void  shutdown(unsigned mode) override { }
+    virtual void  shutdownNoThrow(unsigned mode) override{ }
 };
 
 

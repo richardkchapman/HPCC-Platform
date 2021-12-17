@@ -157,7 +157,7 @@ void initOptions(int argc, const char **argv)
     udpTraceFlow = options->getPropBool("@udpTraceFlow", false);
     packetsPerThread = options->getPropInt("@packetsPerThread");
     udpTestUseUdpSockets = !options->getPropBool("@useQueue");
-    udpTestSocketDelay = options->getPropInt("@udpTestSocketDelay", 0);
+    udpTestSocketDelay = options->getPropInt64("@udpTestSocketDelay", 0);
     udpTestSocketJitter = options->getPropBool("@udpTestSocketJitter");
     udpTestVariableDelay = options->getPropBool("@udpTestVariableDelay");
     if (udpTestSocketJitter && !udpTestSocketDelay)
