@@ -117,8 +117,8 @@ void enableThreadSEH() { SEHHandling=true; }
 void disableThreadSEH() { SEHHandling=false; } // only prevents new threads from having SEH handler, no mech. for turning off existing threads SEH handling.
 
 
-static ICopyArrayOf<Thread> ThreadList;
-static CriticalSection ThreadListSem;
+//static ICopyArrayOf<Thread> ThreadList;
+//static CriticalSection ThreadListSem;
 static size32_t defaultThreadStackSize=0;
 static ICopyArrayOf<Thread> ThreadDestroyList;
 static CriticalSection ThreadDestroyListLock;
@@ -378,6 +378,9 @@ void Thread::start()
     startRelease();
 }
 
+//static unsigned maxThreads = 0;
+static std::atomic<unsigned> threadsCreated = {0};
+
 void Thread::startRelease()
 {
     assertex(!alive);
@@ -412,11 +415,14 @@ void Thread::startRelease()
         }
         sched_param param;
         pthread_attr_getschedparam(&attr, &param);
-        param.sched_priority = 0;
+        //param.sched_priority = 0;
         pthread_attr_setschedparam(&attr, &param);
         pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
         pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
         status = pthread_create(&threadid, &attr, Thread::_threadmain, this);
+        threadsCreated++;
+        if ((threadsCreated & 0xfff) == 0)
+            DBGLOG("%u threads created", threadsCreated+0);
         if ((status==EAGAIN)||(status==EINTR)) {
             if (numretrys--==0)
                 break;
@@ -453,9 +459,14 @@ void Thread::startRelease()
         adjustPriority(prioritydelta);
 
     {
-        CriticalBlock block(ThreadListSem);
-        ThreadList.zap(*this);  // just in case restarting
-        ThreadList.append(*this);
+    //    CriticalBlock block(ThreadListSem);
+    //    ThreadList.zap(*this);  // just in case restarting
+    //    ThreadList.append(*this);
+    //    if (ThreadList.ordinality() > maxThreads)
+    //    {
+    //        maxThreads = ThreadList.ordinality();
+    //        DBGLOG("%d threads active", maxThreads);
+    //    }
     }
 #ifdef _WIN32
     DWORD count = ResumeThread(hThread);
@@ -531,8 +542,8 @@ Thread::~Thread()
     
 //  DBGLOG("Thread %x (%s) destroyed\n", threadid, threadname);
     {
-        CriticalBlock block(ThreadListSem);
-        ThreadList.zap(*this);
+//        CriticalBlock block(ThreadListSem);
+  //      ThreadList.zap(*this);
     }
     free(cthreadname.threadname);
     cthreadname.threadname = NULL;
@@ -540,38 +551,23 @@ Thread::~Thread()
 
 unsigned getThreadCount()
 {
-    CriticalBlock block(ThreadListSem);
-    return ThreadList.ordinality();
+//    CriticalBlock block(ThreadListSem);
+  //  return ThreadList.ordinality();
+  return 3;
 }
 
 StringBuffer & getThreadList(StringBuffer &str)
 {
-    CriticalBlock block(ThreadListSem);
-    ForEachItemIn(i,ThreadList) {
-        Thread &item=ThreadList.item(i);
-        item.getInfo(str).append("\n");
-    }
+//    CriticalBlock block(ThreadListSem);
+  //  ForEachItemIn(i,ThreadList) {
+    //    Thread &item=ThreadList.item(i);
+      //  item.getInfo(str).append("\n");
+   // }
     return str;
 }
 
 StringBuffer &getThreadName(int thandle,unsigned tid,StringBuffer &name)
 {
-    CriticalBlock block(ThreadListSem);
-    bool found=false;
-    ForEachItemIn(i,ThreadList) {
-        Thread &item=ThreadList.item(i);
-        int h; 
-        unsigned t;
-        const char *s = item.getLogInfo(h,t);
-        if (s&&*s&&((thandle==0)||(h==thandle))&&((tid==0)||(t==tid))) {
-            if (found) {
-                name.clear();
-                break;  // only return if unambiguous
-            }
-            name.append(s);
-            found = true;
-        }
-    }
     return name;
 }
 
