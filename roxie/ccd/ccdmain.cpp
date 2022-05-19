@@ -448,7 +448,7 @@ void readStaticTopology()
     // If dynamicServers not set, we read a list of all servers form the topology file, and deduce which ones are on which channel
     // and the total number of channels
     std::vector<RoxieEndpointInfo> allRoles;
-    IpAddressArray nodeTable;
+    SocketEndpointArray nodeTable;
     unsigned numNodes = topology->getCount("./RoxieServerProcess");
     if (!numNodes && localAgent)
     {
@@ -463,18 +463,18 @@ void readStaticTopology()
     {
         IPropertyTree &roxieServer = roxieServers->query();
         const char *iptext = roxieServer.queryProp("@netAddress");
-        IpAddress ip(iptext);
+        SocketEndpoint ip(iptext, ccdMulticastPort);
         if (ip.isNull())
             throw MakeStringException(ROXIE_UDP_ERROR, "Could not resolve address %s", iptext);
         if (ip.isLocal() && !myNodeSet)
         {
             myNodeSet = true;
             myNode.setIp(ip);
-            myAgentEP.set(ccdMulticastPort, myNode.getIpAddress());
+            myAgentEP.set(ip.port, myNode.getIpAddress());
         }
         ForEachItemIn(idx, nodeTable)
         {
-            if (ip.ipequals(nodeTable.item(idx)))
+            if (ip.equals(nodeTable.item(idx)))
                 throw MakeStringException(ROXIE_UDP_ERROR, "Duplicated node %s in RoxieServerProcess list", iptext);
         }
         nodeTable.append(ip);
@@ -515,7 +515,7 @@ void readStaticTopology()
                 int channel = (int)i+1 - (copy * cyclicOffset);
                 while (channel < 1)
                     channel = channel + numNodes;
-                RoxieEndpointInfo agent = {RoxieEndpointInfo::RoxieAgent, (unsigned) channel, { (unsigned short) ccdMulticastPort, nodeTable.item(i) }, copy};
+                RoxieEndpointInfo agent = {RoxieEndpointInfo::RoxieAgent, (unsigned) channel, nodeTable.item(i), copy};
                 allRoles.push_back(agent);
             }
         }
@@ -530,7 +530,7 @@ void readStaticTopology()
             for (unsigned i=0; i<numNodes; i++)
             {
                 unsigned channel = i+1;
-                RoxieEndpointInfo agent = {RoxieEndpointInfo::RoxieAgent, channel, { (unsigned short) ccdMulticastPort, nodeTable.item(i) }, copy};
+                RoxieEndpointInfo agent = {RoxieEndpointInfo::RoxieAgent, channel, nodeTable.item(i), copy};
                 allRoles.push_back(agent);
                 channel += numNodes;
             }
@@ -544,7 +544,7 @@ void readStaticTopology()
         unsigned channel = 1;
         for (unsigned i=0; i<numNodes; i++)
         {
-            RoxieEndpointInfo agent = {RoxieEndpointInfo::RoxieAgent, channel, { (unsigned short) ccdMulticastPort, nodeTable.item(i) }, 0 };
+            RoxieEndpointInfo agent = {RoxieEndpointInfo::RoxieAgent, channel, nodeTable.item(i), 0 };
             allRoles.push_back(agent);
             channel++;
             if (channel > calcNumChannels)
@@ -1286,6 +1286,11 @@ int CCD_API roxie_main(int argc, const char *argv[], const char * defaultYaml)
         if (traceLevel)
             DBGLOG("Loading all packages took %ums", loadPackageTimer.elapsedMs());
 
+        if (topology->getPropBool("@simulateIBYTI"))
+        {
+            simulateIBYTI();
+            throw makeStringException(0, "Simulation done");
+        }
         ROQ = createOutputQueueManager(numAgentThreads, encryptInTransit);
         ROQ->setHeadRegionSize(headRegionSize);
         ROQ->start();

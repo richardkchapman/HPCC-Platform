@@ -94,4 +94,6 @@ extern void sendUnloadMessage(hash64_t hash, const char *id, const IRoxieContext
 
 extern unsigned getReplicationLevel(unsigned channel);
 
+extern void simulateIBYTI();
+
 #endif

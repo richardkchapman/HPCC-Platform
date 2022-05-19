@@ -53,8 +53,27 @@ roxie:
   queueNames: roxie.roxie
 )!!";
 
+static constexpr const char * simulateYaml = R"!!(
+version: "1.0"
+roxie:
+  allFilesDynamic: false
+  localSlave: false
+  numChannels: 1
+  queueNames: roxie.roxie
+  roxieMulticastEnabled: false
+  numDataCopies: 2
+  mergeAgentStatistics: false
+  RoxieServerProcess:
+  - netAddress: ".:8898"
+    channel: 1
+  - netAddress: ".:8899"
+    channel: 1
+  
+)!!";
+
 int main(int argc, const char *argv[])
 {
+    const char *useYaml = defaultYaml;
     for (unsigned i=0; i<(unsigned)argc; i++)
     {
         if (stricmp(argv[i], "--help")==0 ||
@@ -63,6 +82,8 @@ int main(int argc, const char *argv[])
             roxie_server_usage();
             return EXIT_SUCCESS;
         }
+    else if (stricmp(argv[i], "--simulateIBYTI")==0)
+        useYaml = simulateYaml;
     }
-    return roxie_main(argc, argv, defaultYaml);
+    return roxie_main(argc, argv, useYaml);
 }

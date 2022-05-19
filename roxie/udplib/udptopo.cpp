@@ -30,7 +30,7 @@
 unsigned initIbytiDelay; // In milliseconds
 unsigned minIbytiDelay;  // In milliseconds
 
-unsigned ChannelInfo::getIbytiDelay(unsigned primarySubChannel) const  // NOTE - zero-based
+unsigned ChannelInfo::getIbytiDelay(unsigned primarySubChannel, unsigned mySubChannel) const  // NOTE - zero-based
 {
     unsigned delay = 0;
     unsigned subChannel = primarySubChannel;
@@ -44,7 +44,7 @@ unsigned ChannelInfo::getIbytiDelay(unsigned primarySubChannel) const  // NOTE -
     return delay;
 }
 
-void ChannelInfo::noteChannelsSick(unsigned primarySubChannel) const
+void ChannelInfo::noteChannelsSick(unsigned primarySubChannel, unsigned mySubChannel) const
 {
     unsigned subChannel = primarySubChannel;
     while (subChannel != mySubChannel)

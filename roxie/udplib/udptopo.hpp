@@ -77,8 +77,8 @@ public:
     ChannelInfo(unsigned _subChannel, unsigned _numSubChannels, unsigned _replicationLevel);
     ChannelInfo(ChannelInfo && ) = default;
 
-    unsigned getIbytiDelay(unsigned primarySubChannel) const;
-    void noteChannelsSick(unsigned primarySubChannel) const;
+    unsigned getIbytiDelay(unsigned primarySubChannel, unsigned mySubChannel) const;
+    void noteChannelsSick(unsigned primarySubChannel, unsigned mySubChannel) const;
     void noteChannelHealthy(unsigned subChannel) const;
     inline unsigned subChannel() const { return mySubChannel; }
     inline unsigned replicationLevel() const { return myReplicationLevel; }

@@ -784,8 +784,10 @@ class AgentContextLogger : public StringContextLogger
     IpAddress ip;
     StringAttr wuid;
 public:
-    AgentContextLogger();
-    AgentContextLogger(ISerializedRoxieQueryPacket *packet);
+    IRoxieOutputQueueManager *roq;
+public:
+    AgentContextLogger(IRoxieOutputQueueManager *roq);
+    AgentContextLogger(IRoxieOutputQueueManager *roq, ISerializedRoxieQueryPacket *packet);
     void set(ISerializedRoxieQueryPacket *packet);
     void putStatProcessed(unsigned subGraphId, unsigned actId, unsigned idx, unsigned processed, unsigned strands) const;
     void putStats(unsigned subGraphId, unsigned actId, const CRuntimeStatisticCollection &stats) const;
