@@ -34,6 +34,7 @@ set (    SRCS
          keybuild.cpp 
          keydiff.cpp 
          sourcedoc.xml
+         jhuff.cpp
     )
 
 set (    INCLUDES
