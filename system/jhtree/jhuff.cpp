@@ -90,7 +90,7 @@ class HuffCodeTree : public CInterface
 {
 	friend class CanonicalCode;
 public:
-	explicit HuffCodeTree(const HuffCodeTreeBranch *_root, std::uint32_t symbolLimit);
+	explicit HuffCodeTree(const HuffCodeTreeNode *_root, std::uint32_t symbolLimit);
 	// Returns the Huffman code for the given symbol, which is a list of 0s and 1s.
 	const std::vector<char> &getCode(std::uint32_t symbol) const;
 	unsigned getBinaryCode(uint32_t symbol) const;
@@ -107,10 +107,8 @@ private:
 
 };
 
-HuffCodeTree::HuffCodeTree(const HuffCodeTreeBranch *_root, uint32_t symbolLimit) :
-		root(_root) {
-	if (symbolLimit < 2)
-		throw std::domain_error("At least 2 symbols needed");
+HuffCodeTree::HuffCodeTree(const HuffCodeTreeNode *_root, uint32_t symbolLimit) : root(_root) 
+{
 	codes = std::vector<std::vector<char> >(symbolLimit, std::vector<char>());  // Initially all empty
 	std::vector<char> prefix;
 	buildCodeList(root, prefix);  // Fill 'codes' with appropriate data
@@ -590,18 +588,56 @@ private:
 
 public:
 	HuffBuilder() = default;
-	void assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies);
+	void assignCodes(HuffSymbolTable *symbols, uint64_t *counts);
 };
 
 void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
 {
-    FrequencyTable freqs(std::vector<uint32_t>(symbols->numSymbols(), 0));
-	for (unsigned idx = 0; idx < symbols->numSymbols(); idx++)
+	struct NodeBuilder
 	{
-		freqs.set(idx, frequencies[idx]);
+		HuffCodeTreeNode *node;
+		unsigned lowSym;
+		uint64_t count;
+		
+		explicit NodeBuilder(HuffCodeTreeNode *_node, unsigned _lowSym, uint64_t _count) : node(_node), lowSym(_lowSym), count(_count) {}
+		bool operator<(const NodeBuilder &other) const
+		{
+			if (count > other.count)
+				return true;
+			else if (count == other.count && lowSym > other.lowSym)
+				return true;
+			else
+				return false;
+		}
+		static NodeBuilder popQueue(std::priority_queue<NodeBuilder> &pqueue) 
+		{
+			NodeBuilder result = std::move(const_cast<NodeBuilder&&>(pqueue.top()));
+			pqueue.pop();
+			return result;
+		}
+	};
+
+	std::priority_queue<NodeBuilder> pqueue;
+	unsigned symCount = symbols->numSymbols();
+	for (unsigned i = 0; i < symCount; i++) 
+	{
+		uint64_t freq = frequencies[i];
+		assertex(freq);
+		pqueue.push(NodeBuilder(new HuffCodeTreeLeaf(i), i, freq));
 	}
-	Owned<HuffCodeTree> code = freqs.buildCodeTree();
-	Owned<CanonicalCode> canonCode = new CanonicalCode(code, freqs.getSymbolLimit());
+	
+	// Repeatedly tie together two nodes with the lowest frequency
+	while (pqueue.size() > 1) 
+	{
+		NodeBuilder x = NodeBuilder::popQueue(pqueue);
+		NodeBuilder y = NodeBuilder::popQueue(pqueue);
+		pqueue.emplace(NodeBuilder(new HuffCodeTreeBranch(x.node, y.node), std::min(x.lowSym, y.lowSym), x.count + y.count));
+	}
+	
+	// Return the remaining node
+	NodeBuilder head = NodeBuilder::popQueue(pqueue);
+	Owned<HuffCodeTree> code = new HuffCodeTree(head.node, symCount);
+	Owned<CanonicalCode> canonCode = new CanonicalCode(code, symCount);
 	// Replace code tree with canonical one. For each symbol,
 	// the code value may change but the code length stays the same.
 	code.setown(canonCode->toCodeTree());
