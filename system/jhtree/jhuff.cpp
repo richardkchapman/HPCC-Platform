@@ -18,6 +18,7 @@
 #include "platform.h"
 #include "jstring.hpp"
 #include "jlog.hpp"
+#include "jhuff.hpp"
 #include <cstdint>
 #include <memory>
 #include <queue>
@@ -25,37 +26,24 @@
 
 // Some code below originally inspired by code at https://github.com/nayuki/Reference-Huffman-coding
 
-/* 
- * A node in a code tree. This class has exactly two subclasses: InternalNode, Leaf.
- */
 class HuffCodeTreeNode
 {
 public:
-    bool isLeaf = false;
+    bool isBranch = false;
     byte depth = 0;
 };
 
-/* 
- * A leaf node in a code tree. It has a symbol value.
- */
 class HuffCodeTreeLeaf final : public HuffCodeTreeNode
 {
-friend class CanonicalCode;
-friend class HuffCodeTree;
 friend class HuffBuilder;
 private:
-    unsigned symbol = 0;	 // index into the input names table
+    unsigned symbol = 0;	 // index into the provided SymbolTable object
 public:
-    HuffCodeTreeLeaf() { isLeaf = true; };
+    HuffCodeTreeLeaf() = default;
 };
 
-/* 
- * An internal node in a code tree. It has two nodes as children.
- */
 class HuffCodeTreeBranch final : public HuffCodeTreeNode 
 {
-    friend class HuffCodeTree;
-    friend class CanonicalCode;
     friend class HuffBuilder;
 private:
     HuffCodeTreeNode *left = nullptr;
@@ -65,21 +53,14 @@ public:
     HuffCodeTreeBranch() = default;
     void init(HuffCodeTreeNode *_left, HuffCodeTreeNode *_right, unsigned _depth = 0)
     {
+        isBranch = true;
         left = _left;
         right = _right;
         depth = _depth;
     }
 };
 
-interface HuffSymbolTable : public IInterface
-{
-    virtual unsigned numSymbols() const = 0;
-    virtual void setCode(unsigned symidx, unsigned codeLength, unsigned code) = 0;
-    virtual void dump(unsigned idx) const = 0;
-    virtual void dumpAll() const = 0;
-};
-
-class StringSymbolTable : public CInterfaceOf<HuffSymbolTable>
+class StringSymbolTable : public CInterfaceOf<IHuffSymbolTable>
 {
     struct StringEntry
     {
@@ -116,45 +97,61 @@ public:
     void addSymbol(const char *sym) { symbols.emplace_back(StringEntry(sym)); }
 };
 
-class HuffBuilder
+class HuffBuilder : public CInterfaceOf<IHuffBuilder>
 {
 private:
-    void setDepths(HuffSymbolTable *symbols, HuffCodeTreeNode *node, unsigned depth);
-    void setCodes(HuffSymbolTable *symbols, HuffCodeTreeNode *node, unsigned depth, unsigned code);
-
+    void setDepths(HuffCodeTreeNode *node, unsigned depth);
+    void setCodes(HuffCodeTreeNode *node, unsigned depth, unsigned code);
+    void assignCodes(uint64_t *counts);
+    HuffCodeTreeLeaf *leaves = nullptr;
+    HuffCodeTreeBranch *branches = nullptr;
+    HuffCodeTreeNode *root = nullptr;
+    Linked<IHuffSymbolTable> symbols;
 public:
-    HuffBuilder() = default;
-    void assignCodes(HuffSymbolTable *symbols, uint64_t *counts);
+    HuffBuilder(IHuffSymbolTable *_symbols, uint64_t *counts);
+    ~HuffBuilder();
 };
 
-void HuffBuilder::setDepths(HuffSymbolTable *symbols, HuffCodeTreeNode *node, unsigned depth)
+HuffBuilder::HuffBuilder(IHuffSymbolTable *_symbols, uint64_t *frequencies)
+: symbols(_symbols)
+{
+    assignCodes(frequencies);
+}
+
+HuffBuilder::~HuffBuilder()
+{
+    delete [] leaves;
+    delete [] branches;
+}
+
+void HuffBuilder::setDepths(HuffCodeTreeNode *node, unsigned depth)
 {
     node->depth = depth;
-    if (!node->isLeaf)
+    if (node->isBranch)
     {
         const HuffCodeTreeBranch *branch = static_cast<const HuffCodeTreeBranch *>(node);
-        setDepths(symbols, branch->left, depth+1);
-        setDepths(symbols, branch->right, depth+1);
+        setDepths(branch->left, depth+1);
+        setDepths(branch->right, depth+1);
     }
 }
 
-void HuffBuilder::setCodes(HuffSymbolTable *symbols, HuffCodeTreeNode *node, unsigned depth, unsigned code)
+void HuffBuilder::setCodes(HuffCodeTreeNode *node, unsigned depth, unsigned code)
 {
     assert(node->depth == depth);
-    if (node->isLeaf)
+    if (node->isBranch)
+    {
+        const HuffCodeTreeBranch *branch = static_cast<const HuffCodeTreeBranch *>(node);
+        setCodes(branch->left, depth+1, code << 1 | 0);
+        setCodes(branch->right, depth+1, code << 1 | 1);
+    }
+    else
     {
         const HuffCodeTreeLeaf *leaf = static_cast<const HuffCodeTreeLeaf *>(node);
         symbols->setCode(leaf->symbol, depth, code);
     }
-    else
-    {
-        const HuffCodeTreeBranch *branch = static_cast<const HuffCodeTreeBranch *>(node);
-        setCodes(symbols, branch->left, depth+1, code << 1 | 0);
-        setCodes(symbols, branch->right, depth+1, code << 1 | 1);
-    }
 }
 
-void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
+void HuffBuilder::assignCodes(uint64_t *frequencies)
 {
     struct NodeBuilder
     {
@@ -182,7 +179,7 @@ void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
 
     std::priority_queue<NodeBuilder> pqueue;
     unsigned symCount = symbols->numSymbols();
-    HuffCodeTreeLeaf *leaves = new HuffCodeTreeLeaf[symCount];
+    leaves = new HuffCodeTreeLeaf[symCount];
     for (unsigned i = 0; i < symCount; i++) 
     {
         leaves[i].symbol = i;
@@ -192,7 +189,7 @@ void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
     }
 
     unsigned branchIdx = 0;
-    HuffCodeTreeBranch *branches = new HuffCodeTreeBranch[symCount-1];
+    branches = new HuffCodeTreeBranch[symCount-1];
 
     // Repeatedly tie together two nodes with the lowest frequency
     while (pqueue.size() > 1) 
@@ -204,8 +201,8 @@ void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
         branchIdx++;
     }
     NodeBuilder head = NodeBuilder::popQueue(pqueue);
-    // Walk the tree assigning code lengths to symbols (not codes, initially, as we want to create canonical)
-    setDepths(symbols, head.node, 0);
+    // Walk the tree assigning code lengths to symbols (not codes, initially, as we want to create canonical codes)
+    setDepths(head.node, 0);
     // Now that all leaves have code lengths, we can create a canonical code tree from them
     // Sort the leaves by codeLength
     std::sort(leaves, leaves+symCount, [](HuffCodeTreeLeaf &a, HuffCodeTreeLeaf &b) 
@@ -216,14 +213,14 @@ void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
     });
     // Iterate through all the leaves and branches at a given level, creating branches at the next level
     HuffCodeTreeLeaf *curLeaf = &leaves[0];
-    HuffCodeTreeBranch *curBranch = &branches[0];
+    HuffCodeTreeBranch *curBranch = &branches[0]; // note - we reuse the previous branches
     unsigned level = curLeaf->depth;
     branchIdx = 0;
     while (level)
     {
         HuffCodeTreeBranch *branchEnd = branches+branchIdx;  // Note the end of the branches created so far
         // we consume 2 at the current level and merge them to new node level-1
-        // These will be from leafIdx if available, else branchIdx
+        // These will be from leaves if available, else branches
         while (curLeaf < leaves+symCount)
         {
             if (curLeaf->depth != level)
@@ -249,8 +246,8 @@ void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
         level--;
     }
     // The root of the newly-created tree is at branches[branchIdx-1];
-    HuffCodeTreeNode *root = &branches[branchIdx-1];
-    setCodes(symbols, root, 0, 0);
+    root = &branches[branchIdx-1];
+    setCodes(root, 0, 0);
 }
 
 #ifdef _USE_CPPUNIT
@@ -287,8 +284,7 @@ class JHuffTest : public CppUnit::TestFixture
             symbols.addSymbol(n.name);
             frequencies[idx++] = n.count;
         }
-        HuffBuilder builder;
-        builder.assignCodes(&symbols, frequencies);
+        HuffBuilder builder(&symbols, frequencies);
         symbols.dumpAll();
     }
 };
