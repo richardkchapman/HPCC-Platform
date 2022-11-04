@@ -62,17 +62,23 @@ public:
 
 class StringSymbolTable : public CInterfaceOf<IHuffSymbolTable>
 {
-    struct StringEntry
+    class StringEntry : public CInterfaceOf<ISymbolTableEntry>
     {
+    private:
         StringAttr symbol;
         unsigned code = 0;
         byte codeLength = 0;     // in bits
+
+    public:
+        virtual unsigned queryCodeLength() const override { return codeLength; }
+        virtual unsigned queryCode() const override { return code; }
+
         inline void setCode(unsigned _codeLength, unsigned _code)
         {
             codeLength = _codeLength;
             code = _code;
         }
-        void dump() const
+        virtual void dump() const override
         {
             StringBuffer bincode;
             unsigned v = code;
@@ -85,16 +91,17 @@ class StringSymbolTable : public CInterfaceOf<IHuffSymbolTable>
         }
         StringEntry(const char *sym) : symbol(sym) {}
     };
-    std::vector<StringEntry> symbols;
+    IArrayOf<StringEntry> symbols;
 public:
     StringSymbolTable() = default;
 
-    virtual unsigned numSymbols() const override { return symbols.size(); };
-    virtual void setCode(unsigned symidx, unsigned codeLen, unsigned code) override { symbols.at(symidx).setCode(codeLen, code); };
-    virtual void dump(unsigned idx) const override { symbols.at(idx).dump(); }
-    virtual void dumpAll() const override { for (auto &s: symbols) { s.dump(); } }
+    virtual unsigned numSymbols() const override { return symbols.length(); };
+    virtual void setCode(unsigned symidx, unsigned codeLen, unsigned code) override { symbols.item(symidx).setCode(codeLen, code); };
+    virtual void dump(unsigned idx) const override { symbols.item(idx).dump(); }
+    virtual void dumpAll() const override { ForEachItemIn(idx, symbols) { symbols.item(idx).dump(); } }
+    virtual ISymbolTableEntry &queryEntry(unsigned idx) const { return symbols.item(idx); }
 
-    void addSymbol(const char *sym) { symbols.emplace_back(StringEntry(sym)); }
+    void addSymbol(const char *sym) { symbols.append(*new StringEntry(sym)); }
 };
 
 class HuffBuilder : public CInterfaceOf<IHuffBuilder>
@@ -110,6 +117,8 @@ private:
 public:
     HuffBuilder(IHuffSymbolTable *_symbols, uint64_t *counts);
     ~HuffBuilder();
+
+    virtual ISymbolTableEntry *decode(unsigned code) const override;
 };
 
 HuffBuilder::HuffBuilder(IHuffSymbolTable *_symbols, uint64_t *frequencies)
@@ -250,6 +259,28 @@ void HuffBuilder::assignCodes(uint64_t *frequencies)
     setCodes(root, 0, 0);
 }
 
+ ISymbolTableEntry *HuffBuilder::decode(unsigned code) const
+ {
+    HuffCodeTreeNode *node = root;
+    while (node->isBranch)
+    {
+        const HuffCodeTreeBranch *branch = static_cast<const HuffCodeTreeBranch *>(node);
+        if (code & 1)
+            node = branch->right;
+        else
+            node = branch->left;
+        code >>= 1;
+    }
+    const HuffCodeTreeLeaf *leaf = static_cast<const HuffCodeTreeLeaf *>(node);
+    return &symbols->queryEntry(leaf->symbol);
+ }
+
+extern IHuffBuilder *createHuffBuilder(IHuffSymbolTable *symbols, uint64_t *counts)
+{
+    return new HuffBuilder(symbols, counts);
+}
+
+
 #ifdef _USE_CPPUNIT
 #include "unittests.hpp"
 
@@ -285,7 +316,13 @@ class JHuffTest : public CppUnit::TestFixture
             frequencies[idx++] = n.count;
         }
         HuffBuilder builder(&symbols, frequencies);
-        symbols.dumpAll();
+        //symbols.dumpAll();
+        builder.decode(0)->dump();
+        builder.decode(1)->dump();
+        builder.decode(2)->dump();
+        builder.decode(100)->dump();
+        builder.decode(200)->dump();
+        builder.decode(1000)->dump();
     }
 };
 

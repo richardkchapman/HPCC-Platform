@@ -23,6 +23,14 @@
 #define JHUFF_HPP
 
 #include "jlib.hpp"
+#include "jhtree.hpp"
+
+interface ISymbolTableEntry : public IInterface
+{
+    virtual unsigned queryCodeLength() const = 0;
+    virtual unsigned queryCode() const = 0;
+    virtual void dump() const = 0;
+};
 
 interface IHuffSymbolTable : public IInterface
 {
@@ -30,11 +38,14 @@ interface IHuffSymbolTable : public IInterface
     virtual void setCode(unsigned symidx, unsigned codeLength, unsigned code) = 0;
     virtual void dump(unsigned idx) const = 0;
     virtual void dumpAll() const = 0;
+    virtual ISymbolTableEntry &queryEntry(unsigned idx) const = 0;
 };
 
 interface IHuffBuilder : public IInterface
 {
-    //virtual void assignCodes(IHuffSymbolTable *symbols, uint64_t *counts) = 0;  // Updates the provided symbol table to allocate Huffman codes according to supplied frquency information
+    virtual ISymbolTableEntry *decode(unsigned code) const = 0;
 };
 
+// Note - Updates the provided symbol table to allocate Huffman codes according to supplied frequency information
+extern jhtree_decl IHuffBuilder *createHuffBuilder(IHuffSymbolTable *symbols, uint64_t *counts);
 #endif
