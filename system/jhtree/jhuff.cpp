@@ -17,6 +17,7 @@
 
 #include "platform.h"
 #include "jstring.hpp"
+#include "jlog.hpp"
 #include <cstdint>
 #include <memory>
 #include <queue>
@@ -35,6 +36,7 @@ class HuffCodeTreeNode : public CInterface
 class HuffCodeTreeLeaf final : public HuffCodeTreeNode
 {
 friend class CanonicalCode;
+friend class HuffCodeTree;
 private:
     unsigned symbol;	 // index into the input names table
 public:
@@ -91,6 +93,7 @@ public:
 	explicit HuffCodeTree(const HuffCodeTreeBranch *_root, std::uint32_t symbolLimit);
 	// Returns the Huffman code for the given symbol, which is a list of 0s and 1s.
 	const std::vector<char> &getCode(std::uint32_t symbol) const;
+	unsigned getBinaryCode(uint32_t symbol) const;
 
 private:	
 	// Recursive helper function for the constructor
@@ -128,11 +131,11 @@ void HuffCodeTree::buildCodeList(const HuffCodeTreeNode *node, std::vector<char>
 		
 	} else if (dynamic_cast<const HuffCodeTreeLeaf*>(node) != nullptr) {
 		const HuffCodeTreeLeaf *leaf = dynamic_cast<const HuffCodeTreeLeaf*>(node);
-		//if (leaf->symbol >= codes.size())
-		//	throw std::invalid_argument("Symbol exceeds symbol limit");
-		//if (!codes.at(leaf->symbol).empty())
-		//	throw std::invalid_argument("Symbol has more than one code");
-		//codes.at(leaf->symbol) = prefix;
+		if (leaf->symbol >= codes.size())
+			throw std::invalid_argument("Symbol exceeds symbol limit");
+		if (!codes.at(leaf->symbol).empty())
+			throw std::invalid_argument("Symbol has more than one code");
+		codes.at(leaf->symbol) = prefix;
 		
 	} else {
 		throw std::logic_error("Assertion error: Illegal node type");
@@ -145,6 +148,18 @@ const std::vector<char> &HuffCodeTree::getCode(uint32_t symbol) const {
 		throw std::domain_error("No code for given symbol");
 	else
 		return codes.at(symbol);
+}
+
+unsigned HuffCodeTree::getBinaryCode(uint32_t symbol) const 
+{
+	unsigned val = 0;
+	auto &code = getCode(symbol);
+	for (auto b = code.rbegin(); b != code.rend(); ++b) 
+	{
+		val <<= 1;
+		val = val | *b;
+	}
+	return val;
 }
 
 /* 
@@ -524,17 +539,88 @@ HuffCodeTree *CanonicalCode::toCodeTree() const {
 	return new HuffCodeTree(root, static_cast<uint32_t>(codeLengths.size()));
 }
 
+
+//======================================================================================================
+
+interface HuffSymbolTable : public IInterface
+{
+	virtual unsigned numSymbols() const = 0;
+	virtual void setCode(unsigned symidx, unsigned codeLen, unsigned code) = 0;
+};
+
+class StringSymbolTable : public CInterfaceOf<HuffSymbolTable>
+{
+	struct StringEntry
+	{
+		StringAttr symbol;
+		unsigned code = 0;
+		byte codelength = 0;     // in bits
+		inline void setCode(unsigned _codelength, unsigned _code)
+		{
+			code = _code;
+			codelength = _codelength;
+		}
+		void dump()
+		{
+			StringBuffer bincode;
+			unsigned v = code;
+			for (unsigned i = 0; i < codelength; i++)
+			{
+				bincode.appendf("%c", '0'+(v & 1));
+				v >>= 1;
+			}
+			DBGLOG("%s codelength %u code %s", symbol.str(), codelength, bincode.str());
+		}
+		StringEntry(const char *sym) : symbol(sym) {}
+	};
+	std::vector<StringEntry> symbols;
+public:
+	StringSymbolTable() = default;
+
+	virtual unsigned numSymbols() const override { return symbols.size(); };
+	virtual void setCode(unsigned symidx, unsigned codeLen, unsigned code) override { symbols.at(symidx).setCode(codeLen, code); };
+
+	void addSymbol(const char *sym) { symbols.emplace_back(StringEntry(sym)); }
+	void dump()	{ for (auto &s: symbols) { s.dump(); } }
+};
+
+class HuffBuilder
+{
+private:
+
+public:
+	HuffBuilder() = default;
+	void assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies);
+};
+
+void HuffBuilder::assignCodes(HuffSymbolTable *symbols, uint64_t *frequencies)
+{
+    FrequencyTable freqs(std::vector<uint32_t>(symbols->numSymbols(), 0));
+	for (unsigned idx = 0; idx < symbols->numSymbols(); idx++)
+	{
+		freqs.set(idx, frequencies[idx]);
+	}
+	Owned<HuffCodeTree> code = freqs.buildCodeTree();
+	Owned<CanonicalCode> canonCode = new CanonicalCode(code, freqs.getSymbolLimit());
+	// Replace code tree with canonical one. For each symbol,
+	// the code value may change but the code length stays the same.
+	code.setown(canonCode->toCodeTree());
+    for (uint32_t i = 0; i < canonCode->getSymbolLimit(); i++) 
+    {
+        uint32_t val = canonCode->getCodeLength(i);
+		symbols->setCode(i, val, code->getBinaryCode(i));
+	}
+}
+
+#ifdef _USE_CPPUNIT
+#include "unittests.hpp"
+
 struct NameInfo
 {
     const char *name;
     double frequency;
     unsigned count;
 };
-
-
-
-#ifdef _USE_CPPUNIT
-#include "unittests.hpp"
 
 constexpr NameInfo usNames[] = {
     { "OTHER", 0.00, 10000000 },
@@ -544,7 +630,8 @@ constexpr NameInfo usNames[] = {
 class JHuffTest : public CppUnit::TestFixture  
 {
     CPPUNIT_TEST_SUITE( JHuffTest  );
-        CPPUNIT_TEST(huffTest);
+//        CPPUNIT_TEST(huffTest);
+        CPPUNIT_TEST(newHuffTest);
     CPPUNIT_TEST_SUITE_END();
 
     void huffTest()
@@ -570,14 +657,29 @@ class JHuffTest : public CppUnit::TestFixture
             totcount += usNames[i].count;
             totbits += usNames[i].count*val;
             totbytes += usNames[i].count*strlen(usNames[i].name);
-            // printf("%s code length %u ", usNames[i].name, val);
-            // for (char b : code.getCode(i))
-            //     printf("%u", b);
-            // printf("\n");
+            printf("%s code length %u ", usNames[i].name, val);
+            for (char b : code->getCode(i))
+                printf("%u", b);
+            printf("\n");
         }
         unsigned long compressed = totbits/8;
         DBGLOG("For total population, count %lu, string length %lu, padded length=%lu, compressed = %lu", totcount, totbytes, totcount*20, compressed);
         DBGLOG("Compression ratio: %lu%% (%lu%% if space padded to 20 bytes)",(compressed*100)/totbytes, (compressed*100)/(totcount*20));
+    }
+
+    void newHuffTest()
+    {
+		StringSymbolTable symbols;
+		uint64_t frequencies[std::extent<decltype(usNames)>::value];
+		unsigned idx = 0;
+        for (auto &n: usNames)
+        {
+            symbols.addSymbol(n.name);
+			frequencies[idx++] = n.count;
+        }
+		HuffBuilder builder;
+		builder.assignCodes(&symbols, frequencies);
+		symbols.dump();
     }
 };
 
