@@ -34,10 +34,11 @@ class HuffCodeTreeNode : public CInterface
  */
 class HuffCodeTreeLeaf final : public HuffCodeTreeNode
 {
+friend class CanonicalCode;
 private:
-    StringAttr symbol;	
+    unsigned symbol;	 // index into the input names table
 public:
-    explicit HuffCodeTreeLeaf(const char *_symbol) : symbol(_symbol) {} 
+    explicit HuffCodeTreeLeaf(unsigned _symbol) : symbol(_symbol) {} 
 };
 
 /* 
@@ -83,7 +84,7 @@ public:
  *         C   D
  */
 
-class HuffCodeTree
+class HuffCodeTree : public CInterface
 {
 	friend class CanonicalCode;
 public:
@@ -259,7 +260,7 @@ HuffCodeTree *FrequencyTable::buildCodeTree() const {
 		uint32_t i = 0;
 		for (uint32_t freq : frequencies) {
 			if (freq > 0)
-				pqueue.push(NodeWithFrequency(new HuffCodeTreeLeaf("i"), i, freq));
+				pqueue.push(NodeWithFrequency(new HuffCodeTreeLeaf(i), i, freq));
 			i++;
 		}
 	}
@@ -271,7 +272,7 @@ HuffCodeTree *FrequencyTable::buildCodeTree() const {
 			if (pqueue.size() >= 2)
 				break;
 			if (freq == 0)
-				pqueue.push(NodeWithFrequency(new HuffCodeTreeLeaf("i"), i, freq));
+				pqueue.push(NodeWithFrequency(new HuffCodeTreeLeaf(i), i, freq));
 			i++;
 		}
 	}
@@ -354,7 +355,7 @@ FrequencyTable::NodeWithFrequency FrequencyTable::popQueue(std::priority_queue<N
  *     Symbol D: 10
  *     Symbol E: 111
  */
-class CanonicalCode final {
+class CanonicalCode final : public CInterface {
 	
 	/*---- Field ----*/
 	
@@ -382,7 +383,7 @@ class CanonicalCode final {
 	
 	
 	// Builds a canonical Huffman code from the given code tree.
-	public: explicit CanonicalCode(const HuffCodeTree &tree, std::uint32_t symbolLimit);
+	public: explicit CanonicalCode(const HuffCodeTree *tree, std::uint32_t symbolLimit);
 	
 	
 	// Recursive helper method for the above constructor.
@@ -403,13 +404,12 @@ class CanonicalCode final {
 	
 	
 	// Returns the canonical code tree for this canonical Huffman code.
-	public: HuffCodeTree toCodeTree() const;
+	public: HuffCodeTree *toCodeTree() const;
 	
 };
 
 // CanonicalCode implementation
 
-/*
 CanonicalCode::CanonicalCode(const std::vector<uint32_t> &codeLens) {
 	// Check basic validity
 	if (codeLens.size() < 2)
@@ -449,11 +449,11 @@ CanonicalCode::CanonicalCode(const std::vector<uint32_t> &codeLens) {
 }
 
 
-CanonicalCode::CanonicalCode(const HuffCodeTree &tree, uint32_t symbolLimit) {
+CanonicalCode::CanonicalCode(const HuffCodeTree *tree, uint32_t symbolLimit) {
 	if (symbolLimit < 2)
 		throw std::invalid_argument("At least 2 symbols needed");
 	codeLengths = std::vector<uint32_t>(symbolLimit, 0);
-	buildCodeLengths(tree.root, 0);
+	buildCodeLengths(tree->root, 0);
 }
 
 
@@ -488,27 +488,27 @@ uint32_t CanonicalCode::getCodeLength(uint32_t symbol) const {
 }
 
 
-HuffCodeTree CanonicalCode::toCodeTree() const {
-	std::vector<std::unique_ptr<HuffCodeTreeNode> > nodes;
+HuffCodeTree *CanonicalCode::toCodeTree() const {
+	std::vector<HuffCodeTreeNode *> nodes;
 	for (uint32_t i = *std::max_element(codeLengths.cbegin(), codeLengths.cend()); ; i--) {  // Descend through code lengths
 		if (nodes.size() % 2 != 0)
 			throw std::logic_error("Assertion error: Violation of canonical code invariants");
-		std::vector<std::unique_ptr<HuffCodeTreeNode> > newNodes;
+		std::vector<HuffCodeTreeNode * > newNodes;
 		
 		// Add leaves for symbols with positive code length i
 		if (i > 0) {
 			uint32_t j = 0;
 			for (uint32_t cl : codeLengths) {
 				if (cl == i)
-					newNodes.push_back(std::unique_ptr<HuffCodeTreeNode>(new HuffCodeTreeLeaf(j)));
+					newNodes.push_back(new HuffCodeTreeLeaf(j));
 				j++;
 			}
 		}
 		
 		// Merge pairs of nodes from the previous deeper layer
-		for (std::size_t j = 0; j < nodes.size(); j += 2) {
-			newNodes.push_back(std::unique_ptr<HuffCodeTreeNode>(new HuffCodeTreeBranch(
-				std::move(nodes.at(j)), std::move(nodes.at(j + 1)))));
+		for (std::size_t j = 0; j < nodes.size(); j += 2) 
+        {
+			newNodes.push_back(new HuffCodeTreeBranch(nodes.at(j), nodes.at(j + 1)));
 		}
 		nodes = std::move(newNodes);
 		
@@ -519,14 +519,10 @@ HuffCodeTree CanonicalCode::toCodeTree() const {
 	if (nodes.size() != 1)
 		throw std::logic_error("Assertion error: Violation of canonical code invariants");
 	
-	HuffCodeTreeNode *temp = nodes.front().release();
+	HuffCodeTreeNode *temp = nodes.front();
 	HuffCodeTreeBranch *root = dynamic_cast<HuffCodeTreeBranch*>(temp);
-	HuffCodeTree result(std::move(*root), static_cast<uint32_t>(codeLengths.size()));
-	delete root;
-	return result;
+	return new HuffCodeTree(root, static_cast<uint32_t>(codeLengths.size()));
 }
-*/
-
 
 struct NameInfo
 {
@@ -559,18 +555,18 @@ class JHuffTest : public CppUnit::TestFixture
         {
             freqs.set(idx++, n.count);
         }
-        CodeTree code = freqs.buildCodeTree();
-        const CanonicalCode canonCode(code, freqs.getSymbolLimit());
+        Owned<HuffCodeTree> code = freqs.buildCodeTree();
+        Owned<CanonicalCode> canonCode = new CanonicalCode(code, freqs.getSymbolLimit());
         // Replace code tree with canonical one. For each symbol,
         // the code value may change but the code length stays the same.
-        code = canonCode.toCodeTree();
+        code.setown(canonCode->toCodeTree());
 
         unsigned long totbits = 0;
         unsigned long totbytes = 0;
         unsigned long totcount = 0;
-        for (uint32_t i = 0; i < canonCode.getSymbolLimit(); i++) 
+        for (uint32_t i = 0; i < canonCode->getSymbolLimit(); i++) 
         {
-            uint32_t val = canonCode.getCodeLength(i);
+            uint32_t val = canonCode->getCodeLength(i);
             totcount += usNames[i].count;
             totbits += usNames[i].count*val;
             totbytes += usNames[i].count*strlen(usNames[i].name);
