@@ -46,6 +46,7 @@ public:
 class HuffCodeTreeBranch final : public HuffCodeTreeNode 
 {
     friend class HuffCodeTree;
+    friend class CanonicalCode;
 private:
     Owned<HuffCodeTreeNode> left;
     Owned<HuffCodeTreeNode> right;
@@ -84,6 +85,7 @@ public:
 
 class HuffCodeTree
 {
+	friend class CanonicalCode;
 public:
 	explicit HuffCodeTree(const HuffCodeTreeBranch *_root, std::uint32_t symbolLimit);
 	// Returns the Huffman code for the given symbol, which is a list of 0s and 1s.
@@ -407,7 +409,7 @@ class CanonicalCode final {
 
 // CanonicalCode implementation
 
-
+/*
 CanonicalCode::CanonicalCode(const std::vector<uint32_t> &codeLens) {
 	// Check basic validity
 	if (codeLens.size() < 2)
@@ -451,7 +453,7 @@ CanonicalCode::CanonicalCode(const HuffCodeTree &tree, uint32_t symbolLimit) {
 	if (symbolLimit < 2)
 		throw std::invalid_argument("At least 2 symbols needed");
 	codeLengths = std::vector<uint32_t>(symbolLimit, 0);
-	buildCodeLengths(&tree.root, 0);
+	buildCodeLengths(tree.root, 0);
 }
 
 
@@ -486,26 +488,26 @@ uint32_t CanonicalCode::getCodeLength(uint32_t symbol) const {
 }
 
 
-CodeTree CanonicalCode::toCodeTree() const {
-	std::vector<std::unique_ptr<Node> > nodes;
+HuffCodeTree CanonicalCode::toCodeTree() const {
+	std::vector<std::unique_ptr<HuffCodeTreeNode> > nodes;
 	for (uint32_t i = *std::max_element(codeLengths.cbegin(), codeLengths.cend()); ; i--) {  // Descend through code lengths
 		if (nodes.size() % 2 != 0)
 			throw std::logic_error("Assertion error: Violation of canonical code invariants");
-		std::vector<std::unique_ptr<Node> > newNodes;
+		std::vector<std::unique_ptr<HuffCodeTreeNode> > newNodes;
 		
 		// Add leaves for symbols with positive code length i
 		if (i > 0) {
 			uint32_t j = 0;
 			for (uint32_t cl : codeLengths) {
 				if (cl == i)
-					newNodes.push_back(std::unique_ptr<Node>(new Leaf(j)));
+					newNodes.push_back(std::unique_ptr<HuffCodeTreeNode>(new HuffCodeTreeLeaf(j)));
 				j++;
 			}
 		}
 		
 		// Merge pairs of nodes from the previous deeper layer
 		for (std::size_t j = 0; j < nodes.size(); j += 2) {
-			newNodes.push_back(std::unique_ptr<Node>(new InternalNode(
+			newNodes.push_back(std::unique_ptr<HuffCodeTreeNode>(new HuffCodeTreeBranch(
 				std::move(nodes.at(j)), std::move(nodes.at(j + 1)))));
 		}
 		nodes = std::move(newNodes);
@@ -517,13 +519,13 @@ CodeTree CanonicalCode::toCodeTree() const {
 	if (nodes.size() != 1)
 		throw std::logic_error("Assertion error: Violation of canonical code invariants");
 	
-	Node *temp = nodes.front().release();
-	InternalNode *root = dynamic_cast<InternalNode*>(temp);
-	CodeTree result(std::move(*root), static_cast<uint32_t>(codeLengths.size()));
+	HuffCodeTreeNode *temp = nodes.front().release();
+	HuffCodeTreeBranch *root = dynamic_cast<HuffCodeTreeBranch*>(temp);
+	HuffCodeTree result(std::move(*root), static_cast<uint32_t>(codeLengths.size()));
 	delete root;
 	return result;
 }
-
+*/
 
 
 struct NameInfo
