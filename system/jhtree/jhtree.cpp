@@ -54,6 +54,7 @@
 #include "jmisc.hpp"
 #include "jstats.h"
 #include "ctfile.hpp"
+#include "jhinplace.hpp"
 
 #include "jhtree.ipp"
 #include "keybuild.hpp"
@@ -61,6 +62,7 @@
 #include "eclhelper_dyn.hpp"
 #include "rtlrecord.hpp"
 #include "rtldynfield.hpp"
+#include "eclhelper_base.hpp"
 
 constexpr __uint64 defaultFetchThresholdNs = 20000; // Assume anything < 20us comes from the page cache, everything above probably went to disk
 
@@ -74,6 +76,8 @@ bool useMemoryMappedIndexes = false;
 bool linuxYield = false;
 bool traceSmartStepping = false;
 bool flushJHtreeCacheOnOOM = true;
+std::atomic<unsigned __int64> branchSearchCycles{0};
+std::atomic<unsigned __int64> leafSearchCycles{0};
 
 MODULE_INIT(INIT_PRIORITY_JHTREE_JHTREE)
 {
@@ -591,6 +595,30 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+enum CacheType : unsigned
+{
+    CacheBranch = 0,
+    CacheLeaf = 1,
+    CacheBlob = 2,
+    //CacheTLK?
+    CacheMax = 3
+};
+static constexpr const char * cacheTypeText[CacheMax]  = { "branch", "leaf", "blob" };
+
+static_assert((unsigned)CacheBranch == (unsigned)NodeBranch, "Mismatch Cache Branch");
+static_assert((unsigned)CacheLeaf == (unsigned)NodeLeaf, "Mismatch Cache Leaf");
+static_assert((unsigned)CacheBlob == (unsigned)NodeBlob, "Mismatch Cache Blob");
+
+constexpr StatisticKind addStatId[CacheMax] = { StNumNodeCacheAdds, StNumLeafCacheAdds, StNumBlobCacheAdds };
+constexpr StatisticKind hitStatId[CacheMax] = { StNumNodeCacheHits, StNumLeafCacheHits, StNumBlobCacheHits };
+constexpr StatisticKind loadStatId[CacheMax] = { StCycleNodeLoadCycles, StCycleLeafLoadCycles, StCycleBlobLoadCycles };
+constexpr StatisticKind readStatId[CacheMax] = { StCycleNodeReadCycles, StCycleLeafReadCycles, StCycleBlobReadCycles };
+constexpr StatisticKind fetchStatId[CacheMax] = { StNumNodeDiskFetches, StNumLeafDiskFetches, StNumBlobDiskFetches };
+constexpr StatisticKind fetchTimeId[CacheMax] = { StCycleNodeFetchCycles, StCycleLeafFetchCycles, StCycleBlobFetchCycles };
+
+constexpr RelaxedAtomic<unsigned> * hitMetric[CacheMax] = { &nodeCacheHits, &leafCacheHits, &blobCacheHits };
+constexpr RelaxedAtomic<unsigned> * addMetric[CacheMax] = { &nodeCacheAdds, &leafCacheAdds, &blobCacheAdds };
+constexpr RelaxedAtomic<unsigned> * dupMetric[CacheMax] = { &nodeCacheDups, &leafCacheDups, &blobCacheDups };
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -716,19 +744,6 @@ public:
     }
 };
 
-enum CacheType : unsigned
-{
-    CacheBranch = 0,
-    CacheLeaf = 1,
-    CacheBlob = 2,
-    //CacheTLK?
-    CacheMax = 3
-};
-static constexpr const char * cacheTypeText[CacheMax]  = { "branch", "leaf", "blob" };
-
-static_assert((unsigned)CacheBranch == (unsigned)NodeBranch, "Mismatch Cache Branch");
-static_assert((unsigned)CacheLeaf == (unsigned)NodeLeaf, "Mismatch Cache Leaf");
-static_assert((unsigned)CacheBlob == (unsigned)NodeBlob, "Mismatch Cache Blob");
 
 class CNodeCache : public CInterface
 {
@@ -774,6 +789,7 @@ public:
         {
             out.append(cacheTypeText[i]).append('(');
             cache[i].traceState(out);
+            out.appendf(" [%u:%u:%u]", hitMetric[i]->load(), addMetric[i]->load(), dupMetric[i]->load());
             out.append(") ");
         }
     }
@@ -807,6 +823,15 @@ void clearNodeCache()
     queryNodeCache()->clear();
 }
 
+
+void logCacheState()
+{
+    if (nodeCache)
+        nodeCache->logState();
+    DBGLOG("Search times branch(%lluns) leaf(%lluns)", cycle_to_nanosec(branchSearchCycles), cycle_to_nanosec(leafSearchCycles));
+    branchSearchCycles = 0;
+    leafSearchCycles = 0;
+}
 
 inline CKeyStore *queryKeyStore()
 {
@@ -1096,6 +1121,7 @@ CMemKeyIndex::CMemKeyIndex(unsigned _iD, IMemoryMappedFile *_io, const char *_na
     if (io->length() < sizeof(hdr))
         throw MakeStringException(0, "Failed to read key header: file too small, could not read %u bytes", (unsigned) sizeof(hdr));
     memcpy(&hdr, io->base(), sizeof(hdr));
+
     if (hdr.ktype & USE_TRAILING_HEADER)
     {
         _WINREV(hdr.nodeSize);
@@ -1194,6 +1220,12 @@ CJHTreeNode *CKeyIndex::_createNode(const NodeHdr &nodeHdr) const
         case SplitPayload:
             assertex(nodeHdr.nodeType== NodeLeaf);    // Should only be using the new format for leaf nodes
             return new CJHSplitSearchNode();
+        case InplaceCompression:
+            if (nodeHdr.nodeType == NodeLeaf)
+                return new CJHInplaceLeafNode();
+            if (nodeHdr.nodeType == NodeBranch)
+                return new CJHInplaceBranchNode();
+            UNIMPLEMENTED;
         default:
             throwUnexpected();
         }
@@ -2506,17 +2538,6 @@ void CNodeCache::getCacheInfo(ICacheInfoRecorder &cacheInfo)
     }
 }
 
-constexpr StatisticKind addStatId[CacheMax] = { StNumNodeCacheAdds, StNumLeafCacheAdds, StNumBlobCacheAdds };
-constexpr StatisticKind hitStatId[CacheMax] = { StNumNodeCacheHits, StNumLeafCacheHits, StNumBlobCacheHits };
-constexpr StatisticKind loadStatId[CacheMax] = { StCycleNodeLoadCycles, StCycleLeafLoadCycles, StCycleBlobLoadCycles };
-constexpr StatisticKind readStatId[CacheMax] = { StCycleNodeReadCycles, StCycleLeafReadCycles, StCycleBlobReadCycles };
-constexpr StatisticKind fetchStatId[CacheMax] = { StNumNodeDiskFetches, StNumLeafDiskFetches, StNumBlobDiskFetches };
-constexpr StatisticKind fetchTimeId[CacheMax] = { StCycleNodeFetchCycles, StCycleLeafFetchCycles, StCycleBlobFetchCycles };
-
-constexpr RelaxedAtomic<unsigned> * hitMetric[CacheMax] = { &nodeCacheHits, &leafCacheHits, &blobCacheHits };
-constexpr RelaxedAtomic<unsigned> * addMetric[CacheMax] = { &nodeCacheAdds, &leafCacheAdds, &blobCacheAdds };
-constexpr RelaxedAtomic<unsigned> * dupMetric[CacheMax] = { &nodeCacheDups, &leafCacheDups, &blobCacheDups };
-
 //Rather than using a critical section in each node (which can be large and expensive) have an array which is indexed by a function
 //of the key id/file position
 constexpr unsigned numLoadCritSects = 64;
@@ -3246,6 +3267,35 @@ extern jhtree_decl IIndexLookup *createIndexLookup(IKeyManager *keyManager)
 #ifdef _USE_CPPUNIT
 #include "unittests.hpp"
 
+class TestIndexWriteArg : public CThorIndexWriteArg
+{
+public:
+    TestIndexWriteArg(const char * _filename, const char * _compression, IOutputMetaData * _meta)
+     : filename(_filename), compression(_compression), meta(_meta)
+    {
+    }
+
+    virtual const char * getFileName() { return filename; }
+    virtual int getSequence() { return 0; }
+    virtual IOutputMetaData * queryDiskRecordSize() { return meta; }
+    virtual const char * queryRecordECL() { return nullptr; }
+    virtual unsigned getFlags() { return compression ? TIWcompressdefined : 0; }
+    virtual size32_t transform(ARowBuilder & rowBuilder, const void * src, IBlobCreator * blobs, unsigned __int64 & filepos)
+    {
+        UNIMPLEMENTED;
+    }
+    virtual unsigned getKeyedSize() { return 0; }
+    virtual unsigned getMaxKeySize() { return 0; }
+    virtual unsigned getFormatCrc() { return 0; }
+    virtual const char * queryCompression() { return compression; }
+
+public:
+    const char * filename = nullptr;
+    const char * compression = nullptr;
+    IOutputMetaData * meta = nullptr;
+};
+
+
 class IKeyManagerTest : public CppUnit::TestFixture  
 {
     CPPUNIT_TEST_SUITE( IKeyManagerTest  );
@@ -3255,7 +3305,7 @@ class IKeyManagerTest : public CppUnit::TestFixture
 
     void testStepping()
     {
-        buildTestKeys(false, true, false, false);
+        buildTestKeys(false, true, false, false, nullptr, nullptr);
         {
             // We are going to treat as a 7-byte field then a 3-byte field, and request the datasorted by the 3-byte...
             Owned <IKeyIndex> index1 = createKeyIndex("keyfile1.$$$", 0, false);
@@ -3363,14 +3413,18 @@ class IKeyManagerTest : public CppUnit::TestFixture
         removeTestKeys();
     }
 
-    void buildTestKeys(bool variable, bool useTrailingHeader, bool noSeek, bool quickCompressed)
+    void buildTestKeys(bool variable, bool useTrailingHeader, bool noSeek, bool quickCompressed, IOutputMetaData * meta, const char * compression)
     {
-        buildTestKey("keyfile1.$$$", false, variable, useTrailingHeader, noSeek, quickCompressed);
-        buildTestKey("keyfile2.$$$", true, variable, useTrailingHeader, noSeek, quickCompressed);
+        DBGLOG("buildTestKeys(variable=%d, useTrailingHeader=%d, noSeek=%d, quickCompressed=%d, compression=%s)",
+               variable, useTrailingHeader, noSeek, quickCompressed, compression ? compression : "");
+
+        buildTestKey("keyfile1.$$$", false, variable, useTrailingHeader, noSeek, quickCompressed, meta, compression);
+        buildTestKey("keyfile2.$$$", true, variable, useTrailingHeader, noSeek, quickCompressed, meta, compression);
     }
 
-    void buildTestKey(const char *filename, bool skip, bool variable, bool useTrailingHeader, bool noSeek, bool quickCompressed)
+    void buildTestKey(const char *filename, bool skip, bool variable, bool useTrailingHeader, bool noSeek, bool quickCompressed, IOutputMetaData * meta, const char * compression)
     {
+        TestIndexWriteArg helper(filename, compression, meta);
         OwnedIFile file = createIFile(filename);
         OwnedIFileIO io = file->openShared(IFOcreate, IFSHfull);
         Owned<IFileIOStream> out = createIOStream(io);
@@ -3382,8 +3436,9 @@ class IKeyManagerTest : public CppUnit::TestFixture
                 (quickCompressed ? HTREE_QUICK_COMPRESSED_KEY : 0) |
                 (variable ? HTREE_VARSIZE : 0) |
                 (useTrailingHeader ? USE_TRAILING_HEADER : 0) |
-                (noSeek ? TRAILING_HEADER_ONLY : 0),
-                maxRecSize, NODESIZE, keyedSize, 0, nullptr, true, false);
+                (noSeek ? TRAILING_HEADER_ONLY : 0) |
+                0,
+                maxRecSize, NODESIZE, keyedSize, 0, &helper, true, false);
 
         char keybuf[18];
         memset(keybuf, '0', 18);
@@ -3428,6 +3483,7 @@ class IKeyManagerTest : public CppUnit::TestFixture
         }
         builder->finish(nullptr, nullptr, maxRecordSizeSeen);
         out->flush();
+        DBGLOG("Size %s=%llu", filename, file->size());
     }
 
     void removeTestKeys()
@@ -3454,7 +3510,7 @@ class IKeyManagerTest : public CppUnit::TestFixture
         key->releaseBlobs();
     }
 protected:
-    void testKeys(bool variable, bool useTrailingHeader, bool noSeek, bool quickCompressed)
+    void testKeys(bool variable, bool useTrailingHeader, bool noSeek, bool quickCompressed, const char * compression)
     {
         const char *json = variable ?
                 "{ \"ty1\": { \"fieldType\": 4, \"length\": 10 }, "
@@ -3474,7 +3530,7 @@ protected:
                 "}";
         Owned<IOutputMetaData> meta = createTypeInfoOutputMetaData(json, false);
         const RtlRecord &recInfo = meta->queryRecordAccessor(true);
-        buildTestKeys(variable, useTrailingHeader, noSeek, quickCompressed);
+        buildTestKeys(variable, useTrailingHeader, noSeek, quickCompressed, meta, compression);
         {
             Owned <IKeyIndex> index1 = createKeyIndex("keyfile1.$$$", 0, false);
             Owned <IKeyManager> tlk1 = createLocalKeyManager(recInfo, index1, NULL, false, false);
@@ -3554,9 +3610,8 @@ protected:
             tlk2c->finishSegmentMonitors();
             tlk2c->reset();
 
-            ASSERT(tlk1->getCount() == 76);
-            ASSERT(tlk1->getCount() == 76);
-            ASSERT(tlk1a->getCount() == 30);
+            ASSERT_EQUAL(76U, (unsigned)tlk1->getCount());
+            ASSERT_EQUAL(30U, (unsigned)tlk1a->getCount());
             ASSERT(tlk2->getCount() == 26);
             ASSERT(tlk2a->getCount() == 2);
             ASSERT(tlk2b->getCount() == 2);
@@ -3644,7 +3699,8 @@ protected:
             for (bool trail : { false, true })
                 for (bool noseek : { false, true })
                     for (bool quick : { true, false })
-                        testKeys(var, trail, noseek, quick);
+                        for (const char * compression : { (const char *)nullptr, "POC", "inplace" })
+                            testKeys(var, trail, noseek, quick, compression);
     }
 };
 

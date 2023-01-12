@@ -444,7 +444,7 @@ doCreateSimpleIndex(boolean useLocal, boolean useTranslation) := FUNCTION
                 BUILD(distributedWords, { kind, word, doc, segment, wpos, wip }, { flags, original, dpos }, Files.NameWordIndex(),
                         OVERWRITE, NOROOT, COMPRESSED(row)),
                 BUILD(normalizedInversion, { kind, word, doc, segment, wpos, wip }, { flags, original, dpos }, Files.NameWordIndex(),
-                        OVERWRITE, COMPRESSED(row))
+                        OVERWRITE, COMPRESSED('inplace'))
             )
         );
         //Add a column mapping, testing done L->R, multiple transforms, and that parameters work
@@ -521,7 +521,8 @@ shakespeareStream := normalizeWordFormat(convertTextFileToInversion(4, Directory
         #if (useLocal=true)
                 NOROOT,
         #end
-                COMPRESSED(ROW)),
+            COMPRESSED('inplace')
+            ),
             fileServices.setColumnMapping(Files.NameSearchIndex, 'word{set(unicodelib.UnicodeToLowerCase)}')       // unicode just to be perverse
         );
     END;

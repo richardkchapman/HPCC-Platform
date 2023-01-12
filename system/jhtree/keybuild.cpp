@@ -19,6 +19,7 @@
 #include "eclhelper.hpp"
 #include "bloom.hpp"
 #include "jmisc.hpp"
+#include "jhinplace.hpp"
 
 struct CRC32HTE
 {
@@ -74,12 +75,6 @@ public:
     virtual bool matchesFindParam(const void *et, const void *fp, unsigned) const { return *(offset_t *)((const CRC32HTE *)et)->queryEndParam() == *(offset_t *)fp; }
 };
 
-interface IIndexCompressor : public IInterface
-{
-    virtual const char *queryName() const = 0;
-    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const = 0;
-};
-
 class PocIndexCompressor : public CInterfaceOf<IIndexCompressor>
 {
     virtual const char *queryName() const override { return "POC"; }
@@ -119,6 +114,7 @@ protected:
     CRC32EndHT crcEndPosTable;
     CRC32 headCRC;
     bool doCrc = false;
+    KeyBuildContext ctx;
 
 private:
     unsigned __int64 duplicateCount;
@@ -208,9 +204,9 @@ public:
                 const char *compression = _helper->queryCompression();
                 hdr->version = 2;    // Old builds will give a reasonable error message
                 if (strieq(compression, "POC"))
-                {
                     indexCompressor.setown(new PocIndexCompressor);
-                }
+                else if (strieq(compression, "inplace"))
+                    indexCompressor.setown(new InplaceIndexCompressor(keyedSize, _helper));
                 else
                     throw makeStringExceptionV(0, "Unrecognised index compression format %s", compression);
             }
@@ -501,6 +497,18 @@ protected:
             else
                 *fileCrc = 0;
         }
+
+#if 0
+        //MORE: Refactor into a ctx.traceDebugSummary()
+        DBGLOG("NumDuplicates = %u", ctx.numKeyedDuplicates);
+        for (unsigned i = 0; i < 256; i+= 8)
+        {
+            StringBuffer s;
+            for (unsigned j=0; j < 7; j++)
+                s.appendf(" %4x", ctx.singleCounts[i+j]);
+            DBGLOG("%02x:%s", i, s.str());
+        }
+#endif
     }
 
     void addLeafInfo(CNodeInfo *info)
