@@ -114,7 +114,6 @@ protected:
     CRC32EndHT crcEndPosTable;
     CRC32 headCRC;
     bool doCrc = false;
-    KeyBuildContext ctx;
 
 private:
     unsigned __int64 duplicateCount;

@@ -1,6 +1,6 @@
 /*##############################################################################
 
-    HPCC SYSTEMS software Copyright (C) 2012 HPCC Systems®.
+    HPCC SYSTEMS software Copyright (C) 2023 HPCC Systems®.
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -125,6 +125,21 @@ protected:
 
 //---------------------------------------------------------------------------------------------------------------------
 
+class KeyBuildContext
+{
+public:
+    ~KeyBuildContext() { delete [] nullRow; }
+
+public:
+    unsigned numKeyedDuplicates = 0;
+    unsigned singleCounts[256] = { 0 };
+    MemoryBuffer uncompressed;
+    MemoryAttr compressed;
+    const byte * nullRow = nullptr;
+};
+
+//---------------------------------------------------------------------------------------------------------------------
+
 class jhtree_decl CJHInplaceTreeNode : public CJHSearchNode
 {
 public:
@@ -234,19 +249,18 @@ class InplaceIndexCompressor : public CInterfaceOf<IIndexCompressor>
 {
 public:
     InplaceIndexCompressor(size32_t keyedSize, IHThorIndexWriteArg * helper);
-    virtual ~InplaceIndexCompressor();
 
     virtual const char *queryName() const override { return "inplace"; }
     virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const override
     {
         if (isLeafNode)
-            return new CInplaceLeafWriteNode(_fpos, _keyHdr, const_cast<KeyBuildContext &>(ctx));
+            return new CInplaceLeafWriteNode(_fpos, _keyHdr, ctx);
         else
-            return new CInplaceBranchWriteNode(_fpos, _keyHdr, const_cast<KeyBuildContext &>(ctx));
+            return new CInplaceBranchWriteNode(_fpos, _keyHdr, ctx);
     }
 
 protected:
-    KeyBuildContext ctx;
+    mutable KeyBuildContext ctx;
 };
 
 #endif

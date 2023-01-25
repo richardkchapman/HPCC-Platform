@@ -1,6 +1,6 @@
 /*##############################################################################
 
-    HPCC SYSTEMS software Copyright (C) 2012 HPCC Systems®.
+    HPCC SYSTEMS software Copyright (C) 2023 HPCC Systems®.
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -926,22 +926,23 @@ void PartialMatch::trace(unsigned indent)
             clean.append('.');
     }
 
-    printf("%*s(%s[%s] %u:%u[%u] [%s]", indent, "", clean.str(), dataHex.str(), data.length(), squashedData.length(), getSize(), squashedText.str());
+    StringBuffer text;
+    text.appendf("%*s(%s[%s] %u:%u[%u] [%s]", indent, "", clean.str(), dataHex.str(), data.length(), squashedData.length(), getSize(), squashedText.str());
     if (next.ordinality())
     {
-        printf(", %u{\n", next.ordinality());
+        DBGLOG("%s, %u{\n", text.str(), next.ordinality());
         ForEachItemIn(i, next)
             next.item(i).trace(indent+1);
-        printf("%*s}", indent, "");
+        DBGLOG("%*s})", indent, "");
     }
-    printf(")\n");
+    else
+        DBGLOG("%s)", text.str());
 }
 
 //---------------------------------------------------------------------------------------------------------------------
 
 void PartialMatchBuilder::add(size32_t len, const void * data)
 {
-    //It is legal to add rows longer than keyLen, but cannot strip trailing nulls
     if (optimizeTrailing && (len == keyLen))
     {
         const byte * newRow = (const byte *)data;
@@ -1638,7 +1639,7 @@ int CJHInplaceTreeNode::locateGT(const char * search, unsigned minIndex) const
     // Locate first record greater than src
     while ((int)a<b)
     {
-        //MORE: Note sure why the index is subtly different to the GTE version
+        //MORE: Not sure why the index 'i' is subtly different to the GTE version
         //I suspect no good reason, and may mess up cache locality.
         int i = a+(b+1-a)/2;
         int rc = compareValueAt(search, i-1);
@@ -1686,7 +1687,7 @@ void CJHInplaceTreeNode::load(CKeyHdr *_keyHdr, const void *rawData, offset_t _f
 
         if (isLeaf())
         {
-            //Extra position serialized for leafs..
+            //Extra position serialized for leaves..
             data += bytesPerPosition;
 
             if (keyHdr->isVariable())
@@ -2156,12 +2157,6 @@ InplaceIndexCompressor::InplaceIndexCompressor(size32_t keyedSize, IHThorIndexWr
         ctx.nullRow = nullRow;
     }
 }
-
-InplaceIndexCompressor::~InplaceIndexCompressor()
-{
-    delete [] ctx.nullRow;
-}
-
 
 #ifdef _USE_CPPUNIT
 #include "unittests.hpp"

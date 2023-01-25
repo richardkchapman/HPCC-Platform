@@ -514,14 +514,5 @@ interface IIndexCompressor : public IInterface
     virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const = 0;
 };
 
-class KeyBuildContext
-{
-public:
-    unsigned numKeyedDuplicates = 0;
-    unsigned singleCounts[256] = { 0 };
-    MemoryBuffer uncompressed;
-    MemoryAttr compressed;
-    const byte * nullRow = nullptr;
-};
 
 #endif
