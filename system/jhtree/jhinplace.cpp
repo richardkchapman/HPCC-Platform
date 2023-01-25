@@ -461,7 +461,7 @@ void PartialMatch::cacheSizes()
         maxCount = 1;
 }
 
-bool PartialMatch::combine(size32_t newLen, const byte * newData)
+bool PartialMatch::combine(size32_t newLen, const byte * newData, size32_t &common)
 {
     size32_t curLen = data.length();
     const byte * curData = (const byte *)data.toByteArray();
@@ -475,6 +475,7 @@ bool PartialMatch::combine(size32_t newLen, const byte * newData)
 
     if (matchLen || isRoot)
     {
+        common = matchLen;
         dirty = true;
         if (next.ordinality() == 0)
         {
@@ -485,10 +486,11 @@ bool PartialMatch::combine(size32_t newLen, const byte * newData)
             return true;
         }
 
-        if (matchLen == curLen)
+        if (matchLen == curLen) // Is this only when trimming trailing? Implies curLen was not same as compareLen I think?
         {
             //Either add a new option, or combine with the last option
-            if (next.tos().combine(newLen - matchLen, newData + matchLen))
+            size32_t dummy;
+            if (next.tos().combine(newLen - matchLen, newData + matchLen, dummy))
                 return true;
             next.append(*new PartialMatch(builder, newLen - matchLen, newData + matchLen, rowOffset + matchLen, false));
             return true;
@@ -503,6 +505,7 @@ bool PartialMatch::combine(size32_t newLen, const byte * newData)
         squashed = false;
         return true;
     }
+    common = 0;
     return false;
 }
 
@@ -864,17 +867,19 @@ void PartialMatch::trace(unsigned indent)
 
 //---------------------------------------------------------------------------------------------------------------------
 
-void PartialMatchBuilder::add(size32_t len, const void * data)
+size32_t PartialMatchBuilder::add(size32_t len, const void * data)
 {
+    size32_t common = 0;
     if (!root)
         root.set(new PartialMatch(this, len, data, 0, true));
     else
-        root->combine(len, (const byte *)data);
+        root->combine(len, (const byte *)data, common);
 
 #ifdef SANITY_CHECK_INPLACE_BUILDER
     MemoryBuffer out;
     root->serialize(out);
 #endif
+    return common;
 }
 
 void PartialMatchBuilder::removeLast()
@@ -1898,7 +1903,7 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
         return false;
 
     if ((0 == hdr.numKeys) && (keyLen != keyCompareLen))
-        lzwcomp.open(compressed.mem(), nodeSize, isVariable, rowCompression);
+        lzwcomp.open(compressed.mem(), nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
 
     __uint64 savedMinPosition = minPosition;
     __uint64 savedMaxPosition = maxPosition;
