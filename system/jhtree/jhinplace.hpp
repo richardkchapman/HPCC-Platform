@@ -57,7 +57,7 @@ public:
     {
     }
 
-    bool combine(size32_t newLen, const byte * newData);
+    bool combine(size32_t newLen, const byte * newData, size32_t &common);
     bool removeLast();
     void serialize(MemoryBuffer & buffer);
     void serializeFirst(MemoryBuffer & out);
@@ -102,7 +102,7 @@ public:
         //MORE: Options for #null bytes to include in a row, whether to squash etc.
     }
 
-    void add(size32_t len, const void * data);
+    size32_t add(size32_t len, const void * data);  // returns how many bytes of key matched previous row (MORE - would keylen - common be better)
     void removeLast();
     void serialize(MemoryBuffer & out);
     void trace();
