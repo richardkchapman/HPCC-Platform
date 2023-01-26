@@ -218,7 +218,7 @@ protected:
 class jhtree_decl CInplaceLeafWriteNode : public CInplaceWriteNode
 {
 public:
-    CInplaceLeafWriteNode(offset_t fpos, CKeyHdr *keyHdr, InplaceKeyBuildContext & _ctx);
+    CInplaceLeafWriteNode(offset_t fpos, CKeyHdr *keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFIeldOffset);
 
     virtual bool add(offset_t pos, const void *data, size32_t size, unsigned __int64 sequence) override;
     virtual void write(IFileIOStream *, CRC32 *crc) override;
@@ -238,6 +238,8 @@ protected:
     __uint64 maxPosition = 0;
     unsigned nodeSize;
     size32_t keyLen = 0;
+    size32_t lastKeyedFieldOffset = 0;
+    unsigned numRowsInBlock = 0;
     bool isVariable = false;
     bool rowCompression = false;
 };
@@ -251,7 +253,7 @@ public:
     virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const override
     {
         if (isLeafNode)
-            return new CInplaceLeafWriteNode(_fpos, _keyHdr, ctx);
+            return new CInplaceLeafWriteNode(_fpos, _keyHdr, ctx, lastKeyedFieldOffset);
         else
             return new CInplaceBranchWriteNode(_fpos, _keyHdr, ctx);
     }
@@ -259,6 +261,7 @@ public:
 protected:
     StringAttr compressionName;
     mutable InplaceKeyBuildContext ctx;
+    size32_t lastKeyedFieldOffset = 0;
 };
 
 #endif
