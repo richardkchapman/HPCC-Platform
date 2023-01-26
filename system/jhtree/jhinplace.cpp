@@ -1956,8 +1956,8 @@ void CInplaceBranchWriteNode::write(IFileIOStream *out, CRC32 *crc)
 
 //=========================================================================================================
 
-CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, KeyBuildContext & _ctx)
-: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false)
+CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, KeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset)
+: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false), lastKeyedFieldOffset(_lastKeyedFieldOffset)
 {
     nodeSize = _keyHdr->getNodeSize();
     keyLen = keyHdr->getMaxKeyLength();
@@ -1976,11 +1976,36 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
     if ((0 == hdr.numKeys) && (keyLen != keyCompareLen))
         lzwcomp.open(compressed.mem(), nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
 
+    
     __uint64 savedMinPosition = minPosition;
     __uint64 savedMaxPosition = maxPosition;
     const byte * data = (const byte *)_data;
     unsigned oldSize = getDataSize();
-    builder.add(keyCompareLen, data);
+    size32_t commonBytes = builder.add(keyCompareLen, data);
+    // Decide whether to start a new block, based on (a) size of this one and (b) how many of the keyed fields have changed value
+    if (numRowsInBlock)
+    {
+        if (commonBytes == keyCompareLen)
+        {
+            // Start a new block if this one has got larger than some threshold
+        }
+        else
+        {
+            if (commonBytes >= lastKeyedFieldOffset)
+                ; // Just one field changed
+            else
+                ; // more then one
+            // Start a new block if this one has got larger than some other, smaller, threshold. If we want to, we can factor in how many fields in the key
+            // have changed, and also how much space is left on the node.
+            // It's possible that a row would fit on this node in the current lzwcomp, but not in a new one - but if so, is squeezing a row in a good idea?
+            // It may depend on whether the NEXT row has a matching key...
+            // Some stats on average number of rows per key / all-but-last-key might be useful
+            lzwcomp.close();
+            size32_t buflen = lzwcomp.buflen();  MORE - need to store this info too! And numRowsInBlock
+            lzwcomp.open(((byte *) compressed.mem())+buflen, nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
+            numRowsInBlock = 0;
+        }
+    }
     if (positions.ordinality())
     {
         if (pos < minPosition)
@@ -2008,12 +2033,12 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
     if (isVariable)
         payloadLengths.append(extraSize);
 
-    size32_t required = getDataSize();
-    size32_t safetyMargin = (keyLen != keyCompareLen) ? 16 : 0;
-    size32_t available = maxBytes - safetyMargin;
+    size32_t required = getDataSize();              // The size currently required to write out this node, including the new key but NOT the new payload
+    size32_t safetyMargin = (keyLen != keyCompareLen) ? 16 : 0;  // I think the test is "is there a payload"
+    size32_t available = maxBytes - safetyMargin;   // Total amount we can fit on a node
 
     bool hasSpace = (required <= available);
-    if (hasSpace && (size != keyCompareLen))
+    if (hasSpace && (size != keyCompareLen))        // See if we can fit the payload (compressed) into this node
     {
         size32_t oldLzwSize = lzwcomp.buflen();
         size32_t lzwSpace = oldLzwSize + (maxBytes - required);
@@ -2022,6 +2047,8 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
             oldSize += (lzwcomp.buflen() - oldLzwSize);
             hasSpace = false;
         }
+        else
+            numRowsInBlock++;
     }
 
     if (!hasSpace)
@@ -2069,7 +2096,7 @@ unsigned CInplaceLeafWriteNode::getDataSize()
     unsigned payloadSize = 0;
     if (keyLen != keyCompareLen)
     {
-        size32_t payloadLen = lzwcomp.buflen();
+        size32_t payloadLen = lzwcomp.buflen() + ((byte *) lzwcomp.bufptr() - (byte *) compressed.mem());
         payloadSize = sizePacked(payloadLen) + payloadLen;
     }
     return posSize + offsetSize + payloadSize + builder.getSize();
@@ -2123,7 +2150,7 @@ void CInplaceLeafWriteNode::write(IFileIOStream *out, CRC32 *crc)
             }
             else if (keyLen != keyCompareLen)
             {
-                size32_t payloadLen = lzwcomp.buflen();
+                size32_t payloadLen = lzwcomp.buflen() + ((byte *) lzwcomp.bufptr() - (byte *) compressed.get()); // Length includes all prior blocks too
                 serializePacked(data, payloadLen);
                 data.append(payloadLen, compressed.get());
             }
@@ -2158,9 +2185,12 @@ InplaceIndexCompressor::InplaceIndexCompressor(size32_t keyedSize, IHThorIndexWr
         {
             const RtlFieldInfo *field = meta.queryField(idx);
             offset = field->type->buildNull(rowBuilder, offset, field);
+            lastKeyedFieldOffset = offset;
         }
         ctx.nullRow = nullRow;
     }
+    else
+        lastKeyedFieldOffset = keyedSize-1;
 }
 
 #ifdef _USE_CPPUNIT
