@@ -31,6 +31,96 @@
 #include "ctfile.hpp"
 #include "jhinplace.hpp"
 #include "jstats.h"
+#define ZSTD_STATIC_LINKING_ONLY
+#include "zstd.h"
+
+/* Notes on zstd API
+Block level API
+
+    Frame metadata cost is typically ~12 bytes, which can be non-negligible for very small blocks (< 100 bytes).
+    But users will have to take in charge needed metadata to regenerate data, such as compressed and content sizes.
+
+    A few rules to respect :
+    - Compressing and decompressing require a context structure
+      + Use ZSTD_createCCtx() and ZSTD_createDCtx()
+    - It is necessary to init context before starting
+      + compression : any ZSTD_compressBegin*() variant, including with dictionary
+      *   Probably ZSTDLIB_STATIC_API size_t ZSTD_compressBegin_usingCDict(ZSTD_CCtx* cctx, const ZSTD_CDict* cdict); 
+      + decompression : any ZSTD_decompressBegin*() variant, including with dictionary
+      + copyCCtx() and copyDCtx() can be used too
+    - Block size is limited, it must be <= ZSTD_getBlockSize() <= ZSTD_BLOCKSIZE_MAX == 128 KB
+      + If input is larger than a block size, it's necessary to split input data into multiple blocks
+      + For inputs larger than a single block, consider using regular ZSTD_compress() instead.
+        Frame metadata is not that costly, and quickly becomes negligible as source size grows larger than a block.
+    - When a block is considered not compressible enough, ZSTD_compressBlock() result will be 0 (zero) !
+      ===> In which case, nothing is produced into `dst` !
+      + User __must__ test for such outcome and deal directly with uncompressed data
+      + A block cannot be declared incompressible if ZSTD_compressBlock() return value was != 0.
+        Doing so would mess up with statistics history, leading to potential data corruption.
+      + ZSTD_decompressBlock() _doesn't accept uncompressed data as input_ !!
+      + In case of multiple successive blocks, should some of them be uncompressed,
+        decoder must be informed of their existence in order to follow proper history.
+        Use ZSTD_insertBlock() for such a case.
+
+
+Raw zstd block functions
+
+ZSTDLIB_STATIC_API size_t ZSTD_getBlockSize   (const ZSTD_CCtx* cctx);
+ZSTDLIB_STATIC_API size_t ZSTD_compressBlock  (ZSTD_CCtx* cctx, void* dst, size_t dstCapacity, const void* src, size_t srcSize);
+ZSTDLIB_STATIC_API size_t ZSTD_decompressBlock(ZSTD_DCtx* dctx, void* dst, size_t dstCapacity, const void* src, size_t srcSize);
+
+*/
+
+class ZStdCDictionary : public CInterface
+{
+    ZSTD_CDict* cdict = nullptr;
+public:
+    ZStdCDictionary(const void* dictBuffer, size_t dictSize, int compressionLevel)
+    {
+        cdict = ZSTD_createCDict(dictBuffer, dictSize, compressionLevel);
+    }
+    operator const ZSTD_CDict *() const 
+    {
+        return cdict;
+    }
+    ~ZStdCDictionary()
+    {
+        ZSTD_freeCDict(cdict);
+    }
+};
+
+class ZStdBlockCompressor
+{
+    // One context per thread
+    ZSTD_CCtx *cctx = nullptr;
+    Linked<const ZStdCDictionary> dict;
+    MemoryBuffer compressed;
+public:
+    ZStdBlockCompressor(const ZStdCDictionary *_dict, unsigned maxCompressedSize) : dict(_dict)
+    {
+        cctx = ZSTD_createCCtx();
+        ZSTD_compressBegin_usingCDict(cctx, *dict);
+        compressed.ensureCapacity(maxCompressedSize);
+    }
+    ~ZStdBlockCompressor()
+    {
+        ZSTD_freeCCtx(cctx);
+    }
+    size_t queryMaxBlockSize() const
+    {
+        return ZSTD_getBlockSize(cctx);
+    }
+    size_t compress(const void* src, size_t srcSize) // MORE - probably want to indicate current capacity, which is reduced by what has currently been written to node OTHER than compressed rows
+    {
+        // MORE - handle case where it refuses (not compressible) or not enough room
+        // Non-compressible will need marking as such somehow... Tricky to mix compressed and non-compressed rows
+        size_t ret = ZSTD_compressBlock(cctx, compressed.ensureCapacity(0), compressed.capacity(), src, srcSize);
+        assertex(ret);
+        compressed.reserve(ret);
+        return ret;
+    }
+};
+
 
 #ifdef _DEBUG
 //#define SANITY_CHECK_INPLACE_BUILDER     // painfully expensive consistency check
@@ -2001,7 +2091,7 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
             // It may depend on whether the NEXT row has a matching key...
             // Some stats on average number of rows per key / all-but-last-key might be useful
             lzwcomp.close();
-            size32_t buflen = lzwcomp.buflen();  MORE - need to store this info too! And numRowsInBlock
+            size32_t buflen = lzwcomp.buflen();  // MORE - need to store this info too! And numRowsInBlock
             lzwcomp.open(((byte *) compressed.mem())+buflen, nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
             numRowsInBlock = 0;
         }

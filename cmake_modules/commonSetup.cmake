@@ -1061,6 +1061,8 @@ IF ("${COMMONSETUP_DONE}" STREQUAL "")
         endif()
       endif()
 
+      find_package(zstd CONFIG REQUIRED)
+      
       if(USE_TBB)
           message(STATUS "Enabled use of TBB")
           add_definitions (-D_USE_TBB)
