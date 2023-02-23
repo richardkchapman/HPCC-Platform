@@ -141,6 +141,7 @@ public:
 #define USE_ZSTD_COMPRESSION
 #define ZSTD_STATIC_LINKING_ONLY
 #include "zstd.h"
+#include "zdict.h"
 
 class ZStdCDictionary : public CInterface
 {
@@ -160,6 +161,8 @@ class ZStdBlockCompressor : public CInterface
     ZSTD_CCtx *cctx = nullptr;
     Linked<const ZStdCDictionary> dict;
     MemoryBuffer compressed;
+    unsigned compressedRows = 0;
+    unsigned uncompressedRows = 0;
 public:
     ZStdBlockCompressor(const ZStdCDictionary *_dict, unsigned maxCompressedSize);
     ~ZStdBlockCompressor();
@@ -252,7 +255,7 @@ protected:
 class jhtree_decl CInplaceLeafWriteNode : public CInplaceWriteNode
 {
 public:
-    CInplaceLeafWriteNode(offset_t fpos, CKeyHdr *keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFIeldOffset);
+    CInplaceLeafWriteNode(offset_t fpos, CKeyHdr *keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset, ZStdCDictionary *dict);
 
     virtual bool add(offset_t pos, const void *data, size32_t size, unsigned __int64 sequence) override;
     virtual void write(IFileIOStream *, CRC32 *crc) override;
@@ -264,6 +267,7 @@ protected:
     InplaceKeyBuildContext & ctx;
     PartialMatchBuilder builder;
 #ifdef USE_ZSTD_COMPRESSION
+    Linked<ZStdCDictionary> zstdDict;
     Owned<ZStdBlockCompressor> zstdComp;
 #else
     KeyCompressor lzwcomp;
@@ -284,22 +288,56 @@ protected:
     bool rowCompression = false;
 };
 
+#ifdef USE_ZSTD_COMPRESSION
+class CInplaceDictionaryWriteNode  : public CInplaceWriteNode
+{
+public:
+    CInplaceDictionaryWriteNode(offset_t fpos, CKeyHdr *keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset);
+
+    virtual size32_t nodeSize() const override;
+    virtual bool add(offset_t pos, const void *data, size32_t size, unsigned __int64 sequence) override;
+    virtual void write(IFileIOStream *, CRC32 *crc) override;
+    ZStdCDictionary *getDictionary() const;
+
+protected:
+    size32_t lastKeyedFieldOffset = 0;
+    Owned<ZStdCDictionary> dictionary;
+    InplaceKeyBuildContext & ctx;
+    MemoryBuffer samplesBuffer;
+    std::vector<size_t> samplesSizes;
+};
+#endif
+
 class InplaceIndexCompressor : public CInterfaceOf<IIndexCompressor>
 {
 public:
     InplaceIndexCompressor(size32_t keyedSize, IHThorIndexWriteArg * helper, const char * _compressionName);
 
+    virtual bool supportsDictionary() const override { return true; };
     virtual const char *queryName() const override { return compressionName.str(); }
-    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const override
+    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, NodeType type) const override
     {
-        if (isLeafNode)
-            return new CInplaceLeafWriteNode(_fpos, _keyHdr, ctx, lastKeyedFieldOffset);
-        else
+        if (type==NodeType::NodeLeaf)
+            return new CInplaceLeafWriteNode(_fpos, _keyHdr, ctx, lastKeyedFieldOffset, dict);
+        else if (type==NodeType::NodeBranch)
             return new CInplaceBranchWriteNode(_fpos, _keyHdr, ctx);
+        else if (type==NodeType::NodeDict)
+        {
+            return new CInplaceDictionaryWriteNode(_fpos, _keyHdr, ctx, lastKeyedFieldOffset);
+        }
+        else
+            throwUnexpected();
+    }
+    virtual void useDictionary(CWriteNode *_dictNode) override
+    {
+        dictNode.set(static_cast<CInplaceDictionaryWriteNode *>(_dictNode));
+        dict.setown(dictNode->getDictionary());
     }
 
 protected:
     StringAttr compressionName;
+    Owned<CInplaceDictionaryWriteNode> dictNode;
+    Owned<ZStdCDictionary> dict;
     mutable InplaceKeyBuildContext ctx;
     size32_t lastKeyedFieldOffset = 0;
 };

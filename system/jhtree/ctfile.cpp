@@ -210,6 +210,11 @@ bool CKeyHdr::isVariable()
     return (hdr.ktype & HTREE_VARSIZE) == HTREE_VARSIZE; 
 }
 
+size32_t CWriteKeyHdr::nodeSize() const
+{
+    return hdr.nodeSize;
+}
+
 void CWriteKeyHdr::write(IFileIOStream *out, CRC32 *crc)
 {
     unsigned nodeSize = hdr.nodeSize;
@@ -267,6 +272,11 @@ CWriteNodeBase::CWriteNodeBase(offset_t _fpos, CKeyHdr *_keyHdr)
     memset(nodeBuf, 0, nodeSize);
     maxBytes = keyHdr->getMaxNodeBytes();
     keyPtr = nodeBuf + sizeof(hdr);
+}
+
+size32_t CWriteNodeBase::nodeSize() const
+{
+    return keyHdr->getNodeSize();
 }
 
 CWriteNodeBase::~CWriteNodeBase()

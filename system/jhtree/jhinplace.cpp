@@ -82,13 +82,13 @@ ZStdCDictionary::~ZStdCDictionary()
 ZStdBlockCompressor::ZStdBlockCompressor(const ZStdCDictionary *_dict, unsigned maxCompressedSize) : dict(_dict)
 {
     cctx = ZSTD_createCCtx();
-    ZSTD_compressBegin_usingCDict(cctx, *dict);
     compressed.ensureCapacity(maxCompressedSize);
 }
 
 ZStdBlockCompressor::~ZStdBlockCompressor()
 {
     ZSTD_freeCCtx(cctx);
+    DBGLOG("%u rows compressed, %u rows not compressed", compressedRows, uncompressedRows);
 }
 
 size_t ZStdBlockCompressor::queryMaxBlockSize() const
@@ -100,7 +100,17 @@ size_t ZStdBlockCompressor::compress(const void* src, size_t srcSize) // MORE - 
 {
     // MORE - handle case where it refuses (not compressible) or not enough room
     // Non-compressible will need marking as such somehow... Tricky to mix compressed and non-compressed rows
+    ZSTD_compressBegin_usingCDict(cctx, *dict);
     size_t ret = ZSTD_compressBlock(cctx, compressed.ensureCapacity(0), compressed.capacity(), src, srcSize);
+    if (!ret)
+    {
+        ret = srcSize; // hack...
+        uncompressedRows++;
+    }
+    else
+    {
+        compressedRows++;
+    }
     assertex(ret);
     compressed.reserve(ret);
     return ret;
@@ -1959,8 +1969,8 @@ void CInplaceBranchWriteNode::write(IFileIOStream *out, CRC32 *crc)
 
 //=========================================================================================================
 
-CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset)
-: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false), lastKeyedFieldOffset(_lastKeyedFieldOffset)
+CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset, ZStdCDictionary *_dict)
+: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false), lastKeyedFieldOffset(_lastKeyedFieldOffset), zstdDict(_dict)
 {
     nodeSize = _keyHdr->getNodeSize();
     keyLen = keyHdr->getMaxKeyLength();
@@ -1978,8 +1988,8 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
 
     if ((0 == hdr.numKeys) && (keyLen != keyCompareLen))
 #ifdef USE_ZSTD_COMPRESSION
-        zstdComp.setown(new ZStdBlockCompressor(new ZStdCDictionary(nullptr, 0, 20), nodeSize));  // MORE - use a sensible dictionary (somehow!) and don't leak it
-        // MORE - nodesize is wrong too
+        zstdComp.setown(new ZStdBlockCompressor(zstdDict, nodeSize));
+        // MORE - nodesize is wrong
 #else
         lzwcomp.open(compressed.mem(), nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
 #endif
@@ -2052,7 +2062,7 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
 #ifdef USE_ZSTD_COMPRESSION
         size32_t oldCompressedSize = zstdComp->getCompressedSize();
         size32_t thisRowSize = zstdComp->compress(extraData, extraSize);
-        size32_t zstdSpace = oldCompressedSize + (maxBytes - required);
+        size32_t zstdSpace = (maxBytes - required);
         if (thisRowSize > zstdSpace)
         {
             zstdComp->setSize(oldCompressedSize);  
@@ -2197,6 +2207,50 @@ void CInplaceLeafWriteNode::write(IFileIOStream *out, CRC32 *crc)
     CWriteNode::write(out, crc);
 }
 
+//=========================================================================================================
+
+CInplaceDictionaryWriteNode::CInplaceDictionaryWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset)
+: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), lastKeyedFieldOffset(_lastKeyedFieldOffset)
+{
+}
+
+bool CInplaceDictionaryWriteNode::add(offset_t pos, const void * data, size32_t size, unsigned __int64 sequence)
+{
+    if (samplesBuffer.length() > 0x100000)
+        return false;
+    assertex(size > lastKeyedFieldOffset);
+    size -= lastKeyedFieldOffset;
+    data = (const char *) data + lastKeyedFieldOffset;
+    samplesBuffer.append(size, data);
+    samplesSizes.push_back(size);
+    return true;
+}
+
+size32_t CInplaceDictionaryWriteNode::nodeSize() const
+{
+    return 0x10000; 
+}
+
+ZStdCDictionary *CInplaceDictionaryWriteNode::getDictionary() const
+{
+    return dictionary.getLink();
+}
+
+void CInplaceDictionaryWriteNode::write(IFileIOStream *out, CRC32 *crc)
+{
+    MemoryBuffer dict;
+    size_t dictSize = ZDICT_trainFromBuffer(dict.reserve(0x10000), 0x10000, samplesBuffer.toByteArray(), samplesSizes.data(), samplesSizes.size());
+    dict.setLength(dictSize);
+    dictionary.setown(new ZStdCDictionary(dict.toByteArray(), dictSize, 0));  // MORE - could use ref version?
+    samplesBuffer.clear();
+    samplesSizes.clear();
+    assertex(hdr.keyBytes<=maxBytes);
+    writeHdr();   // Doesn't actually write it, just prepares it for writing
+    out->seek(getFpos(), IFSbegin);
+    out->write(keyHdr->getNodeSize(), nodeBuf);
+    if (crc)
+        crc->tally(keyHdr->getNodeSize(), nodeBuf);
+}
 
 //=========================================================================================================
 
