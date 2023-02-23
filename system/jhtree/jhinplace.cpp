@@ -82,13 +82,13 @@ ZStdCDictionary::~ZStdCDictionary()
 ZStdBlockCompressor::ZStdBlockCompressor(const ZStdCDictionary *_dict, unsigned maxCompressedSize) : dict(_dict)
 {
     cctx = ZSTD_createCCtx();
-    ZSTD_compressBegin_usingCDict(cctx, *dict);
     compressed.ensureCapacity(maxCompressedSize);
 }
 
 ZStdBlockCompressor::~ZStdBlockCompressor()
 {
     ZSTD_freeCCtx(cctx);
+    DBGLOG("%u rows compressed, %u rows not compressed", compressedRows, uncompressedRows);
 }
 
 size_t ZStdBlockCompressor::queryMaxBlockSize() const
@@ -100,7 +100,17 @@ size_t ZStdBlockCompressor::compress(const void* src, size_t srcSize) // MORE - 
 {
     // MORE - handle case where it refuses (not compressible) or not enough room
     // Non-compressible will need marking as such somehow... Tricky to mix compressed and non-compressed rows
+    ZSTD_compressBegin_usingCDict(cctx, *dict);
     size_t ret = ZSTD_compressBlock(cctx, compressed.ensureCapacity(0), compressed.capacity(), src, srcSize);
+    if (!ret)
+    {
+        ret = srcSize; // hack...
+        uncompressedRows++;
+    }
+    else
+    {
+        compressedRows++;
+    }
     assertex(ret);
     compressed.reserve(ret);
     return ret;
@@ -2030,8 +2040,8 @@ void CInplaceBranchWriteNode::write(IFileIOStream *out, CRC32 *crc)
 
 //=========================================================================================================
 
-CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, KeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset)
-: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false), lastKeyedFieldOffset(_lastKeyedFieldOffset)
+CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, KeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset, ZStdCDictionary *_dict)
+: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false), lastKeyedFieldOffset(_lastKeyedFieldOffset), zstdDict(_dict)
 {
     nodeSize = _keyHdr->getNodeSize();
     keyLen = keyHdr->getMaxKeyLength();
@@ -2049,8 +2059,8 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
 
     if ((0 == hdr.numKeys) && (keyLen != keyCompareLen))
 #ifdef USE_ZSTD_COMPRESSION
-        zstdComp.setown(new ZStdBlockCompressor(new ZStdCDictionary(nullptr, 0, 20), nodeSize));  // MORE - use a sensible dictionary (somehow!) and don't leak it
-        // MORE - nodesize is wrong too
+        zstdComp.setown(new ZStdBlockCompressor(zstdDict, nodeSize));
+        // MORE - nodesize is wrong
 #else
         lzwcomp.open(compressed.mem(), nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
 #endif
@@ -2123,7 +2133,7 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
 #ifdef USE_ZSTD_COMPRESSION
         size32_t oldCompressedSize = zstdComp->getCompressedSize();
         size32_t thisRowSize = zstdComp->compress(extraData, extraSize);
-        size32_t zstdSpace = oldCompressedSize + (maxBytes - required);
+        size32_t zstdSpace = (maxBytes - required);
         if (thisRowSize > zstdSpace)
         {
             zstdComp->setSize(oldCompressedSize);  
@@ -2268,6 +2278,50 @@ void CInplaceLeafWriteNode::write(IFileIOStream *out, CRC32 *crc)
     CWriteNode::write(out, crc);
 }
 
+//=========================================================================================================
+
+CInplaceDictionaryWriteNode::CInplaceDictionaryWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, KeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset)
+: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), lastKeyedFieldOffset(_lastKeyedFieldOffset)
+{
+}
+
+bool CInplaceDictionaryWriteNode::add(offset_t pos, const void * data, size32_t size, unsigned __int64 sequence)
+{
+    if (samplesBuffer.length() > 0x100000)
+        return false;
+    assertex(size > lastKeyedFieldOffset);
+    size -= lastKeyedFieldOffset;
+    data = (const char *) data + lastKeyedFieldOffset;
+    samplesBuffer.append(size, data);
+    samplesSizes.push_back(size);
+    return true;
+}
+
+size32_t CInplaceDictionaryWriteNode::nodeSize() const
+{
+    return 0x10000; 
+}
+
+ZStdCDictionary *CInplaceDictionaryWriteNode::getDictionary() const
+{
+    return dictionary.getLink();
+}
+
+void CInplaceDictionaryWriteNode::write(IFileIOStream *out, CRC32 *crc)
+{
+    MemoryBuffer dict;
+    size_t dictSize = ZDICT_trainFromBuffer(dict.reserve(0x10000), 0x10000, samplesBuffer.toByteArray(), samplesSizes.data(), samplesSizes.size());
+    dict.setLength(dictSize);
+    dictionary.setown(new ZStdCDictionary(dict.toByteArray(), dictSize, 0));  // MORE - could use ref version?
+    samplesBuffer.clear();
+    samplesSizes.clear();
+    assertex(hdr.keyBytes<=maxBytes);
+    writeHdr();   // Doesn't actually write it, just prepares it for writing
+    out->seek(getFpos(), IFSbegin);
+    out->write(keyHdr->getNodeSize(), nodeBuf);
+    if (crc)
+        crc->tally(keyHdr->getNodeSize(), nodeBuf);
+}
 
 //=========================================================================================================
 
@@ -2468,346 +2522,5 @@ class InplaceIndexTest : public CppUnit::TestFixture
 
 CPPUNIT_TEST_SUITE_REGISTRATION( InplaceIndexTest );
 CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( InplaceIndexTest, "InplaceIndexTest" );
-
-#endif
-
-
-#if 0
-//Old code:
-int InplaceNodeSearcher::compareValueAt(const char * search, unsigned int compareIndex) const
-{
-    unsigned resultPrev = 0;
-    unsigned resultNext = count;
-    const byte * finger = nodeData;
-    unsigned offset = 0;
-
-    for (;;)
-    {
-        //An alternating sequence of match, opt blocks
-        const unsigned numBytes = readPacked32(finger);
-        for (unsigned i=0; i < numBytes; i++)
-        {
-            const byte nextSearch = search[i];
-            const byte nextFinger = finger[i];
-            if (nextFinger > nextSearch)
-            {
-                //This entry is larger than the search value => we have a match
-                return -1;
-            }
-            else if (nextFinger < nextSearch)
-            {
-                //This entry (and all children) are less than the search value
-                return +1;
-            }
-        }
-        search += numBytes;
-        offset += numBytes;
-        if (resultNext == resultPrev+1)
-            break;
-
-        finger += numBytes;
-
-        //Now an opt block
-        const unsigned numOptions = readPacked32(finger) + 2;
-        byte sizeInfo = *finger++;
-        //Top two bits are currently spare - it may make sense to move before count and use them for repetition
-        byte bytesPerCount = (sizeInfo >> 3) & 7; // could pack other information in....
-        byte bytesPerOffset = (sizeInfo & 7);
-
-        //MORE: Duplicates can occur on the last byte of the key - if so we have a match
-        if (bytesPerOffset == 0)
-            break;
-
-        const byte * counts = finger + numOptions; // counts follow the data
-        const byte nextSearch = search[0];
-        for (unsigned i=0; i < numOptions; i++)
-        {
-            const byte nextFinger = finger[i];
-            if (nextFinger > nextSearch)
-            {
-                //This entry is greater than search => item(i) is the correct entry
-                if (i == 0)
-                    return -1;
-
-                unsigned delta;
-                if (bytesPerCount == 0)
-                    delta = i;
-                else
-                    delta = readBytesEntry32(counts, i-1, bytesPerCount) + 1;
-                unsigned matchIndex = resultPrev + delta;
-                return (compareIndex >= matchIndex) ? -1 : +1;
-            }
-            else if (nextFinger < nextSearch)
-            {
-                //The entry is < search => keep looping
-            }
-            else
-            {
-                if (bytesPerCount == 0)
-                {
-                    resultPrev += i;
-                    resultNext = resultPrev+1;
-                }
-                else
-                {
-                    //Exact match.  Reduce the range of the match counts using the running counts
-                    //stored for each of the options, and continue matching.
-                    resultNext = resultPrev + readBytesEntry32(counts, i, bytesPerCount)+1;
-                    if (i > 0)
-                        resultPrev += readBytesEntry32(counts, i-1, bytesPerCount)+1;
-                }
-
-                //If the compareIndex is < the lower bound for the match index the search value must be higher
-                if (compareIndex < resultPrev)
-                    return +1;
-
-                //If the compareIndex is >= the upper bound for the match index the search value must be lower
-                if (compareIndex >= resultNext)
-                    return -1;
-
-                const byte * offsets = counts + numOptions * bytesPerCount;
-                const byte * next = offsets + (numOptions-1) * bytesPerOffset;
-                finger = next;
-                if (i > 0)
-                    finger += readBytesEntry32(offsets, i-1, bytesPerOffset);
-                search++;
-                offset++;
-                //Use a goto because we can't continue the outer loop from an inner loop
-                goto nextTree;
-            }
-        }
-        //Search is > all elements
-        return +1;
-
-    nextTree:
-        ;
-    }
-
-    //compare with the null value
-    for (unsigned i=offset; i < keyLen; i++)
-    {
-        const byte nextSearch = search[i-offset];
-        const byte nextFinger = nullRow[i];
-        if (nextFinger > nextSearch)
-            return -1;
-        else if (nextFinger < nextSearch)
-            return +1;
-    }
-
-    return 0;
-}
-
-//Find the first row that is >= the search row
-unsigned InplaceNodeSearcher::findGE(const unsigned len, const byte * search) const
-{
-    unsigned resultPrev = 0;
-    unsigned resultNext = count;
-    const byte * finger = nodeData;
-    unsigned offset = 0;
-
-    for (;;)
-    {
-        //An alternating sequence of match, opt blocks
-        const unsigned numBytes = readPacked32(finger);
-        unsigned i=0;
-#if 0
-        if (unlikely(numBytes >= 4))
-        {
-            do
-            {
-                //Technically undefined behaviour because the data was not originally
-                //defined as unsigned values, access will be misaligned.
-                const unsigned nextSearch = *(const unsigned *)(search + i);
-                const unsigned nextFinger = *(const unsigned *)(finger + i);
-                if (nextSearch != nextFinger)
-                {
-                    const unsigned revNextSearch = reverseBytes(nextSearch);
-                    const unsigned revNextFinger = reverseBytes(nextFinger);
-                    if (revNextFinger > revNextSearch)
-                        return resultPrev;
-                    else
-                        return resultNext;
-                }
-                i += 4;
-            } while (i + 4 <= numBytes);
-        }
-#endif
-
-        for (; i < numBytes; i++)
-        {
-            const byte nextSearch = search[i];
-            const byte nextFinger = finger[i];
-            if (nextFinger > nextSearch)
-            {
-                //This entry is larger than the search value => we have a match
-                return resultPrev;
-            }
-            else if (nextFinger < nextSearch)
-            {
-                //This entry (and all children) are less than the search value
-                //=> the next entry is the match
-                return resultNext;
-            }
-        }
-        search += numBytes;
-        offset += numBytes;
-        if (resultNext == resultPrev+1)
-            break;
-
-        finger += numBytes;
-
-        //Now an opt block
-        const unsigned numOptions = readPacked32(finger) + 2;
-        byte sizeInfo = *finger++;
-        //Top two bits are currently spare - it may make sense to move before count and use them for repetition
-        byte bytesPerCount = (sizeInfo >> 3) & 7; // could pack other information in....
-        byte bytesPerOffset = (sizeInfo & 7);
-
-        //MORE: Duplicates can occur on the last byte of the key - if so we have a match
-        if (bytesPerOffset == 0)
-        {
-            dbgassertex(resultNext == resultPrev+numOptions);
-            break;
-        }
-
-        const byte * counts = finger + numOptions; // counts follow the data
-        const byte nextSearch = search[0];
-        for (unsigned i=0; i < numOptions; i++)
-        {
-            const byte nextFinger = finger[i];
-            if (nextFinger > nextSearch)
-            {
-                //This entry is greater than search => this is the correct entry
-                if (bytesPerCount == 0)
-                    return resultPrev + i;
-                if (i == 0)
-                    return resultPrev;
-                return resultPrev + readBytesEntry32(counts, i-1, bytesPerCount) + 1;
-            }
-            else if (nextFinger < nextSearch)
-            {
-                //The entry is < search => keep looping
-            }
-            else
-            {
-                if (bytesPerCount == 0)
-                {
-                    resultPrev += i;
-                    resultNext = resultPrev+1;
-                }
-                else
-                {
-                    //Exact match.  Reduce the range of the match counts using the running counts
-                    //stored for each of the options, and continue matching.
-                    resultNext = resultPrev + readBytesEntry32(counts, i, bytesPerCount)+1;
-                    if (i > 0)
-                        resultPrev += readBytesEntry32(counts, i-1, bytesPerCount)+1;
-                }
-
-                const byte * offsets = counts + numOptions * bytesPerCount;
-                const byte * next = offsets + (numOptions-1) * bytesPerOffset;
-                finger = next;
-                if (i > 0)
-                    finger += readBytesEntry32(offsets, i-1, bytesPerOffset);
-                search++;
-                offset++;
-                //Use a goto because we can't continue the outer loop from an inner loop
-                goto nextTree;
-            }
-        }
-        //Did not match any => next value matches
-        return resultNext;
-
-    nextTree:
-        ;
-    }
-
-    //compare with the null value
-    for (unsigned i=offset; i < keyLen; i++)
-    {
-        const byte nextSearch = search[i-offset];
-        const byte nextFinger = nullRow[i];
-        if (nextFinger > nextSearch)
-            return resultPrev;
-        else if (nextFinger < nextSearch)
-            return resultNext;
-    }
-    return resultPrev;
-}
-
-bool InplaceNodeSearcher::getValueAt(unsigned int searchIndex, char *key) const
-{
-    if (searchIndex >= count)
-        return false;
-
-    unsigned resultPrev = 0;
-    unsigned resultNext = count;
-    const byte * finger = nodeData;
-    unsigned offset = 0;
-
-    for (;;)
-    {
-        //An alternating sequence of match, opt blocks
-        const unsigned numBytes = readPacked32(finger);
-        for (unsigned i=0; i < numBytes; i++)
-            key[offset+i] = finger[i];
-        offset += numBytes;
-        if (resultNext == resultPrev+1)
-            break;
-
-        finger += numBytes;
-
-        //Now an opt block
-        const unsigned numOptions = readPacked32(finger) + 2;
-        byte sizeInfo = *finger++;
-        //Top two bits are currently spare - it may make sense to move before count and use them for repetition
-        byte bytesPerCount = (sizeInfo >> 3) & 7; // could pack other information in....
-        byte bytesPerOffset = (sizeInfo & 7);
-
-        //MORE: Duplicates can occur after the last byte of the key - bytesPerOffset is set to 0 if this occurs
-        if (bytesPerOffset == 0)
-            break;
-
-        const byte * counts = finger + numOptions; // counts follow the data
-        unsigned option = 0;
-        unsigned countPrev = 0;
-        unsigned countNext = 1;
-        if (bytesPerCount == 0)
-        {
-            option = searchIndex - resultPrev;
-            countPrev = option;
-            countNext = option+1;
-        }
-        else
-        {
-            countPrev = 0;
-            for (unsigned i=0; i < numOptions; i++)
-            {
-                countNext = readBytesEntry32(counts, i, bytesPerCount)+1;
-                if (searchIndex < resultPrev + countNext)
-                {
-                    option = i;
-                    break;
-                }
-                countPrev = countNext;
-            }
-        }
-        key[offset++] = finger[option];
-
-        resultNext = resultPrev + countNext;
-        resultPrev = resultPrev + countPrev;
-
-        const byte * offsets = counts + numOptions * bytesPerCount;
-        const byte * next = offsets + (numOptions-1) * bytesPerOffset;
-        finger = next;
-        if (option > 0)
-            finger += readBytesEntry32(offsets, option-1, bytesPerOffset);
-    }
-
-    //Finally pad with any values from the nullRow.
-    for (unsigned i=offset; i < keyLen; i++)
-        key[i] = nullRow[i];
-    return true;
-}
 
 #endif

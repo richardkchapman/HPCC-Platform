@@ -111,6 +111,7 @@ enum NodeType : byte
     NodeBlob = 2,
     NodeMeta = 3,
     NodeBloom = 4,
+    NodeDict = 5,
 //The following is never stored and only used in code as a value that does not match any of the above.
     NodeNone = 127,
 };
@@ -160,6 +161,7 @@ struct SplitNodeHdr
 interface IWritableNode
 {
     virtual void write(IFileIOStream *, CRC32 *crc) = 0;
+    virtual size32_t nodeSize() const = 0;
 };
 
 class jhtree_decl CKeyHdr : public CInterface
@@ -215,6 +217,7 @@ public:
 class CWriteKeyHdr : public CKeyHdr, implements IWritableNode
 {
 public:
+    virtual size32_t nodeSize() const override;
     virtual void write(IFileIOStream *, CRC32 *crc) override;
 };
 
@@ -421,6 +424,7 @@ public:
     CWriteNodeBase(offset_t fpos, CKeyHdr *keyHdr);
     ~CWriteNodeBase();
 
+    virtual size32_t nodeSize() const override;
     virtual void write(IFileIOStream *, CRC32 *crc) override;
     void setLeftSib(offset_t leftSib) { hdr.leftSib = leftSib; }
     void setRightSib(offset_t rightSib) { hdr.rightSib = rightSib; }
@@ -510,8 +514,10 @@ IKeyException *MakeKeyException(int code, const char *format, ...) __attribute__
 
 interface IIndexCompressor : public IInterface
 {
+    virtual bool supportsDictionary() const = 0;
     virtual const char *queryName() const = 0;
-    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const = 0;
+    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, NodeType type) const = 0;
+    virtual void useDictionary(CWriteNode *) = 0;
 };
 
 

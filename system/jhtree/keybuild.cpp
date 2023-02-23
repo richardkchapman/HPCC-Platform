@@ -77,22 +77,29 @@ public:
 
 class PocIndexCompressor : public CInterfaceOf<IIndexCompressor>
 {
+    virtual bool supportsDictionary() const override { return false; };
+    virtual void useDictionary(CWriteNode *) override { throwUnexpected(); }
     virtual const char *queryName() const override { return "POC"; }
-    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const override
+    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, NodeType type) const override
     {
-        if (isLeafNode)
-            return new CPOCWriteNode(_fpos, _keyHdr, isLeafNode);
+        if (type==NodeType::NodeLeaf)
+            return new CPOCWriteNode(_fpos, _keyHdr, true);
+        else if (type==NodeType::NodeBranch)
+            return new CLegacyWriteNode(_fpos, _keyHdr, false);
         else
-            return new CLegacyWriteNode(_fpos, _keyHdr, isLeafNode);
+            throwUnexpected();
     }
 };
 
 class LegacyIndexCompressor : public CInterfaceOf<IIndexCompressor>
 {
+    virtual bool supportsDictionary() const override { return false; };
+    virtual void useDictionary(CWriteNode *) override { throwUnexpected(); }
     virtual const char *queryName() const override { return "Legacy"; }
-    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, bool isLeafNode) const override
+    virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, NodeType type) const override
     {
-        return new CLegacyWriteNode(_fpos, _keyHdr, isLeafNode);
+        assertex(type==NodeType::NodeLeaf || type==NodeType::NodeBranch);
+        return new CLegacyWriteNode(_fpos, _keyHdr, type==NodeType::NodeLeaf);
     }
 };
 
@@ -129,7 +136,9 @@ private:
     Owned<IIndexCompressor> indexCompressor;
     bool enforceOrder = true;
     bool isTLK = false;
-
+    bool dictDone = false;
+    CWriteNode *activeDict = nullptr;
+    MemoryBuffer replayRows;
 public:
     CKeyBuilder(IFileIOStream *_out, unsigned flags, unsigned rawSize, unsigned nodeSize, unsigned _keyedSize, unsigned __int64 _startSequence,  IHThorIndexWriteArg *_helper, bool _enforceOrder, bool _isTLK)
         : out(_out),
@@ -229,7 +238,7 @@ public:
     {
         unsigned int leaf = 0;
         CWriteNode *node = NULL;
-        node = indexCompressor->createNode(nextPos, keyHdr, levels==0);
+        node = indexCompressor->createNode(nextPos, keyHdr, levels==0 ? NodeType::NodeLeaf : NodeType::NodeBranch);
         nextPos += keyHdr->getNodeSize();
         numBranches++;
         while (leaf<thisLevel.ordinality())
@@ -239,7 +248,7 @@ public:
             {
                 flushNode(node, parents);
                 node->Release();
-                node = indexCompressor->createNode(nextPos, keyHdr, levels==0);
+                node = indexCompressor->createNode(nextPos, keyHdr, levels==0 ? NodeType::NodeLeaf : NodeType::NodeBranch);
                 nextPos += keyHdr->getNodeSize();
                 numBranches++;
                 verifyex(node->add(info.pos, info.value, info.size, info.sequence));
@@ -288,7 +297,8 @@ protected:
 
     void writeNode(IWritableNode *node, offset_t _nodePos)
     {
-        unsigned nodeSize = keyHdr->getNodeSize();
+     //   unsigned nodeSize = keyHdr->getNodeSize();
+        unsigned nodeSize = node->nodeSize();
         if (doCrc)
         {
             CRC32HTE *rollingCrcEntry1 = crcEndPosTable.find(_nodePos); // is start of this block end of another?
@@ -515,13 +525,56 @@ protected:
         leafInfo.append(* info);
     }
 
+    void replayDictRows()
+    {
+        if (!dictDone)
+        {
+            writeNode(activeDict, nextPos);
+            nextPos += activeDict->nodeSize();
+            dictDone = true;
+            indexCompressor->useDictionary(activeDict);  // MORE - leaks
+        }
+        while (replayRows.remaining())
+        {
+            offset_t pos;
+            size32_t recsize;
+            replayRows.read(pos);
+            replayRows.read(recsize);
+            const char *data = (const char *) replayRows.readDirect(recsize);
+            processKeyData(data, pos, recsize);
+        }
+    }
+
     void processKeyData(const char *keyData, offset_t pos, size32_t recsize)
     {
+        if (activeDict && !dictDone)
+        {
+            if (activeDict->add(pos, keyData, recsize, 0))
+            {
+                replayRows.append(pos);
+                replayRows.append(recsize);
+                replayRows.append(recsize, keyData);
+                return;
+            }
+            replayDictRows();   // replay the rows we used to train dict
+        }
         records++;
         if (NULL == activeNode)
         {
+            if (!dictDone)
+            {
+                if (indexCompressor->supportsDictionary())
+                    activeDict = indexCompressor->createNode(nextPos, keyHdr, NodeType::NodeDict);
+                if (activeDict)
+                {
+                    processKeyData(keyData, pos, recsize);
+                    return;
+                }
+                else
+                    dictDone = true;
+            }
             keyHdr->getHdrStruct()->firstLeaf = nextPos;
-            activeNode = indexCompressor->createNode(nextPos, keyHdr, true);
+            activeNode = indexCompressor->createNode(nextPos, keyHdr, NodeType::NodeLeaf);
             nextPos += keyHdr->getNodeSize();
             numLeaves++;
         }
@@ -552,7 +605,7 @@ protected:
 
             flushNode(activeNode, leafInfo);
             activeNode->Release();
-            activeNode = indexCompressor->createNode(nextPos, keyHdr, true);
+            activeNode = indexCompressor->createNode(nextPos, keyHdr, NodeType::NodeLeaf);
             nextPos += keyHdr->getNodeSize();
             numLeaves++;
             if (!activeNode->add(pos, keyData, recsize, sequence))
