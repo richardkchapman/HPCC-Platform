@@ -138,6 +138,40 @@ public:
 
 //---------------------------------------------------------------------------------------------------------------------
 
+#define USE_ZSTD_COMPRESSION
+#define ZSTD_STATIC_LINKING_ONLY
+#include "zstd.h"
+
+class ZStdCDictionary : public CInterface
+{
+    ZSTD_CDict* cdict = nullptr;
+public:
+    ZStdCDictionary(const void* dictBuffer, size_t dictSize, int compressionLevel);
+    operator const ZSTD_CDict *() const 
+    {
+        return cdict;
+    }
+    ~ZStdCDictionary();
+};
+
+class ZStdBlockCompressor : public CInterface
+{
+    // One context per thread
+    ZSTD_CCtx *cctx = nullptr;
+    Linked<const ZStdCDictionary> dict;
+    MemoryBuffer compressed;
+public:
+    ZStdBlockCompressor(const ZStdCDictionary *_dict, unsigned maxCompressedSize);
+    ~ZStdBlockCompressor();
+    size_t queryMaxBlockSize() const;
+    void setSize(size32_t len) { compressed.setLength(len); };
+    size32_t getCompressedSize() const { return compressed.length(); };
+    const void *queryCompressedData() const { return compressed.toByteArray(); };
+    size_t compress(const void* src, size_t srcSize);
+};
+
+//---------------------------------------------------------------------------------------------------------------------
+
 class jhtree_decl CJHInplaceTreeNode : public CJHSearchNode
 {
 public:
@@ -229,7 +263,11 @@ protected:
 protected:
     InplaceKeyBuildContext & ctx;
     PartialMatchBuilder builder;
+#ifdef USE_ZSTD_COMPRESSION
+    Owned<ZStdBlockCompressor> zstdComp;
+#else
     KeyCompressor lzwcomp;
+#endif
     MemoryBuffer uncompressed;      // Much better if these could be shared by all nodes => refactor
     MemoryAttr compressed;
     UnsignedArray payloadLengths;
@@ -239,7 +277,9 @@ protected:
     unsigned nodeSize;
     size32_t keyLen = 0;
     size32_t lastKeyedFieldOffset = 0;
+#ifndef USE_ZSTD_COMPRESSION
     unsigned numRowsInBlock = 0;
+#endif
     bool isVariable = false;
     bool rowCompression = false;
 };

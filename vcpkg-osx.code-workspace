@@ -15,6 +15,9 @@
 			"-DSUPPRESS_MONGODBEMBED=ON",
 			"-DUSE_JAVA=OFF"
 		],
+		"files.associations": {
+			"*.ipp": "cpp"
+		},
 	},
 	"extensions": {
 		"recommendations": [
