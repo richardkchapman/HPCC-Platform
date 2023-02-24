@@ -138,7 +138,7 @@ public:
 
 //---------------------------------------------------------------------------------------------------------------------
 
-#define USE_ZSTD_COMPRESSION
+//#define USE_ZSTD_COMPRESSION
 #define ZSTD_STATIC_LINKING_ONLY
 #include "zstd.h"
 #include "zdict.h"
@@ -255,7 +255,11 @@ protected:
 class jhtree_decl CInplaceLeafWriteNode : public CInplaceWriteNode
 {
 public:
+#ifdef USE_ZSTD_COMPRESSION
     CInplaceLeafWriteNode(offset_t fpos, CKeyHdr *keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset, ZStdCDictionary *dict);
+#else
+    CInplaceLeafWriteNode(offset_t fpos, CKeyHdr *keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset);
+#endif
 
     virtual bool add(offset_t pos, const void *data, size32_t size, unsigned __int64 sequence) override;
     virtual void write(IFileIOStream *, CRC32 *crc) override;
@@ -313,31 +317,43 @@ class InplaceIndexCompressor : public CInterfaceOf<IIndexCompressor>
 public:
     InplaceIndexCompressor(size32_t keyedSize, size32_t maxRowSize, IHThorIndexWriteArg * helper, const char * _compressionName);
 
+#ifdef USE_ZSTD_COMPRESSION
     virtual bool supportsDictionary() const override { return hasPayload; };
+#else
+    virtual bool supportsDictionary() const override { return false; };
+#endif
     virtual const char *queryName() const override { return compressionName.str(); }
     virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, NodeType type) const override
     {
         if (type==NodeType::NodeLeaf)
+#ifdef USE_ZSTD_COMPRESSION
             return new CInplaceLeafWriteNode(_fpos, _keyHdr, ctx, lastKeyedFieldOffset, dict);
+#else
+            return new CInplaceLeafWriteNode(_fpos, _keyHdr, ctx, lastKeyedFieldOffset);
+#endif
         else if (type==NodeType::NodeBranch)
             return new CInplaceBranchWriteNode(_fpos, _keyHdr, ctx);
+#ifdef USE_ZSTD_COMPRESSION
         else if (type==NodeType::NodeDict)
-        {
             return new CInplaceDictionaryWriteNode(_fpos, _keyHdr, ctx, keyedSize);
-        }
+#endif
         else
             throwUnexpected();
     }
     virtual void useDictionary(CWriteNode *_dictNode) override
     {
+#ifdef USE_ZSTD_COMPRESSION
         dictNode.set(static_cast<CInplaceDictionaryWriteNode *>(_dictNode));
         dict.setown(dictNode->getDictionary());
+#endif
     }
 
 protected:
     StringAttr compressionName;
+#ifdef USE_ZSTD_COMPRESSION
     Owned<CInplaceDictionaryWriteNode> dictNode;
     Owned<ZStdCDictionary> dict;
+#endif
     mutable InplaceKeyBuildContext ctx;
     size32_t lastKeyedFieldOffset = 0;
     size32_t keyedSize = 0;

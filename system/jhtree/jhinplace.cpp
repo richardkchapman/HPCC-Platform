@@ -88,7 +88,7 @@ ZStdBlockCompressor::ZStdBlockCompressor(const ZStdCDictionary *_dict, unsigned 
 ZStdBlockCompressor::~ZStdBlockCompressor()
 {
     ZSTD_freeCCtx(cctx);
-    DBGLOG("%u rows compressed, %u rows not compressed", compressedRows, uncompressedRows);
+  //  DBGLOG("%u rows compressed, %u rows not compressed", compressedRows, uncompressedRows);
 }
 
 size_t ZStdBlockCompressor::queryMaxBlockSize() const
@@ -102,6 +102,11 @@ size_t ZStdBlockCompressor::compress(const void* src, size_t srcSize) // MORE - 
     // Non-compressible will need marking as such somehow... Tricky to mix compressed and non-compressed rows
     ZSTD_compressBegin_usingCDict(cctx, *dict);
     size_t ret = ZSTD_compressBlock(cctx, compressed.ensureCapacity(0), compressed.capacity(), src, srcSize);
+    if (ZSTD_isError(ret))
+    {
+//        DBGLOG("Compress error %s", ZSTD_getErrorName(ret));    // Probably "Destination buffer too small", meaning would take over maxCompressedSize
+        ret = 0;
+    }
     if (!ret)
     {
         ret = srcSize; // hack...
@@ -1781,6 +1786,7 @@ bool CJHInplaceLeafNode::fetchPayload(unsigned int index, char *dst) const
     if (index >= hdr.numKeys) return false;
     if (dst)
     {
+        getKeyAt(index,dst);
         unsigned len = keyCompareLen;
         if (payloadOffsets.ordinality())
         {
@@ -1969,8 +1975,13 @@ void CInplaceBranchWriteNode::write(IFileIOStream *out, CRC32 *crc)
 
 //=========================================================================================================
 
+#ifdef USE_ZSTD_COMPRESSION
 CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset, ZStdCDictionary *_dict)
 : CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false), lastKeyedFieldOffset(_lastKeyedFieldOffset), zstdDict(_dict)
+#else
+CInplaceLeafWriteNode::CInplaceLeafWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, InplaceKeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset)
+: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), builder(keyCompareLen, _ctx.nullRow, false), lastKeyedFieldOffset(_lastKeyedFieldOffset)
+#endif
 {
     nodeSize = _keyHdr->getNodeSize();
     keyLen = keyHdr->getMaxKeyLength();
@@ -1998,33 +2009,7 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
     __uint64 savedMaxPosition = maxPosition;
     const byte * data = (const byte *)_data;
     unsigned oldSize = getDataSize();
-    size32_t commonBytes = builder.add(keyCompareLen, data);
-#ifndef USE_ZSTD_COMPRESSION
-    // Decide whether to start a new block, based on (a) size of this one and (b) how many of the keyed fields have changed value
-    if (numRowsInBlock)
-    {
-        if (commonBytes == keyCompareLen)
-        {
-            // Start a new block if this one has got larger than some threshold
-        }
-        else
-        {
-            if (commonBytes >= lastKeyedFieldOffset)
-                ; // Just one field changed
-            else
-                ; // more then one
-            // Start a new block if this one has got larger than some other, smaller, threshold. If we want to, we can factor in how many fields in the key
-            // have changed, and also how much space is left on the node.
-            // It's possible that a row would fit on this node in the current lzwcomp, but not in a new one - but if so, is squeezing a row in a good idea?
-            // It may depend on whether the NEXT row has a matching key...
-            // Some stats on average number of rows per key / all-but-last-key might be useful
-            lzwcomp.close();
-            size32_t buflen = lzwcomp.buflen();  // MORE - need to store this info too! And numRowsInBlock
-            lzwcomp.open(((byte *) compressed.mem())+buflen, nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
-            numRowsInBlock = 0;
-        }
-    }
-#endif
+    builder.add(keyCompareLen, data);
     if (positions.ordinality())
     {
         if (pos < minPosition)
@@ -2077,8 +2062,6 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
             oldSize += (lzwcomp.buflen() - oldLzwSize);
             hasSpace = false;
         }
-        else
-            numRowsInBlock++;
 #endif
     }
 
@@ -2130,7 +2113,7 @@ unsigned CInplaceLeafWriteNode::getDataSize()
 #ifdef USE_ZSTD_COMPRESSION
         size32_t payloadLen = zstdComp->getCompressedSize();
 #else
-        size32_t payloadLen = lzwcomp.buflen() + ((byte *) lzwcomp.bufptr() - (byte *) compressed.mem());
+        size32_t payloadLen = lzwcomp.buflen();
 #endif
         payloadSize = sizePacked(payloadLen) + payloadLen;
     }
@@ -2191,7 +2174,7 @@ void CInplaceLeafWriteNode::write(IFileIOStream *out, CRC32 *crc)
                 serializePacked(data, payloadLen);
                 data.append(payloadLen, zstdComp->queryCompressedData());
 #else
-                size32_t payloadLen = lzwcomp.buflen() + ((byte *) lzwcomp.bufptr() - (byte *) compressed.get()); // Length includes all prior blocks too
+                size32_t payloadLen = lzwcomp.buflen();
                 serializePacked(data, payloadLen);
                 data.append(payloadLen, compressed.get());
 #endif
@@ -2209,6 +2192,7 @@ void CInplaceLeafWriteNode::write(IFileIOStream *out, CRC32 *crc)
 
 //=========================================================================================================
 
+#ifdef USE_ZSTD_COMPRESSION
 CInplaceDictionaryWriteNode::CInplaceDictionaryWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, InplaceKeyBuildContext & _ctx, size32_t _keyedSize)
 : CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), keyedSize(_keyedSize)
 {
@@ -2251,6 +2235,7 @@ void CInplaceDictionaryWriteNode::write(IFileIOStream *out, CRC32 *crc)
     if (crc)
         crc->tally(keyHdr->getNodeSize(), nodeBuf);
 }
+#endif
 
 //=========================================================================================================
 
