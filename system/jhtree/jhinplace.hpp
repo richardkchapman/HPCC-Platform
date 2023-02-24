@@ -138,7 +138,7 @@ public:
 
 //---------------------------------------------------------------------------------------------------------------------
 
-//#define USE_ZSTD_COMPRESSION
+#define USE_ZSTD_COMPRESSION
 #define ZSTD_STATIC_LINKING_ONLY
 #include "zstd.h"
 #include "zdict.h"
