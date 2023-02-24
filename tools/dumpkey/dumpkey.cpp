@@ -413,7 +413,7 @@ int main(int argc, const char **argv)
                         maxDiskRecordSize = outmeta->getFixedSize()-fileposSize;
                     const RtlRecord &indexRecord = outmeta->queryRecordAccessor(true);
                     size32_t keyedSize = indexRecord.getFixedOffset(indexRecord.getNumKeyedFields());
-                    MyIndexWriteArg helper(filename, nullptr, outmeta);  // MORE - is lifetime ok? Bloom support? May need longer lifetime once we add bloom support...
+                    MyIndexWriteArg helper(filename, "inplace", outmeta);  // MORE - is lifetime ok? Bloom support? May need longer lifetime once we add bloom support...
                     keyBuilder.setown(createKeyBuilder(outFileStream, flags, maxDiskRecordSize, nodeSize, keyedSize, 0, &helper, false, false));
                 }
                 MyIndexVirtualFieldCallback callback(manager);
@@ -470,7 +470,7 @@ int main(int argc, const char **argv)
                         else
                             count++;  // Row was postfiltered
                     }
-                    else
+                    //else
                         printf("%.*s  :%" I64F "u\n", size, buffer, seq);
                     manager->releaseBlobs();
                 }
