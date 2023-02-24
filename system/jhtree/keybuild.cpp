@@ -214,7 +214,7 @@ public:
                 if (strieq(compression, "POC"))
                     indexCompressor.setown(new PocIndexCompressor);
                 else if (strieq(compression, "inplace"))
-                    indexCompressor.setown(new InplaceIndexCompressor(keyedSize, _helper));
+                    indexCompressor.setown(new InplaceIndexCompressor(keyedSize, keyValueSize, _helper));
                 else
                     throw makeStringExceptionV(0, "Unrecognised index compression format %s", compression);
             }

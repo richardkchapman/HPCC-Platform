@@ -2280,8 +2280,8 @@ void CInplaceLeafWriteNode::write(IFileIOStream *out, CRC32 *crc)
 
 //=========================================================================================================
 
-CInplaceDictionaryWriteNode::CInplaceDictionaryWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, KeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset)
-: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), lastKeyedFieldOffset(_lastKeyedFieldOffset)
+CInplaceDictionaryWriteNode::CInplaceDictionaryWriteNode(offset_t _fpos, CKeyHdr *_keyHdr, KeyBuildContext & _ctx, size32_t _keyedSize)
+: CInplaceWriteNode(_fpos, _keyHdr, true), ctx(_ctx), keyedSize(_keyedSize)
 {
 }
 
@@ -2289,9 +2289,9 @@ bool CInplaceDictionaryWriteNode::add(offset_t pos, const void * data, size32_t 
 {
     if (samplesBuffer.length() > 0x100000)
         return false;
-    assertex(size > lastKeyedFieldOffset);
-    size -= lastKeyedFieldOffset;
-    data = (const char *) data + lastKeyedFieldOffset;
+    assertex(size > keyedSize);
+    size -= keyedSize;
+    data = (const char *) data + keyedSize;
     samplesBuffer.append(size, data);
     samplesSizes.push_back(size);
     return true;
@@ -2326,7 +2326,7 @@ void CInplaceDictionaryWriteNode::write(IFileIOStream *out, CRC32 *crc)
 //=========================================================================================================
 
 
-InplaceIndexCompressor::InplaceIndexCompressor(size32_t keyedSize, IHThorIndexWriteArg * helper)
+InplaceIndexCompressor::InplaceIndexCompressor(size32_t _keyedSize, size32_t _maxRowSize, IHThorIndexWriteArg * helper)
 {
     IOutputMetaData * format = helper->queryDiskRecordSize();
     if (format)
@@ -2340,13 +2340,15 @@ InplaceIndexCompressor::InplaceIndexCompressor(size32_t keyedSize, IHThorIndexWr
         for (unsigned idx = 0; idx < meta.getNumFields() && offset < keyedSize; idx++)
         {
             const RtlFieldInfo *field = meta.queryField(idx);
-            offset = field->type->buildNull(rowBuilder, offset, field);
             lastKeyedFieldOffset = offset;
+            offset = field->type->buildNull(rowBuilder, offset, field);
         }
         ctx.nullRow = nullRow;
     }
     else
         lastKeyedFieldOffset = keyedSize-1;
+    keyedSize = _keyedSize;
+    hasPayload = _maxRowSize != keyedSize;
 }
 
 #ifdef _USE_CPPUNIT

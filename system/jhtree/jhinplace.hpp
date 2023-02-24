@@ -295,7 +295,7 @@ protected:
 class CInplaceDictionaryWriteNode  : public CInplaceWriteNode
 {
 public:
-    CInplaceDictionaryWriteNode(offset_t fpos, CKeyHdr *keyHdr, KeyBuildContext & _ctx, size32_t _lastKeyedFieldOffset);
+    CInplaceDictionaryWriteNode(offset_t fpos, CKeyHdr *keyHdr, KeyBuildContext & _ctx, size32_t _keyedSize);
 
     virtual size32_t nodeSize() const override;
     virtual bool add(offset_t pos, const void *data, size32_t size, unsigned __int64 sequence) override;
@@ -303,7 +303,7 @@ public:
     ZStdCDictionary *getDictionary() const;
 
 protected:
-    size32_t lastKeyedFieldOffset = 0;
+    size32_t keyedSize = 0;
     Owned<ZStdCDictionary> dictionary;
     KeyBuildContext & ctx;
     MemoryBuffer samplesBuffer;
@@ -314,9 +314,9 @@ protected:
 class InplaceIndexCompressor : public CInterfaceOf<IIndexCompressor>
 {
 public:
-    InplaceIndexCompressor(size32_t keyedSize, IHThorIndexWriteArg * helper);
+    InplaceIndexCompressor(size32_t keyedSize, size32_t maxRowSize, IHThorIndexWriteArg * helper);
 
-    virtual bool supportsDictionary() const override { return true; };
+    virtual bool supportsDictionary() const override { return hasPayload; };
     virtual const char *queryName() const override { return "inplace"; }
     virtual CWriteNode *createNode(offset_t _fpos, CKeyHdr *_keyHdr, NodeType type) const override
     {
@@ -326,7 +326,7 @@ public:
             return new CInplaceBranchWriteNode(_fpos, _keyHdr, ctx);
         else if (type==NodeType::NodeDict)
         {
-            return new CInplaceDictionaryWriteNode(_fpos, _keyHdr, ctx, lastKeyedFieldOffset);
+            return new CInplaceDictionaryWriteNode(_fpos, _keyHdr, ctx, keyedSize);
         }
         else
             throwUnexpected();
@@ -342,6 +342,8 @@ protected:
     Owned<ZStdCDictionary> dict;
     mutable KeyBuildContext ctx;
     size32_t lastKeyedFieldOffset = 0;
+    size32_t keyedSize = 0;
+    bool hasPayload = false;
 };
 
 #endif
