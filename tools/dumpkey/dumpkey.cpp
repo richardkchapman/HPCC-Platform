@@ -151,13 +151,42 @@ private:
 
 class DummyFileIOStream : public CInterfaceOf<IFileIOStream>
 {
+public:
     virtual size32_t read(size32_t max_len, void * data) override { throwUnexpected(); }
     virtual void flush() override { }
-    virtual size32_t write(size32_t len, const void * data) override { return len; }  // MORE maybe add some stats!
-    virtual void seek(offset_t pos, IFSmode origin) override { }
-    virtual offset_t size() override { UNIMPLEMENTED; }
-    virtual offset_t tell() override { UNIMPLEMENTED; }
-    virtual unsigned __int64 getStatistic(StatisticKind kind) { UNIMPLEMENTED; }
+    virtual size32_t write(size32_t len, const void * data) override 
+    {
+        stats.ioWriteBytes.fetch_add(len);
+        ++stats.ioWrites;
+        if (len+offset > hwm) 
+            hwm = offset+len;
+        offset += len;
+        return len; 
+    }
+    virtual void seek(offset_t pos, IFSmode origin) override 
+    { 
+        switch (origin)
+        {
+        case IFScurrent:
+            offset += pos;
+            break;
+        case IFSend:
+            offset = hwm + pos;
+            break;
+        case IFSbegin:
+            offset = pos;
+            break;
+        }
+        if (offset > hwm) 
+            hwm = offset;
+    }
+    virtual offset_t size() override { return hwm; }
+    virtual offset_t tell() override { return offset; }
+    virtual unsigned __int64 getStatistic(StatisticKind kind) { return stats.getStatistic(kind); }
+private:
+    offset_t offset = 0;
+    offset_t hwm = 0;
+    FileIOStats         stats;
 };
 
 int main(int argc, const char **argv)
@@ -413,7 +442,7 @@ int main(int argc, const char **argv)
                         maxDiskRecordSize = outmeta->getFixedSize()-fileposSize;
                     const RtlRecord &indexRecord = outmeta->queryRecordAccessor(true);
                     size32_t keyedSize = indexRecord.getFixedOffset(indexRecord.getNumKeyedFields());
-                    MyIndexWriteArg helper(filename, "inplace", outmeta);  // MORE - is lifetime ok? Bloom support? May need longer lifetime once we add bloom support...
+                    MyIndexWriteArg helper(filename, globals->queryProp("recode"), outmeta);  // MORE - is lifetime ok? Bloom support? May need longer lifetime once we add bloom support...
                     keyBuilder.setown(createKeyBuilder(outFileStream, flags, maxDiskRecordSize, nodeSize, keyedSize, 0, &helper, false, false));
                 }
                 MyIndexVirtualFieldCallback callback(manager);
@@ -470,13 +499,16 @@ int main(int argc, const char **argv)
                         else
                             count++;  // Row was postfiltered
                     }
-                    //else
+                    else
                         printf("%.*s  :%" I64F "u\n", size, buffer, seq);
                     manager->releaseBlobs();
                 }
                 if (keyBuilder)
                 {
                     keyBuilder->finish(metadata, nullptr, maxSizeSeen);
+                    printf("New key has %" I64F "u leaves, %" I64F "u branches, %" I64F "u duplicates\n", keyBuilder->getNumLeafNodes(), keyBuilder->getNumBranchNodes(), keyBuilder->getDuplicateCount());
+                    printf("Original key size: %" I64F "u bytes\n", const_cast<IFileIO *>(index->queryFileIO())->size());
+                    printf("New key size: %" I64F "u bytes (%" I64F "u bytes written in %" I64F "u writes)\n", outFileStream->size(), outFileStream->getStatistic(StSizeDiskWrite), outFileStream->getStatistic(StNumDiskWrites));
                     keyBuilder.clear();
                 }
                 if (outRecType)

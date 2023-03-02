@@ -210,11 +210,19 @@ public:
             if (_helper->getFlags() & TIWcompressdefined)
             {
                 const char *compression = _helper->queryCompression();
+                const char *opts = strchr(compression, ':');
+                StringBuffer truncated;
+                if (opts)
+                {
+                    truncated.append(opts-compression, compression);
+                    opts++;   // skip the :
+                    compression = truncated.str();
+                }
                 hdr->version = 2;    // Old builds will give a reasonable error message
                 if (strieq(compression, "POC"))
                     indexCompressor.setown(new PocIndexCompressor);
                 else if (strieq(compression, "inplace"))
-                    indexCompressor.setown(new InplaceIndexCompressor(keyedSize, keyValueSize, _helper));
+                    indexCompressor.setown(new InplaceIndexCompressor(keyedSize, keyValueSize, opts, _helper));
                 else
                     throw makeStringExceptionV(0, "Unrecognised index compression format %s", compression);
             }

@@ -1878,7 +1878,6 @@ bool CJHInplaceLeafNode::fetchPayload(unsigned int index, char *dst) const
     if (index >= hdr.numKeys) return false;
     if (dst)
     {
-        getKeyAt(index,dst);
         unsigned len = keyCompareLen;
         if (payloadOffsets.ordinality())
         {
@@ -2080,7 +2079,43 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
     __uint64 savedMaxPosition = maxPosition;
     const byte * data = (const byte *)_data;
     unsigned oldSize = getDataSize();
-    builder.add(keyCompareLen, data);
+    assertex(oldSize <= maxBytes);
+    size32_t commonBytes = builder.add(keyCompareLen, data);
+#ifndef USE_ZSTD_COMPRESSION
+    // Decide whether to start a new block, based on (a) size of this one and (b) how many of the keyed fields have changed value
+    if (numRowsInBlock)
+    {
+        bool startNewBlock = false;
+        if (commonBytes == keyCompareLen)
+        {
+            // Start a new block if this one has got larger than some threshold?
+            startNewBlock = false;
+        }
+        else
+        {
+            if (commonBytes >= lastKeyedFieldOffset)
+                startNewBlock = numRowsInBlock > ctx.minRowsInBlock; // Just one field changed in keyed portion
+            else
+                startNewBlock = numRowsInBlock > ctx.minRowsInBlock; // More then one field changed in keyed portion
+            // Start a new block if this one has got larger than some other, smaller, threshold. If we want to, we can factor in how many fields in the key
+            // have changed, and also how much space is left on the node.
+            // It's possible that a row would fit on this node in the current lzwcomp, but not in a new one - but if so, is squeezing a row in a good idea?
+            // It may depend on whether the NEXT row has a matching key...
+            // Some stats on average number of rows per key / all-but-last-key might be useful
+            if (startNewBlock)
+            {
+                size32_t oldLzwSize = lzwcomp.buflen();
+                lzwcomp.close();
+                size32_t buflen = lzwcomp.buflen();  // MORE - need to store this info too! And numRowsInBlock
+                oldSize += (buflen - oldLzwSize);   // in case close() changes it - can it ever? Not sure that it can...
+                lzwcomp.open(((byte *) lzwcomp.bufptr())+buflen, nodeSize, isVariable, rowCompression);   // The payload portion may be stored lzw-compressed
+                numRowsInBlock = 0;
+            }
+        }
+        size32_t curBlockOffset = (byte *) lzwcomp.bufptr() - (byte *) compressed.mem();
+        blockOffsets.append(curBlockOffset);
+    }
+#endif
     if (positions.ordinality())
     {
         if (pos < minPosition)
@@ -2126,12 +2161,19 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
         }
 #else
         size32_t oldLzwSize = lzwcomp.buflen();
-        size32_t lzwSpace = oldLzwSize + (maxBytes - required);
+        size32_t lzwSpace = oldLzwSize + (available - required);
         if (!lzwcomp.adjustLimit(lzwSpace) || !lzwcomp.write(extraData, extraSize))
         {
-            oldSize += (lzwcomp.buflen() - oldLzwSize);
+            if (numRowsInBlock)
+            {
+                size32_t extra = (lzwcomp.buflen() - oldLzwSize);   // This may end up being removed again when close() is callled
+                // assertex(extra <= safetyMargin);  This does not appear to be a valid assert, though not 100% sure I understand why!
+                oldSize += extra;
+            }
             hasSpace = false;
         }
+        else
+            numRowsInBlock++;
 #endif
     }
 
@@ -2147,6 +2189,7 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
         minPosition = savedMinPosition;
         maxPosition = savedMaxPosition;
         unsigned nowSize = getDataSize();
+        assertex(getDataSize() <= maxBytes);
         assertex(oldSize == nowSize);
 #ifdef TRACE_BUILDING
         printf("---- leaf ----\n");
@@ -2176,14 +2219,16 @@ unsigned CInplaceLeafWriteNode::getDataSize()
         bytesPerPosition = bytesRequired(maxPosition-minPosition);
 
     unsigned posSize = 1 + sizePacked(minPosition) + bytesPerPosition * positions.ordinality();
-    unsigned offsetSize = payloadLengths.ordinality() * 2;  // MORE: Could probably compress
+    unsigned offsetSize = payloadLengths.ordinality() * 2;  // MORE: Could probably compress. Also assumes decompressed fits in 64k I think
     unsigned payloadSize = 0;
     if (keyLen != keyCompareLen)
     {
 #ifdef USE_ZSTD_COMPRESSION
         size32_t payloadLen = zstdComp->getCompressedSize();
 #else
-        size32_t payloadLen = lzwcomp.buflen();
+        size32_t payloadLen = (byte *) lzwcomp.bufptr() - (byte *) compressed.mem();
+        if (numRowsInBlock)
+            payloadLen += lzwcomp.buflen();
 #endif
         payloadSize = sizePacked(payloadLen) + payloadLen;
     }
@@ -2244,7 +2289,9 @@ void CInplaceLeafWriteNode::write(IFileIOStream *out, CRC32 *crc)
                 serializePacked(data, payloadLen);
                 data.append(payloadLen, zstdComp->queryCompressedData());
 #else
-                size32_t payloadLen = lzwcomp.buflen();
+                size32_t payloadLen = (byte *) lzwcomp.bufptr() - (byte *) compressed.mem();
+                if (numRowsInBlock)
+                    payloadLen += lzwcomp.buflen();
                 serializePacked(data, payloadLen);
                 data.append(payloadLen, compressed.get());
 #endif
@@ -2310,8 +2357,19 @@ void CInplaceDictionaryWriteNode::write(IFileIOStream *out, CRC32 *crc)
 
 //=========================================================================================================
 
+KeyBuildContext::KeyBuildContext(const char *opts)
+{
+    Owned<IProperties> props = createProperties(false);
+    if (opts)
+    {
+        StringBuffer lfopts(opts);
+        lfopts.replaceString(";", "\n");   // Or we could make loadProps accept ';' ...
+        props->loadProps(lfopts);
+    }
+    minRowsInBlock = props->getPropInt("minblock", 20);
+}
 
-InplaceIndexCompressor::InplaceIndexCompressor(size32_t _keyedSize, size32_t _maxRowSize, IHThorIndexWriteArg * helper)
+InplaceIndexCompressor::InplaceIndexCompressor(size32_t _keyedSize, size32_t _maxRowSize, const char *opts, IHThorIndexWriteArg * helper) : ctx(opts)
 {
     IOutputMetaData * format = helper->queryDiskRecordSize();
     if (format)
