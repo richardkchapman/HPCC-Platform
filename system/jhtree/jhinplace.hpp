@@ -127,6 +127,7 @@ protected:
 class jhtree_decl InplaceKeyBuildContext
 {
 public:
+    InplaceKeyBuildContext(const char *opts);
     ~InplaceKeyBuildContext();
 
 public:
@@ -134,11 +135,14 @@ public:
     MemoryBuffer uncompressed;
     MemoryAttr compressed;
     const byte * nullRow = nullptr;
+
+    // Configurable via build options
+    unsigned minRowsInBlock = 20;
 };
 
 //---------------------------------------------------------------------------------------------------------------------
 
-#define USE_ZSTD_COMPRESSION
+//#define USE_ZSTD_COMPRESSION
 #define ZSTD_STATIC_LINKING_ONLY
 #include "zstd.h"
 #include "zdict.h"
@@ -279,6 +283,7 @@ protected:
     MemoryBuffer uncompressed;      // Much better if these could be shared by all nodes => refactor
     MemoryAttr compressed;
     UnsignedArray payloadLengths;
+    UnsignedArray blockOffsets;
     Unsigned64Array positions;
     __uint64 minPosition = 0;
     __uint64 maxPosition = 0;
