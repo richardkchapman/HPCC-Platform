@@ -2023,9 +2023,9 @@ bool CInplaceLeafWriteNode::add(offset_t pos, const void * _data, size32_t size,
         else
         {
             if (commonBytes >= lastKeyedFieldOffset)
-                startNewBlock = numRowsInBlock > ctx.minRowsInBlock; // Just one field changed in keyed portion
+                startNewBlock = numRowsInBlock >= ctx.minRowsInBlock; // Just one field changed in keyed portion
             else
-                startNewBlock = numRowsInBlock > ctx.minRowsInBlock; // More then one field changed in keyed portion
+                startNewBlock = numRowsInBlock >= ctx.minRowsInBlock; // More then one field changed in keyed portion
             // Start a new block if this one has got larger than some other, smaller, threshold. If we want to, we can factor in how many fields in the key
             // have changed, and also how much space is left on the node.
             // It's possible that a row would fit on this node in the current lzwcomp, but not in a new one - but if so, is squeezing a row in a good idea?
