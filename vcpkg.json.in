@@ -166,6 +166,7 @@
         {
             "name": "zlib",
             "platform": "@VCPKG_ZLIB@"
-        }
+        },
+        "zstd"
     ]
 }
