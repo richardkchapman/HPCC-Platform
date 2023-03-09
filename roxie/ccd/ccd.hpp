@@ -249,6 +249,9 @@ interface ISerializedRoxieQueryPacket : extends IInterface
     virtual unsigned getTraceLength() const = 0;
     virtual IRoxieQueryPacket *deserialize() const = 0;
     virtual ISerializedRoxieQueryPacket *cloneSerializedPacket(unsigned channel) const = 0;
+    virtual unsigned queryIBYTIDelayTime() const = 0;
+    virtual unsigned queryEnqueuedTimeStamp() const = 0;
+    virtual void noteQueued(unsigned IBYTIdelayMs) = 0;
 };
 
 interface IRoxieQueryPacket : extends IInterface
