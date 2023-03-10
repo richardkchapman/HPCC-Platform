@@ -1464,11 +1464,18 @@ public:
                 // Try to stop/abort a job after it starts only if IBYTI comes from a higher priority agent 
                 // (more primary in the rank). The agents with higher rank will hold the lower bits of the retries field in IBYTI packet).
 #ifdef SUBCHANNELS_IN_HEADER
+                if (doTrace(traceRoxiePackets))
+                {
+                    StringBuffer x;
+                    DBGLOG("Deciding whether to abort: checkRank=%um respondingSub=%u, mySub=%u", checkRank, h.getRespondingSubChannel(), h.mySubChannel());
+                }
                 if (!checkRank || h.getRespondingSubChannel() < h.mySubChannel())
 #else
                 if (!checkRank || topology->queryChannelInfo(h.channel).otherAgentHasPriority(h.priorityHash(), h.getRespondingSubChannel()))
 #endif
                 {
+                    if (doTrace(traceRoxiePackets))
+                        DBGLOG("Decided to abort running activity based on ranks");
                     activity->abort();
                     return true;
                 }
@@ -1477,8 +1484,13 @@ public:
                     return false;
                 }
             }
-            else if (busy) 
+            else if (busy)  // packet set and busy false should never happen...
             {
+                if (doTrace(traceRoxiePackets))
+                {
+                    StringBuffer x;
+                    DBGLOG("Decided to abort: preactivity");
+                }
                 preActivity = true;
                 return true;
             }
@@ -1685,7 +1697,7 @@ public:
             }
 
             if (!debugging)
-                ROQ->sendIbyti(header, logctx, mySubChannel);
+                ROQ->sendIbyti(header, logctx, mySubChannel);  // MORE should this be after setActivity() - otherwise both may abort?
 
             activitiesStarted++;
             unsigned activityId = packet->queryHeader().activityId & ~ROXIE_PRIORITY_MASK;
@@ -2652,7 +2664,7 @@ public:
                 foundInQ = mySubChannel != 0 && delayed.queryQueue(header.channel, mySubChannel).doIBYTI(header);
 #endif
                 if (!foundInQ)
-                    foundInQ = queue.remove(header);
+                    foundInQ = queue.remove(header);  // Check on list waiting for a free worker
                 if (foundInQ)
                 {
                     if (doTrace(traceRoxiePackets))
@@ -2679,7 +2691,7 @@ public:
                 if (doTrace(traceRoxiePackets))
                 {
                     StringBuffer s;
-                    DBGLOG("doIBYTI packet was too late (or too early) : %s", header.toString(s).str());
+                    DBGLOG("doIBYTI packet was too late (or too early, or too low priority) : %s", header.toString(s).str());
                 }
                 ibytiPacketsTooLate.fastInc(); // meaning either I started and reserve the right to finish, or I finished already
                 if (IBYTIbufferSize)
