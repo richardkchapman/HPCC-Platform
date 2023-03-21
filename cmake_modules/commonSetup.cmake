@@ -1066,7 +1066,7 @@ IF ("${COMMONSETUP_DONE}" STREQUAL "")
 
     _install(${ARGS})
 
-    if(ARGV0 STREQUAL "TARGETS" AND CALC_DEPS)
+    if(ARGV0 STREQUAL "TARGETS" AND CALC_DEPS AND FALSE)
 
       # Will contain the list of targets
       set(parsed_targets "")

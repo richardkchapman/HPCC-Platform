@@ -33,6 +33,7 @@ RUN apt-get install -y \
     nano 
 
 RUN apt-get install -y libcap2-bin zip libarchive13 libatlas3-base clang   
+RUN apt-get install -y elfutils
 
 # Set the locale
 RUN apt-get install -y locales

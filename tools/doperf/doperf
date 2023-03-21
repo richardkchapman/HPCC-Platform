@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# $ eus [pid/name] <seconds-to-capture> (capture every 0.5 sec so end up with 2x seconds number of stack files)
+# $ FlameGraph/stackcollapse-elfutils.pl stack.* > stack_folded
+# $ FlameGraph/flamegraph.pl stack_folded > stack.svg
+# open stack.svg in browser
+ 
+# sample CPU stacks for 10 seconds ...
+# sudo perf record -F 99 -ag -- sleep 10
+# sudo perf report
+# report tree starts with the on-CPU functions and works back through the ancestry.
+# This approach is called a "callee based call graph". This can be flipped by
+# using -G for an "inverted call graph", or by using the "caller" option to
+# -g/--call-graph, instead of the "callee" default.
+# perf report can also be run with "-g graph" to show absolute overhead rates
+ 
+if [[ $# -lt 1 ]] ; then
+    echo "Error, need pid to trace"
+    exit 1
+fi
+ 
+exet=$(which eu-stack >/dev/null 2>&1)
+rc=$?
+if [[ $rc -ne 0 ]] ; then
+    echo "Error, need eu-stack utility (elfutils pkg)"
+    exit 1
+fi
+ 
+pid=$1
+kill -0 $pid > /dev/null 2>&1
+rc=$?
+if [[ $rc -ne 0 ]] ; then
+    echo "Error, pid ${pid} not found or not traceable"
+    exit 1
+fi
+ 
+tx=60
+if [[ $# -gt 1 ]] ; then
+    tx=$2
+fi
+tx=$((tx*5))
+
+trap exit SIGINT SIGQUIT SIGTERM
+ 
+cnt=1
+while true
+do
+    kill -0 $pid > /dev/null 2>&1
+    rc=$?
+    if [[ $rc -ne 0 ]] ; then
+        break
+    fi
+    if [[ ${cnt} -gt ${tx} ]] ; then
+        break
+    fi
+    eu-stack -n 25 -r -m -p ${pid} > stack.${cnt} 2>/dev/null &
+    cnt=$((cnt+1))
+    sleep 0.2
+    nj=$(jobs -p 2>/dev/null | wc -l)
+    if [[ ${nj} -gt 5 ]] ; then
+        wait -n 2>/dev/null
+    fi
+done
+
+stackcollapse-elfutils.pl stack.* > folded && rm stack.*
+flamegraph.pl folded && rm folded

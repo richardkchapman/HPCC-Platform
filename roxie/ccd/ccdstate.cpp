@@ -2646,12 +2646,12 @@ private:
             else if (stricmp(queryName, "control:perf")==0)
             {
                 unsigned perfInterval = (unsigned) control->getPropInt64("@val", 60);
-                VStringBuffer args("%u", perfInterval);
+                VStringBuffer cmd("doperf %u %u", GetCurrentProcessId(), perfInterval);
                 StringBuffer output, error;
-                unsigned ret = runExternalCommand(nullptr, output, error, "doperf", args, ".", nullptr);
+                unsigned ret = runExternalCommand(nullptr, output, error, cmd, nullptr, ".", nullptr);
                 if (ret==0)
                 {
-                    reply.appendf("<Perf filename='%s'>\n", output.str());
+                    reply.append(output.str());
                 }
             }
             else if (stricmp(queryName, "control:pingInterval")==0)
