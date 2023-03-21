@@ -64,3 +64,4 @@ done
 
 stackcollapse-elfutils.pl stack.* > folded && rm stack.*
 flamegraph.pl folded && rm folded
+exit 0

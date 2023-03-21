@@ -17,10 +17,6 @@
 
 #include <platform.h>
 #include <jlib.hpp>
-#ifdef __linux__
-#include <sys/prctl.h>
-#endif
-
 #include "jisem.hpp"
 #include "jhash.hpp"
 #include "jsort.hpp"
@@ -2648,15 +2644,12 @@ private:
             }
             else if (stricmp(queryName, "control:perf")==0)
             {
-#ifdef __linux__
-                prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
-#endif
                 unsigned perfInterval = (unsigned) control->getPropInt64("@val", 60);
                 VStringBuffer cmd("doperf %u %u", GetCurrentProcessId(), perfInterval);
                 //VStringBuffer cmd("eu-stack -n 25 -r -m -p %u", GetCurrentProcessId());
                 StringBuffer output, error;
-                unsigned ret = runExternalCommand(nullptr, output, error, cmd, nullptr, ".", nullptr);
-                if (ret==0)
+                unsigned ret = runExternalCommand(nullptr, output, error, cmd, nullptr, ".", nullptr, true);
+                if (ret==0 || true)
                 {
                     reply.append(output.str());
                 }

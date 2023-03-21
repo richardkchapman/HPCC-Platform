@@ -38,6 +38,9 @@
 #include <sys/types.h>
 #include <sys/resource.h>
 #endif
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 #define LINUX_STACKSIZE_CAP (0x200000)
 
@@ -1735,6 +1738,7 @@ public:
     {
         return pipeProcess;
     }
+    void setAllowTrace() override {}
 };
 
 IPipeProcess *createPipeProcess(const char *allowedprogs)
@@ -1932,6 +1936,7 @@ protected: friend class PipeWriterThread;
     size32_t stderrbufsize;
     StringAttr allowedprogs;
     StringArray env;
+    bool allowTrace = false;
 
     void clearUtilityThreads(bool clearStderr)
     {
@@ -2072,7 +2077,15 @@ public:
         // NOTE - from here to the execvp/_exit call, we must only call "signal-safe" functions, that do not do any memory allocation
         // fork() only clones the one thread from parent process, meaning any mutexes/semaphores protecting multi-threaded access
         // to (for example) malloc cannot be relied upon not to be locked, and will never be unlocked if they are.
-        if (pipeProcess==0) { // child
+        if (pipeProcess)
+        {
+#ifdef __linux__
+            if (allowTrace)
+                prctl(PR_SET_PTRACER, pipeProcess, 0, 0, 0);
+#endif
+        }
+        else
+        { // child
             if (newProcessGroup)//Force the child process into its own process group, so we can terminate it and its children.
                 setpgid(0,0);
             if (hasinput) {
@@ -2430,6 +2443,11 @@ public:
     {
         CriticalBlock block(sect);
         return pipeProcess;
+    }
+    
+    void setAllowTrace() override
+    {
+        allowTrace = true;
     }
 };
 
