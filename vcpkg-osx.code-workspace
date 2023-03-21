@@ -5,6 +5,8 @@
 		}
 	],
 	"settings": {
+		"cmake.generator": "Ninja",
+		"cmake.buildDirectory": "${workspaceFolder}/build/ossd",
 		"cmake.configureArgs": [
 			"-DCONTAINERIZED=OFF",
 			"-DUSE_OPTIONAL=OFF",
