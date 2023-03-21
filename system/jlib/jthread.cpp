@@ -2050,11 +2050,13 @@ public:
         int shmid=0;
         if (allowTrace)
         {
-            shmid = shmget(0, sizeof(mutex) + SHMLBA, IPC_CREAT | SHM_R | SHM_W);
+            shmid = shmget(0, sizeof(sem_t)*2 + SHMLBA, IPC_CREAT | SHM_R | SHM_W);
             assertex(shmid>=0);
             mutex = (sem_t *) shmat(shmid, NULL, 0);
             assertex(mutex);
-            int r = sem_init(mutex, 1, 0);
+            int r = sem_init(&mutex[0], 1, 0);
+            assertex(r==0);
+            r = sem_init(&mutex[1], 1, 1);
             assertex(r==0);
         }
 #endif
@@ -2098,7 +2100,10 @@ public:
             if (allowTrace)
             {
                 prctl(PR_SET_PTRACER, pipeProcess, 0, 0, 0);
-                sem_post(mutex);
+                sem_post(&mutex[0]);
+                sem_wait(&mutex[1]);
+                shmdt(mutex);
+                shmctl(shmid, IPC_RMID, NULL);
             }
 #endif
         }
@@ -2107,9 +2112,9 @@ public:
 #ifdef __linux__
             if (allowTrace)
             {
-                sem_wait(mutex);
+                sem_wait(&mutex[0]);
+                sem_post(&mutex[1]);
                 shmdt(mutex);
-                shmctl(shmid, IPC_RMID, NULL);
             }
 #endif
             if (newProcessGroup)//Force the child process into its own process group, so we can terminate it and its children.
