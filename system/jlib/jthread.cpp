@@ -40,6 +40,8 @@
 #endif
 #ifdef __linux__
 #include <sys/prctl.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #endif
 
 #define LINUX_STACKSIZE_CAP (0x200000)
@@ -2043,6 +2045,19 @@ public:
             }
             envp.append(nullptr);
         }
+#ifdef __linux__
+        sem_t *mutex = nullptr;
+        int shmid=0;
+        if (allowTrace)
+        {
+            shmid = shmget(0, sizeof(mutex) + SHMLBA, IPC_CREAT | SHM_R | SHM_W);
+            assertex(shmid>=0);
+            mutex = (sem_t *) shmat(shmid, NULL, 0);
+            assertex(mutex);
+            int r = sem_init(mutex, 1, 0);
+            assertex(r==0);
+        }
+#endif
 
         /* NB: Important to call splitargs (which calls malloc) before the fork()
          * and not in the child process. Because performing malloc in the child
@@ -2081,11 +2096,22 @@ public:
         {
 #ifdef __linux__
             if (allowTrace)
+            {
                 prctl(PR_SET_PTRACER, pipeProcess, 0, 0, 0);
+                sem_post(mutex);
+            }
 #endif
         }
         else
         { // child
+#ifdef __linux__
+            if (allowTrace)
+            {
+                sem_wait(mutex);
+                shmdt(mutex);
+                shmctl(shmid, IPC_RMID, NULL);
+            }
+#endif
             if (newProcessGroup)//Force the child process into its own process group, so we can terminate it and its children.
                 setpgid(0,0);
             if (hasinput) {
