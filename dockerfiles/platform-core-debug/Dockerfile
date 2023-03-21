@@ -32,7 +32,7 @@ ENV LC_ALL en_US.UTF-8
 RUN apt-get install -y libcap2-bin zip libarchive13 libatlas3-base clang
 RUN setcap cap_sys_ptrace+eip /usr/bin/gdb
 RUN apt-get install -y elfutils
-RUN setcap cap_sys_ptrace+eip /usr/bin/eu-stack
+#RUN setcap cap_sys_ptrace+eip /usr/bin/eu-stack
 
 ENV PATH="/opt/HPCCSystems/bin:${PATH}"
 ENV HPCC_containerized=1
