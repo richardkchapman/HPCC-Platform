@@ -99,6 +99,10 @@ RUN make -j$(cat ~/build_threads) jlib
 RUN make -j$(cat ~/build_threads) esp
 RUN make -j$(cat ~/build_threads) roxie
 RUN make -j$(cat ~/build_threads) ws_workunits ecl
+USER root
+RUN npm install -g npm
+USER hpcc
+RUN make eclwatch
 RUN make -j$(cat ~/build_threads)
 
 USER root

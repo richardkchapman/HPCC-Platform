@@ -36,6 +36,8 @@ RUN apt-get install -y elfutils
 ENV PATH="/opt/HPCCSystems/bin:${PATH}"
 ENV HPCC_containerized=1
 
+RUN cp -r /hpcc-dev/build/vcpkg_installed/x64-linux-dynamic/debug/lib/* /opt/HPCCSystems/lib
+
 USER hpcc
 RUN cp /opt/HPCCSystems/bin/.gdbinit ~/.gdbinit
 WORKDIR /var/lib/HPCCSystems
