@@ -1944,7 +1944,7 @@ unsigned runExternalCommand(StringBuffer &output, StringBuffer &error, const cha
     return runExternalCommand(cmd, output, error, cmd, input, ".", nullptr);
 }
 
-unsigned runExternalCommand(const char *title, StringBuffer &output, StringBuffer &error, const char *cmd, const char *input, const char * cwd, const EnvironmentVector * optEnvironment, bool allowTrace)
+unsigned runExternalCommand(const char *title, StringBuffer &output, StringBuffer &error, const char *cmd, const char *input, const char * cwd, const EnvironmentVector * optEnvironment)
 {
     try
     {
@@ -1952,8 +1952,6 @@ unsigned runExternalCommand(const char *title, StringBuffer &output, StringBuffe
             cwd = ".";
 
         Owned<IPipeProcess> pipe = createPipeProcess();
-        if (allowTrace)
-            pipe->setAllowTrace();
         if (optEnvironment)
         {
             for (const auto & cur : *optEnvironment)
