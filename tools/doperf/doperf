@@ -59,20 +59,25 @@ fi
 
 tx=`perl -l -e "print $tx / $interval"`
 
-trap finish_perf SIGINT SIGQUIT SIGTERM
+tmpdir=$(mktemp -d) 
+cnt=1
+
+#Add lines to suppress list to suppress any stack that includes a function matching the regex
+cat <<EOF >${tmpdir}/suppress
+libccd.so;_ZN6Waiter4waitEv
+libjvm.so;
+EOF
 
 finish_perf()
 {
   stackcollapse-elfutils.pl ${tmpdir}/stack.* > ${tmpdir}/folded
-  flamegraph.pl ${tmpdir}/folded
+  grep -f ${tmpdir}/suppress -v ${tmpdir}/folded > ${tmpdir}/suppressed
+  flamegraph.pl ${tmpdir}/suppressed
   rm -rf $tmpdir
   exit 0
 }
 
-tmpdir=$(mktemp -d)
-trap exit SIGINT SIGQUIT SIGTERM
- 
-cnt=1
+trap finish_perf SIGINT SIGQUIT SIGTERM
 
 while true
 do
@@ -94,4 +99,3 @@ do
 done
 
 finish_perf
-
