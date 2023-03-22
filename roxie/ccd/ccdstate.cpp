@@ -2645,14 +2645,9 @@ private:
             else if (stricmp(queryName, "control:perf")==0)
             {
                 unsigned perfInterval = (unsigned) control->getPropInt64("@val", 60);
-                VStringBuffer cmd("doperf %u %u", GetCurrentProcessId(), perfInterval);
-                //VStringBuffer cmd("eu-stack -n 25 -r -m -p %u", GetCurrentProcessId());
-                StringBuffer output, error;
-                unsigned ret = runExternalCommand(nullptr, output, error, cmd, nullptr, ".", nullptr, true);
-                if (ret==0 || true)
-                {
-                    reply.append(output.str());
-                }
+                PerfTracer perf;
+                perf.traceFor(perfInterval);
+                reply.append(perf.queryResult().str());
             }
             else if (stricmp(queryName, "control:pingInterval")==0)
             {

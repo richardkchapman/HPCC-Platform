@@ -2614,3 +2614,46 @@ unsigned threadLogID()  // for use in logging
 #endif
     return (unsigned)(memsize_t) GetCurrentThreadId(); // truncated in 64bit
 }
+
+void PerfTracer::start()
+{
+    dostart(1000000);
+}
+
+void PerfTracer::dostart(unsigned seconds)
+{
+    pipe.setown(createPipeProcess());
+    pipe->setAllowTrace();
+    VStringBuffer cmd("doperf %u %u %f", GetCurrentProcessId(), seconds, interval);
+    if (!pipe->run(nullptr, cmd, ".", false, true, false, 1024*1024))
+    {
+        pipe.clear();
+        throw makeStringException(0, "Failed to run doperf");
+    }
+}
+
+void PerfTracer::stop()
+{
+    assertex(pipe);
+    ::kill(pipe->getProcessHandle(), SIGINT);
+    dostop();
+}
+
+void PerfTracer::traceFor(unsigned seconds)
+{
+    dostart(seconds);
+    dostop();
+}
+
+void PerfTracer::dostop()
+{
+    char buf[1024];
+    while (true)
+    {
+        size32_t read = pipe->read(sizeof(buf), buf);
+        if (!read)
+            break;
+        result.append(read, buf);
+    }
+    pipe->wait();
+}

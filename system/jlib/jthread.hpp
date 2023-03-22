@@ -328,6 +328,24 @@ extern jlib_decl IPipeProcess *createPipeProcess(const char *allowedprograms=NUL
 
 //--------------------------------------------------------
 
+class PerfTracer
+{
+    Owned<IPipeProcess> pipe;
+    double interval = 0.2;
+    StringBuffer result;
+public:
+    void start();
+    void stop();
+    void traceFor(unsigned seconds);
+    StringBuffer &queryResult() { return result; }
+    void setInterval(double _interval);  // In seconds
+private:
+    void dostart(unsigned seconds);
+    void dostop();
+};
+
+//--------------------------------------------------------
+
 interface IWorkQueueItem: extends IInterface
 {
     virtual void execute()=0;
