@@ -2102,6 +2102,8 @@ public:
                 prctl(PR_SET_PTRACER, pipeProcess, 0, 0, 0);
                 sem_post(&mutex[0]);
                 sem_wait(&mutex[1]);
+                sem_destroy(&mutex[0]);
+                sem_destroy(&mutex[1]);
                 shmdt(mutex);
                 shmctl(shmid, IPC_RMID, NULL);
             }

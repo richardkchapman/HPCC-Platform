@@ -57,7 +57,7 @@ if [[ $# -gt 2 ]] ; then
     interval=$3
 fi
 
-tx=$((tx/interval))
+tx=`perl -l -e "print $tx / $interval"`
 
 trap finish_perf SIGINT SIGQUIT SIGTERM
 
