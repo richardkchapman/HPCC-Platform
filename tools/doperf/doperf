@@ -1,21 +1,34 @@
 #!/bin/bash
+##############################################################################
+#    HPCC SYSTEMS software Copyright (C) 2023 HPCC Systems®.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License");
+#    you may not use this file except in compliance with the License.
+#    You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS,
+#    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#    See the License for the specific language governing permissions and
+#    limitations under the License.
+##############################################################################
 
-# $ eus [pid/name] <seconds-to-capture> (capture every 0.5 sec so end up with 2x seconds number of stack files)
-# $ FlameGraph/stackcollapse-elfutils.pl stack.* > stack_folded
-# $ FlameGraph/flamegraph.pl stack_folded > stack.svg
-# open stack.svg in browser
- 
-# sample CPU stacks for 10 seconds ...
-# sudo perf record -F 99 -ag -- sleep 10
-# sudo perf report
-# report tree starts with the on-CPU functions and works back through the ancestry.
-# This approach is called a "callee based call graph". This can be flipped by
-# using -G for an "inverted call graph", or by using the "caller" option to
-# -g/--call-graph, instead of the "callee" default.
-# perf report can also be run with "-g graph" to show absolute overhead rates
- 
+usage()
+{
+    echo "Usage: doperf <pid> [time] [interval]"
+    echo ""
+    echo "doperf will capture stacks from <pid> at regular intervals, until [time] has elapsed"
+    echo "or interrupted by signal, then generate a flame graph svg file from the captured stacks."
+    echo ""
+    echo "Requires the eu-stack utility (from elfutils), and perl."
+    echo "May need to give eu-stack program ptrace permissions in order to work correctly"
+    exit 1
+}
+
 if [[ $# -lt 1 ]] ; then
-    echo "Error, need pid to trace"
+    usage
     exit 1
 fi
  
@@ -38,11 +51,29 @@ tx=60
 if [[ $# -gt 1 ]] ; then
     tx=$2
 fi
-tx=$((tx*5))
 
+interval=0.2
+if [[ $# -gt 2 ]] ; then
+    interval=$3
+fi
+
+tx=$((tx/interval))
+
+trap finish_perf SIGINT SIGQUIT SIGTERM
+
+finish_perf()
+{
+  stackcollapse-elfutils.pl ${tmpdir}/stack.* > ${tmpdir}/folded
+  flamegraph.pl ${tmpdir}/folded
+  rm -rf $tmpdir
+  exit 0
+}
+
+tmpdir=$(mktemp -d)
 trap exit SIGINT SIGQUIT SIGTERM
  
 cnt=1
+
 while true
 do
     kill -0 $pid > /dev/null 2>&1
@@ -53,15 +84,14 @@ do
     if [[ ${cnt} -gt ${tx} ]] ; then
         break
     fi
-    eu-stack -n 25 -r -m -p ${pid} > stack.${cnt} 2>/dev/null &
+    eu-stack -n 25 -r -m -p ${pid} > ${tmpdir}/stack.${cnt} 2>/dev/null &
     cnt=$((cnt+1))
-    sleep 0.2
+    sleep $interval
     nj=$(jobs -p 2>/dev/null | wc -l)
     if [[ ${nj} -gt 5 ]] ; then
         wait -n 2>/dev/null
     fi
 done
 
-stackcollapse-elfutils.pl stack.* > folded && rm stack.*
-flamegraph.pl folded && rm folded
-exit 0
+finish_perf
+
