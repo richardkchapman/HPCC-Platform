@@ -2056,7 +2056,7 @@ public:
             assertex(mutex);
             int r = sem_init(&mutex[0], 1, 0);
             assertex(r==0);
-            r = sem_init(&mutex[1], 1, 1);
+            r = sem_init(&mutex[1], 1, 0);
             assertex(r==0);
         }
 #endif
