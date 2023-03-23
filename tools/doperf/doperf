@@ -64,7 +64,10 @@ cnt=1
 
 #Add lines to suppress list to suppress any stack that includes a function matching the regex
 cat <<EOF >${tmpdir}/suppress
-libccd.so;_ZN6Waiter4waitEv
+_ZN6Waiter4waitEv - [^ ]*libccd.so
+_ZN15CRoxieFileCache.*;_ZN22InterruptableSemaphore4waitEv
+_ZN10PerfTracer
+CRoxieWorker10threadmainEv - [^ ]*libccd.so;_ZN10RoxieQueue4waitEv
 libjvm.so;
 EOF
 
