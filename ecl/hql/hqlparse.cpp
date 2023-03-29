@@ -2084,6 +2084,11 @@ int HqlLex::processStringLiteral(attribute & returnToken, char *CUR_TOKEN_TEXT, 
             }
             *bf++ = next;
         }
+        else if (next=='\r' && finger[1] == '\n')
+        {
+            finger++;    // Convert \r\n in multiline string constant to \n
+            continue;
+        }
         else if (next == '\'' && !isMultiline)
         {
             returnToken.setPosition(yyLineNo, oldColumn+delta, oldPosition+delta, querySourcePath());
@@ -2155,7 +2160,7 @@ int HqlLex::processStringLiteral(attribute & returnToken, char *CUR_TOKEN_TEXT, 
 }
 
 
-void HqlLex::stripSlashNewline(attribute & returnToken, StringBuffer & target, size_t len, const char * text)
+void HqlLex::prepareUnicodeMultiline(attribute & returnToken, StringBuffer & target, size_t len, const char * text)
 {
     target.ensureCapacity(len);
     for (size_t i = 0; i < len; i++)
@@ -2186,7 +2191,8 @@ void HqlLex::stripSlashNewline(attribute & returnToken, StringBuffer & target, s
                 reportError(returnToken, RRR_ESCAPE_ENDWITHSLASH, "%s", msg.str());
             }
         }
-
+        else if (cur == '\r' && (i+1) < len && text[i+1] == '\n')
+            continue;   // Convert \r\n in multiline unicode constant to \n
         target.append(cur);
     }
 }

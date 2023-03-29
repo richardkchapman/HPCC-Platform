@@ -1660,7 +1660,7 @@ FUNCTIONMACRO|MACRO {
                             Owned<IValue> unicodeValue;
                             // Special handling required for trailing \ char which suppresses the following linefeed, as unicode unescape does not handle it
                             StringBuffer source;
-                            lexer->stripSlashNewline(returnToken, source, len, lexer->yyBuffer+startpos);
+                            lexer->prepareUnicodeMultiline(returnToken, source, len, lexer->yyBuffer+startpos);
                             if (isUtf8)
                             {
                                 size32_t chars = rtlUtf8Length(source.length(), source.str());
